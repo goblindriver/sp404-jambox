@@ -1,0 +1,24 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Sample data (too large for git)
+*.WAV
+*.wav
+*.aif
+*.aiff
+*.mp3
+_UNZIPPED/
+_CARD_STAGING/
+_BANK_B_STAGING/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Claude Code local settings
+.claude/
+
+# Backups
+_BACKUP_ORIGINAL/
