@@ -67,10 +67,10 @@ bank_e:
     4: CLP disco one-shot
     5: BRK disco warm loop
     6: BAS disco warm loop
-    7: STR disco bright loop
+    7: SYN pad warm bright loop
     8: KEY piano disco soulful loop
     9: GTR disco funk loop
-    10: BRS disco bright one-shot
+    10: BRS warm funk one-shot
     11: SYN stab disco one-shot
     12: VOX disco hype chop-ready
 bank_f:
