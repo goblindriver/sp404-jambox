@@ -224,10 +224,19 @@ def ingest_pack(pack_dir, dry_run=False):
     total = sum(counts.values())
     print(f"  Total: {total} files {'would be ' if dry_run else ''}organized")
 
-    # Mark as processed
+    # Mark as processed and move out of Downloads
     if not dry_run and total > 0:
         with open(marker_path, 'w') as f:
             f.write(f"Ingested {total} files at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+        # Move the processed pack folder to _RAW-DOWNLOADS to declutter ~/Downloads
+        archive_dest = os.path.join(RAW_ARCHIVE, pack_name)
+        if pack_dir.startswith(DOWNLOADS) and not os.path.exists(archive_dest):
+            try:
+                shutil.move(pack_dir, archive_dest)
+                print(f"  Moved to: {archive_dest}")
+            except Exception as e:
+                print(f"  Could not move pack: {e}")
 
     return total
 
