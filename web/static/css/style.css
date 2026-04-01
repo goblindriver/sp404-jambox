@@ -318,6 +318,29 @@ main {
     font-weight: 700;
 }
 
+.pad-waveform {
+    position: absolute;
+    bottom: 40px;
+    left: 4px;
+    right: 4px;
+    height: 40px;
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    opacity: 0.5;
+}
+
+.pad-waveform .bar {
+    flex: 1;
+    background: var(--bank-color, var(--accent));
+    border-radius: 1px 1px 0 0;
+    min-height: 1px;
+}
+
+.pad.filled:hover .pad-waveform {
+    opacity: 0.8;
+}
+
 .pad-label {
     font-size: 11px;
     color: var(--text-dim);

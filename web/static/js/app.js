@@ -132,6 +132,7 @@ function renderPadGrid(bank) {
         el.innerHTML = `
             <span class="pad-num">${pad.num}</span>
             <span class="pad-status-icon">${statusIcon}</span>
+            <div class="pad-waveform" id="waveform-${pad.num}"></div>
             <span class="pad-label">${pad.description || 'empty'}</span>
         `;
 
@@ -144,6 +145,34 @@ function renderPadGrid(bank) {
         };
 
         grid.appendChild(el);
+
+        // Load waveform for filled pads
+        if (pad.status === 'filled') {
+            loadWaveform(bank.letter, pad.num);
+        }
+    }
+}
+
+
+async function loadWaveform(bankLetter, padNum) {
+    try {
+        const resp = await fetch(`/api/audio/waveform/${bankLetter}/${padNum}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data.peaks || !data.peaks.length) return;
+
+        const container = document.getElementById(`waveform-${padNum}`);
+        if (!container) return;
+
+        container.innerHTML = '';
+        for (const peak of data.peaks) {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            bar.style.height = `${Math.max(2, peak * 100)}%`;
+            container.appendChild(bar);
+        }
+    } catch (e) {
+        // silently fail — waveform is non-critical
     }
 }
 

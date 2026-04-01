@@ -76,6 +76,60 @@ def _convert_to_pad(source, bank, pad):
     return target, None
 
 
+@audio_bp.route('/audio/waveform/<bank>/<int:pad>')
+def waveform_data(bank, pad):
+    """Return waveform peak data for rendering on the pad grid.
+
+    Returns JSON with 'peaks' (array of 0.0-1.0 values) and 'duration'.
+    Uses raw PCM parsing for SP-404 WAVs (16-bit mono).
+    """
+    import struct
+    fname = f"{bank.upper()}{pad:07d}.WAV"
+    smpl = os.path.join(current_app.config['REPO_DIR'], 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL', fname)
+    if not os.path.exists(smpl):
+        staging = os.path.join(current_app.config['REPO_DIR'], '_CARD_STAGING', fname)
+        if os.path.exists(staging):
+            smpl = staging
+        else:
+            abort(404)
+
+    try:
+        with open(smpl, 'rb') as f:
+            data = f.read()
+
+        # Find 'data' chunk in WAV — skip RLND and other chunks
+        data_offset = data.find(b'data')
+        if data_offset < 0:
+            abort(404)
+        data_size = struct.unpack_from('<I', data, data_offset + 4)[0]
+        pcm_start = data_offset + 8
+        pcm_data = data[pcm_start:pcm_start + data_size]
+
+        # Parse 16-bit signed PCM samples
+        num_samples = len(pcm_data) // 2
+        if num_samples == 0:
+            return jsonify({'peaks': [], 'duration': 0})
+
+        samples = struct.unpack(f'<{num_samples}h', pcm_data[:num_samples * 2])
+
+        # Downsample to ~80 peaks for display
+        num_peaks = 80
+        chunk_size = max(1, num_samples // num_peaks)
+        peaks = []
+        max_val = 32768.0
+        for i in range(0, num_samples, chunk_size):
+            chunk = samples[i:i + chunk_size]
+            if chunk:
+                peak = max(abs(s) for s in chunk) / max_val
+                peaks.append(round(min(peak, 1.0), 3))
+
+        duration = num_samples / 44100.0
+        return jsonify({'peaks': peaks, 'duration': round(duration, 2)})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @audio_bp.route('/audio/assign', methods=['POST'])
 def assign_to_pad():
     """Assign a library file to a pad: convert to SP-404 format and copy."""
