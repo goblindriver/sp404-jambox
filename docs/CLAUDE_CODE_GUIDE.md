@@ -1,117 +1,86 @@
 # Using Claude Code with This Project
 
-This project was built using Claude (Anthropic's AI assistant) in Cowork mode and can be extended further using [Claude Code](https://docs.claude.com/en/docs/claude-code) for command-line agentic workflows.
+## Overview
 
-## Why Claude Code?
+This project uses a multi-agent workflow. Claude Code handles all implementation — scripts, web UI, pipeline, and code changes. Chat handles creative direction and documentation. Cowork handles sample sourcing.
 
-Claude Code runs directly in your terminal and can:
-- Read/write files, run shell commands, and interact with git
-- Execute Python scripts and debug errors in real-time
-- Browse the web to find new sample packs
-- Manage the full pipeline from download → organize → curate → convert → deploy
+Claude Code reads `CLAUDE.md` in the project root automatically for full context on paths, commands, bank layout, tag system, and coordination rules.
 
-This is ideal for an SP-404 workflow because:
-- Sample pack discovery and download
-- Audio format conversion (ffmpeg pipelines)
-- Library organization and deduplication
-- Bank curation based on genre/BPM matching
-- SD card deployment
+## Getting Started
 
-## Getting Started with Claude Code
-
-### Install
 ```bash
 npm install -g @anthropic-ai/claude-code
-```
-
-### Authenticate
-```bash
 claude login
-```
-
-### Use with This Project
-```bash
-cd ~/path-to/sp404-jambox
+cd ~/Desktop/SP-404SX/sp404-jambox
 claude
 ```
 
-Then ask Claude to help with tasks like:
-- "Download the MusicRadar breakbeat samples pack and add it to the library"
-- "Create a new bank layout for dub techno at 125bpm"
-- "Find the best kick drums in the library and preview them"
-- "Convert all samples in _READY-TO-LOAD to SP-404 format"
-- "Deploy the current card setup to /Volumes/SP-404SX"
-
 ## Example Workflows
 
-### Add a New Genre Bank
+### Curate a Bank
 ```
-> Replace Bank J with a Dub Techno bank at 125bpm. Pick the best
-> samples from the library — kicks should be deep and subby,
-> hats should be minimal, and I want long reverby chord stabs
-> for pads 5-12.
-```
-
-### Rebuild the Entire Card
-```
-> Rebuild the SD card from scratch. Use the current bank layout
-> but re-pick all samples — prioritize variety and avoid any
-> samples that clip or have DC offset.
+> Refetch Bank D with different samples — the current kick is too soft
+> and I want a rawer guitar loop on pad 11.
 ```
 
 ### Expand the Library
 ```
-> Search MusicRadar SampleRadar for any drum & bass or jungle
-> sample packs. Download them, organize into the library, and
-> tell me what we got.
+> Ingest whatever's in ~/Downloads right now. Tag the new files
+> and tell me what we got.
 ```
 
-### Analyze What's On the Card
+### Edit Bank Layout
 ```
-> Read the SD card at /Volumes/SP-404SX and tell me what's on
-> each bank. Check audio quality — are there any samples that
-> are too quiet, clip, or have issues?
+> Change Bank G to 130 BPM and swap pad 6 from acid bass to
+> a distorted bass loop.
 ```
+(This updates `bank_config.yaml`, then re-fetches the affected pads.)
 
-## CLAUDE.md Project Instructions
-
-If you create a `CLAUDE.md` file in the project root, Claude Code will automatically read it for project context. Here's a recommended setup:
-
-```markdown
-# SP-404 Jam Box
-
-## Project Context
-SP-404A/SX sampler SD card builder. Curates royalty-free samples
-into genre banks for live jamming.
-
-## Key Paths
-- SD card mount: /Volumes/SP-404SX
-- Sample library: ~/Music/SP404-Sample-Library
-- Working folder: this repo
-
-## Audio Format
-All output WAVs must be: 16-bit / 44.1kHz / Mono / PCM
-Convert with: ffmpeg -y -i input -ar 44100 -ac 1 -sample_fmt s16 -c:a pcm_s16le output.WAV
-
-## SP-404 File Naming
-Bank letter + 7-digit pad number: A0000001.WAV through J0000012.WAV
-Place in: ROLAND/SP-404SX/SMPL/
-
-## Bank Layout
-Pads 1-4 = drum hits, Pads 5-12 = loops & melodic
-See PAD_MAP.txt for current contents.
-
-## Commands
-- Organize library: python scripts/organize_library.py
-- Pick samples: python scripts/pick_best_samples.py
-- Generate Bank B: python scripts/gen_novelty.py
-- Deploy to SD: bash scripts/copy_to_sd.sh
+### Full Rebuild
+```
+> Rebuild the SD card from scratch. Re-fetch all banks,
+> regenerate PAD_INFO.BIN and patterns, and deploy.
 ```
 
-## Tips for Working with Claude Code on Audio Projects
+### Library Analysis
+```
+> How many kicks do we have in the library? Show me the
+> distribution of energy tags across all drum samples.
+```
 
-1. **Always verify audio format** after conversion: `ffprobe -v quiet -print_format json -show_streams file.wav`
-2. **Test with small batches** before processing hundreds of files
-3. **Keep backups** — the `_BACKUP_ORIGINAL/` folder on the SD card is there for a reason
-4. **Use the library** as your source of truth, not the SD card — the card is just a deployment target
-5. **Version your bank layouts** in git so you can roll back changes
+### Web UI Development
+```
+> Add a waveform preview to the pad detail view in the web UI.
+> It should show when you click a pad that has a sample loaded.
+```
+
+## Key Commands
+
+| Task | Command |
+|------|---------|
+| Fetch all banks | `python scripts/fetch_samples.py` |
+| Fetch one bank | `python scripts/fetch_samples.py --bank d` |
+| Fetch one pad | `python scripts/fetch_samples.py --bank d --pad 1` |
+| Ingest downloads | `python scripts/ingest_downloads.py` |
+| Tag library | `python scripts/tag_library.py` |
+| Tag new only | `python scripts/tag_library.py --update` |
+| Generate PAD_INFO | `python scripts/gen_padinfo.py` |
+| Generate patterns | `python scripts/gen_patterns.py` |
+| Deploy to SD | `bash scripts/copy_to_sd.sh` |
+| Launch web UI | `cd web && python app.py` |
+
+## Coordination Rules
+
+- **Chat owns docs** — don't create or update documentation files unless the user asks
+- **bank_config.yaml is the source of truth** for bank layouts
+- **_tags.json is the source of truth** for sample metadata
+- After ingesting new samples, always re-tag: `python scripts/tag_library.py --update`
+- Cowork drops samples into `~/Downloads/` — ingest them with `ingest_downloads.py`
+
+## Tips
+
+1. Always verify audio format after conversion: `ffprobe -v quiet -print_format json -show_streams file.wav`
+2. Test with `--bank` and `--pad` flags before fetching everything
+3. The library is the source of truth, not the SD card — the card is just a deployment target
+4. Version bank layouts in git so you can roll back
+5. The web UI at localhost:5404 is often faster than terminal for browsing and previewing

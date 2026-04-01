@@ -2,110 +2,141 @@
 
 ## Overview
 
-This project has two main components:
+Three components work together:
 
-1. **SD Card Builder** — Scripts that curate, convert, and place samples onto an SP-404A/SX SD card
-2. **Sample Library** — A permanent, categorized collection of royalty-free samples on disk
+1. **SD Card Builder** — Python scripts that match, convert, and deploy samples to an SP-404A/SX SD card
+2. **Sample Library** — A permanent, tagged collection of 9,600+ royalty-free WAVs on disk
+3. **Web UI** — Flask app for visual bank editing, library browsing, and pipeline control
 
 ## Pipeline
 
 ```
-MusicRadar SampleRadar ZIPs
+MusicRadar / Freesound / Cowork downloads
         │
         ▼
   ~/Downloads/*.zip
         │
         ▼
-  _UNZIPPED/ (raw extracted packs)
+  ingest_downloads.py ──► ~/Music/SP404-Sample-Library/
+        │                    ├── Drums/{Kicks, Snares-Claps, Hi-Hats, Percussion, Drum-Loops}
+        │                    ├── Melodic/{Bass, Guitar, Keys-Piano, Synths-Pads}
+        │                    ├── Loops/Instrument-Loops
+        │                    ├── Ambient-Textural/Atmospheres
+        │                    ├── SFX/Stabs-Hits
+        │                    ├── Vocals/Chops
+        │                    ├── Freesound/{bank-name}/
+        │                    ├── _RAW-DOWNLOADS/
+        │                    └── _tags.json
         │
-        ├──► organize_library.py ──► ~/Music/SP404-Sample-Library/
-        │                              ├── Drums/{Kicks,Snares,Hats,Perc,Loops}
-        │                              ├── Melodic/{Bass,Guitar,Keys,Synths}
-        │                              ├── Loops/Instrument-Loops
-        │                              ├── SFX/Stabs-Hits
-        │                              └── _RAW-DOWNLOADS/ (archive)
+        ▼
+  tag_library.py ──► Auto-tags every WAV across 7 dimensions
+        │              (type_code, vibe, texture, genre, energy, source, playability)
         │
-        ├──► pick_best_samples.py ──► ROLAND/SP-404SX/SMPL/*.WAV
-        │    (selects best per genre,     (Banks C-J, 96 files)
-        │     converts to 16/44.1/mono)
+        ▼
+  bank_config.yaml ──► Defines all 10 banks with pad descriptions
         │
-        └──► gen_novelty.py ──► ROLAND/SP-404SX/SMPL/B*.WAV
-             (numpy synthesis)     (Bank B, 12 files)
+        ▼
+  fetch_samples.py ──► Scores entire _tags.json against each pad description
+        │                 Type match = +10, playability = +5, BPM/key = +3-4, keywords = +3 each
+        │                 Global dedup (no file reused across pads)
+        │                 Falls back to Freesound API if no local match
+        │                 Converts to 16-bit/44.1kHz/mono + RLND chunk
+        │
+        ▼
+  gen_padinfo.py ──► PAD_INFO.BIN (pads 1-4 = gate, 5-12 = loop)
+  gen_patterns.py ──► Starter .PTN pattern files via vendored spEdit404
+        │
+        ▼
+  copy_to_sd.sh ──► /Volumes/SP-404SX/ROLAND/SP-404SX/SMPL/
 ```
+
+## Web UI Architecture
+
+Flask app at `web/`, runs on http://localhost:5404.
+
+- **Pad grid**: Visual representation of SP-404 layout, click to edit/preview/fetch
+- **Library sidebar**: Folder browser + tag cloud with dimension-aware filtering
+- **Bank edit modal**: Name, BPM, key, notes per bank
+- **Pipeline controls**: Fetch All, Ingest Downloads, Build, Deploy buttons
+- **SD card status**: Auto-polling indicator
+- **Drag-and-drop**: From library sidebar or OS file explorer onto pads
+- **Tag Cloud API**: `GET /api/library/tags`, `GET /api/library/by-tag?type_code=KIK&vibe=dark`
 
 ## Design Decisions
 
 ### Why 16-bit/44.1kHz Mono?
 The SP-404A (original) requires this exact format. The SX and MK2 accept higher rates but mono 44.1 is the universal common denominator. Keeps file sizes small on the SD card too.
 
-### Why Pads 1-4 = Hits, 5-12 = Loops?
+### Why Pads 1–4 = Hits, 5–12 = Loops?
 Natural performance layout. Left hand on drum hits, right hand layers loops and melodic content. Consistent across all banks so muscle memory transfers between genres.
 
+### Why YAML Bank Config?
+Decouples bank design from code. Chat can suggest new banks, the user pastes them into `bank_config.yaml`, and Code's fetch pipeline picks them up without any script changes. The pad description format (`TYPE keywords playability`) is deliberately simple — 3–4 tokens get better matches than overspecified queries.
+
+### Harmonic Design
+All bank keys (Am, Dm, Em, F) are diatonic to C major. This means any sample from any bank will harmonize with any other — you can freely layer across banks during a performance without clashing.
+
+### Tempo Design
+BPMs cluster at 112/120/128/130. This range is tight enough that the SP-404's time-stretch can handle cross-bank mixing cleanly, but wide enough to give each genre its own feel.
+
+### Bank Genre Selection (v3)
+Chosen for a cohesive DJ/performance set that flows from warm to hard:
+
+| Bank | Genre | Why |
+|------|-------|-----|
+| B | Sessions | Raw material — long-form breaks and tracks for live chopping |
+| C | Drum Loops | Pure rhythm palette — genre-agnostic backbone |
+| D | Funk | Organic warmth, guitar-driven, dance-punk energy |
+| E | Disco | Classic four-on-the-floor, bridges funk → electronic |
+| F | Electroclash | Dirty analog, bridges disco → aggressive electronic |
+| G | Nu-Rave | High-energy blog-house, neon maximalism |
+| H | Aggressive | Peak-time industrial — maximum intensity |
+| I | Textures | Connective tissue — pads, risers, ambient glue |
+| J | Utility | Performance triggers — speeches, SFX, crowd control |
+
 ### Why Real Samples Over Synthesis?
-Version 1 synthesized everything from scratch using numpy. The results were functional but lacked the character of real recorded/processed samples. MusicRadar SampleRadar packs are royalty-free and provide much better source material, especially for organic sounds (funk guitar, drum breaks, synth pads recorded from actual hardware).
+Version 1 synthesized everything using numpy. Results were functional but lacked character. MusicRadar SampleRadar packs are royalty-free and provide much better source material, especially for organic sounds.
 
-### Why Keep the Synthesis Scripts?
-Bank B (novelty FX) is still synthesized because there's no good free source for "air horn" or "laser zap" samples that's reliably CC0. The numpy approach gives us exact control over these fun utility sounds. The legacy synthesis scripts are preserved for reference and potential future use.
+### Tag-Based Fetching Over Keyword Matching
+The tag system (`_tags.json`) pre-computes 7 dimensions per sample, so `fetch_samples.py` can score candidates quickly without re-analyzing audio each time. The scoring weights favor type code accuracy (you asked for a kick, you get a kick) while allowing vibe/texture/genre keywords to break ties between candidates.
 
-### Bank Genre Selection
-Chosen to cover a wide range of jam styles without overlap:
-- **Lo-Fi Hip-Hop** (C): The default chill mode, most common SP-404 use case
-- **Witch House** (D): Dark/slow counterpoint to the lo-fi bank
-- **Nu-Rave** (E): High energy, fast — for when you need to go hard
-- **Electroclash** (F): Dirty, punky electronic — bridges E and C
-- **Funk & Horns** (G): Live instruments, organic feel — contrast to all the electronic banks
-- **IDM** (H): Complex/experimental — for when you want to get weird
-- **Ambient** (I): Atmospheric, textural — transitions and interludes
-- **Utility/FX** (J): Transitions, risers, drops — performance tools
-
-### SD Card Folder Convention
-Files placed directly in `ROLAND/SP-404SX/SMPL/` with the correct naming (`{BANK}0000{PAD}.WAV`) are immediately accessible on the SP-404 without any import step. This bypasses the CANCEL+RESAMPLE import workflow entirely.
+### Freesound Fallback
+If the local library has no good match for a pad description, the fetcher hits the Freesound API. Downloaded files go into `Freesound/{bank-name}/` with proper attribution. This keeps the library growing organically as bank designs evolve.
 
 ## File Format Details
 
 ### SP-404 WAV Naming
 ```
-{Bank}{PadNumber}.WAV
-  │       │
-  │       └── 7 digits, zero-padded: 0000001 through 0000012
-  └── Single letter: A through J
+{Bank}0000{Pad}.WAV
+  │         │
+  │         └── 1-12 (pad number within bank)
+  └── A-J (bank letter)
 ```
+Full path on SD: `ROLAND/SP-404SX/SMPL/{Bank}000000{Pad}.WAV`
 
-### ffmpeg Conversion Command
-```bash
-ffmpeg -y -i input.wav -ar 44100 -ac 1 -sample_fmt s16 -c:a pcm_s16le output.WAV
-```
-- `-ar 44100`: 44.1kHz sample rate
-- `-ac 1`: Mono (downmix stereo)
-- `-sample_fmt s16`: 16-bit signed integer
-- `-c:a pcm_s16le`: Uncompressed PCM little-endian
+### RLND WAV Chunk
+SP-404SX WAVs include a proprietary "RLND" chunk (466 bytes) encoding device ID and pad index. Injected by `scripts/wav_utils.py:inject_rlnd()` during sample conversion.
 
-### Pattern Files (PTN)
-Pattern files in `ROLAND/SP-404SX/PTN/` are a proprietary binary format. They record real-time pad performances and can only be created on the unit itself (via PATTERN SELECT + REC). The [spEdit404](https://github.com/bobgonzalez/spEdit404) project has reverse-engineered this format and can create/modify patterns from a computer.
+### PAD_INFO.BIN
+Per-pad metadata at `ROLAND/SP-404SX/SMPL/PAD_INFO.BIN`. Generated by `gen_padinfo.py` — auto-sets loop mode for pads 5–12, gate for 1–4.
 
-## Sample Library Organization
+### Pattern Files (.PTN)
+Proprietary binary format in `ROLAND/SP-404SX/PTN/`. Generated via `scripts/gen_patterns.py` using vendored spEdit404 (`scripts/spedit404/`).
 
-The `organize_library.py` script categorizes samples using filename and folder path keywords:
+## Multi-Agent Coordination
 
-| Target Category | Keywords Matched |
-|----------------|-----------------|
-| Drums/Kicks | kick, bd, bass drum |
-| Drums/Snares-Claps | snare, snr, clap, rim |
-| Drums/Hi-Hats | hat, hh, hihat |
-| Drums/Percussion | perc, shaker, tamb, conga |
-| Drums/Drum-Loops | loop, beat (in drums context) |
-| Melodic/Bass | bass (not drum) |
-| Melodic/Guitar | guitar, gtr |
-| Melodic/Keys-Piano | piano, keys, organ, clav, ep |
-| Melodic/Synths-Pads | synth, pad, arp, lead |
-| Loops/Instrument-Loops | loop (in melodic context) |
-| SFX/Stabs-Hits | fx, stab, hit, riser |
+| Agent | Role | Touches |
+|-------|------|---------|
+| **Chat** | Creative direction, docs, orchestration | `docs/`, tag vocabulary, bank concepts |
+| **Code** | Implementation | `scripts/`, `web/`, `bank_config.yaml` |
+| **Cowork** | Sample sourcing | `~/Downloads/` watchfolders |
+
+Chat owns all documentation. Code doesn't create or update docs unless asked. See `CLAUDE.md` for full coordination protocol.
 
 ## Future Ideas
 
-- **Pattern pre-loading**: Use spEdit404 to create starter patterns for each bank
-- **Bank themes as YAML**: Define bank layouts in config files instead of hardcoded Python
-- **Auto-BPM matching**: Use librosa to detect BPM and auto-match samples to bank tempos
 - **NAS integration**: Move library to QNAP NAS at `/Volumes/Temp QNAP/Audio Production`
-- **Web UI**: Build a drag-and-drop bank editor (maybe fork Super Pads)
 - **MK2 support**: Add 48kHz/stereo variant for SP-404 MK2 users
+- **Auto-BPM detection**: Use librosa to detect BPM on untagged samples and auto-match to bank tempos
+- **Sample deduplication**: Detect near-duplicate WAVs across the library
+- **Bank export/import**: Share bank configs as portable packages with embedded samples

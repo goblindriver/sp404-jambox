@@ -1,0 +1,162 @@
+SP-404 JAM BOX — PAD MAP v3
+============================
+Bank A: Your Space (empty — resample and chop on-device)
+Banks B–J: Loaded via fetch_samples.py from bank_config.yaml
+
+LAYOUT: Pads 1–4 = Drum Hits (one-shots) | Pads 5–12 = Loops & Melodic
+
+HARMONIC KEY: All keys diatonic to C major (Am, Dm, Em, F)
+TEMPO CLUSTER: 112 / 120 / 128 / 130 BPM
+
+=== BANK A: YOUR SPACE ===
+  (Empty — use for resampling and on-device chopping)
+
+=== BANK B: SESSIONS (120 BPM, Am) ===
+  Long-form breaks and full tracks for live sampling and chopping
+   1: SMP funk soul chop-ready
+   2: SMP disco bright chop-ready
+   3: SMP electronic raw chop-ready
+   4: SMP electronic hype chop-ready
+   5: BRK funk warm loop
+   6: BRK disco bright loop
+   7: BRK electronic raw loop
+   8: BRK electronic hype loop
+   9: SMP funk nostalgic chop-ready
+  10: SMP disco soulful chop-ready
+  11: SMP electronic dark chop-ready
+  12: SMP electronic aggressive chop-ready
+
+=== BANK C: DRUM LOOPS (120 BPM, XX) ===
+  Pure rhythm — no melody, all genres, mix and match
+   1: BRK funk warm loop
+   2: BRK funk raw loop
+   3: BRK disco bright loop
+   4: BRK disco soulful loop
+   5: BRK electronic raw loop
+   6: BRK electronic aggressive loop
+   7: BRK electronic hype loop
+   8: BRK electronic crunchy loop
+   9: BRK electronic aggressive loop
+  10: BRK electronic bitcrushed loop
+  11: BRK house clean loop
+  12: BRK house bright loop
+
+=== BANK D: FUNK (112 BPM, Em) ===
+  Live, groovy, !!! energy — guitar-driven dance-punk
+   1: KIK clean funk one-shot
+   2: SNR bright funk one-shot
+   3: HAT bright funk one-shot
+   4: CLP clean funk one-shot
+   5: BRK funk warm loop
+   6: BAS funk warm loop
+   7: GTR funk bright loop
+   8: KEY clavinet funk loop
+   9: KEY organ funk soulful loop
+  10: BRS funk bright one-shot
+  11: GTR funk raw loop
+  12: SMP funk soulful chop-ready
+
+=== BANK E: DISCO (120 BPM, Am) ===
+  Four-on-the-floor, warm, danceable — classic disco energy
+   1: KIK clean disco one-shot
+   2: SNR bright disco one-shot
+   3: HAT open bright one-shot
+   4: CLP disco one-shot
+   5: BRK disco warm loop
+   6: BAS disco warm loop
+   7: SYN pad warm bright loop
+   8: KEY piano disco soulful loop
+   9: GTR disco funk loop
+  10: BRS warm funk one-shot
+  11: SYN stab disco one-shot
+  12: VOX disco hype chop-ready
+
+=== BANK F: ELECTROCLASH (120 BPM, Dm) ===
+  Dirty, minimal, Fischerspooner attitude — drum machines and analog synths
+   1: KIK 808 raw one-shot
+   2: SNR 808 raw one-shot
+   3: HAT closed raw one-shot
+   4: PRC cowbell electronic one-shot
+   5: BRK electronic raw loop
+   6: BAS gritty electronic loop
+   7: SYN lead aggressive loop
+   8: SYN pad dark loop
+   9: SYN arp electronic loop
+  10: VOX spoken dark one-shot
+  11: SFX industrial gritty one-shot
+  12: SYN stab aggressive one-shot
+
+=== BANK G: NU-RAVE (128 BPM, F) ===
+  Neon, blog-house, 2007 energy — bright and relentless
+   1: KIK electro hard one-shot
+   2: CLP electro bright one-shot
+   3: HAT open bright one-shot
+   4: PRC bright electronic one-shot
+   5: BRK electronic hype loop
+   6: BAS acid gritty loop
+   7: SYN stab bright one-shot
+   8: SYN arp bright loop
+   9: SYN lead hype loop
+  10: VOX chant hype chop-ready
+  11: RSR bright transition
+  12: SFX alarm hype loop
+
+=== BANK H: AGGRESSIVE (130 BPM, Dm) ===
+  Hard, industrial-tinged, peak-time — maximum energy
+   1: KIK hard aggressive one-shot
+   2: SNR hard aggressive one-shot
+   3: HAT metallic aggressive one-shot
+   4: PRC industrial dark one-shot
+   5: BRK electronic aggressive loop
+   6: BAS dark gritty loop
+   7: SYN lead dark loop
+   8: SYN stab aggressive one-shot
+   9: SYN pad dark tense loop
+  10: FX industrial dark one-shot
+  11: FX crunchy aggressive loop
+  12: VOX dark aggressive one-shot
+
+=== BANK I: TEXTURES & TRANSITIONS (120 BPM, Am) ===
+  Pads, risers, ambient glue — connective tissue between banks
+   1: PAD warm dreamy loop
+   2: PAD dark eerie loop
+   3: PAD dark tense loop
+   4: PAD bright airy loop
+   5: RSR bright transition
+   6: RSR dark transition
+   7: FX processed transition
+   8: TPE warm nostalgic layer
+   9: AMB airy layer
+  10: AMB dark lo-fi layer
+  11: FX vinyl lo-fi layer
+  12: SYN drone dark loop
+
+=== BANK J: UTILITY & FUN (120 BPM) ===
+  Speeches, gunshots, cash registers, iconic sounds — performance triggers
+   1: VOX speech dramatic one-shot
+   2: VOX speech aggressive one-shot
+   3: VOX countdown one-shot
+   4: VOX crowd hype one-shot
+   5: SFX gunshot hard one-shot
+   6: SFX explosion hard one-shot
+   7: SFX cash-register one-shot
+   8: SFX siren hype one-shot
+   9: SFX glass impact one-shot
+  10: SFX air-horn bright one-shot
+  11: SFX whip bright one-shot
+  12: SFX boom dark one-shot
+
+============================
+Audio format: 16-bit / 44.1kHz / Mono PCM WAV
+Source: MusicRadar SampleRadar + Freesound (royalty-free)
+Library: ~/Music/SP404-Sample-Library (~9,600+ WAVs)
+Config: bank_config.yaml
+
+JAMMING TIPS:
+- Pads 5–12 are set to LOOP mode — layer them freely
+- Pads 1–4 are GATE mode — hold to sustain, release to stop
+- All keys are diatonic to C major — everything harmonizes across banks
+- BPMs (112/120/128/130) cluster tight — cross-bank mixing works
+- Use HOLD pad to keep sounds playing after release
+- Layer effects (Filter, Lo-Fi, Isolator) while performing
+- Bank A is yours — resample anything into it on-device
