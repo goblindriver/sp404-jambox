@@ -107,6 +107,7 @@ function switchBank(bank) {
     grid.style.setProperty('--bank-color-glow', bank.color + '55');
 
     renderPadGrid(bank);
+    setupPadDropZones();
     document.getElementById('pad-detail').classList.add('hidden');
 }
 
@@ -400,9 +401,10 @@ function renderLibraryBrowser(data, path) {
     // Files
     for (const file of data.files) {
         const kb = Math.round(file.size / 1024);
-        html += `<div class="lib-item lib-file">
+        html += `<div class="lib-item lib-file" data-library-path="${file.path}">
+            <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
             <button class="lib-play" onclick="previewLibraryFile('${file.path}')" title="Preview">▶</button>
-            <span class="lib-name" title="${file.name}">${truncate(file.name, 30)}</span>
+            <span class="lib-name" title="${file.name}">${truncate(file.name, 28)}</span>
             <span class="lib-size">${kb}KB</span>
             <button class="lib-assign" onclick="assignFromLibrary('${file.path}')" title="Assign to selected pad">Assign</button>
         </div>`;
@@ -413,6 +415,7 @@ function renderLibraryBrowser(data, path) {
     }
 
     container.innerHTML = html;
+    setupLibraryDrag(container);
 }
 
 function renderSearchResults(results) {
@@ -424,14 +427,16 @@ function renderSearchResults(results) {
     let html = '<div class="lib-breadcrumb">Search results</div>';
     for (const r of results) {
         const name = r.path.split('/').pop();
-        html += `<div class="lib-item lib-file">
+        html += `<div class="lib-item lib-file" data-library-path="${r.path}">
+            <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
             <button class="lib-play" onclick="previewLibraryFile('${r.path}')" title="Preview">▶</button>
-            <span class="lib-name" title="${r.path}">${truncate(name, 25)}</span>
+            <span class="lib-name" title="${r.path}">${truncate(name, 23)}</span>
             <span class="lib-size" style="color:var(--accent)">${r.score}pts</span>
             <button class="lib-assign" onclick="assignFromLibrary('${r.path}')" title="Assign">Assign</button>
         </div>`;
     }
     container.innerHTML = html;
+    setupLibraryDrag(container);
 }
 
 async function assignFromLibrary(filepath) {
@@ -439,10 +444,13 @@ async function assignFromLibrary(filepath) {
         toast('Select a pad first', 'error');
         return;
     }
-    toast('Assigning...');
-    // For now, just update the description with the filename
-    // TODO: implement actual assign endpoint with convert_and_tag
-    toast('Library assign coming soon — use Fetch for now', 'error');
+    assignToPad(state.currentBank.letter, state.selectedPad.num, filepath);
+}
+
+function setupLibraryDrag(container) {
+    container.querySelectorAll('.lib-file[data-library-path]').forEach(el => {
+        makeDraggable(el, el.dataset.libraryPath);
+    });
 }
 
 // ── Tag Cloud ──
@@ -550,13 +558,15 @@ function renderTagResults(data) {
     for (const r of data.results) {
         const dur = r.duration ? `${r.duration.toFixed(1)}s` : '';
         const meta = [r.bpm ? r.bpm + 'bpm' : '', r.key || '', dur].filter(Boolean).join(' · ');
-        html += `<div class="lib-item lib-file">
+        html += `<div class="lib-item lib-file" data-library-path="${r.path}">
+            <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
             <button class="lib-play" onclick="previewLibraryFile('${r.path}')" title="Preview">▶</button>
-            <span class="lib-name" title="${r.path}">${truncate(r.name, 28)}</span>
+            <span class="lib-name" title="${r.path}">${truncate(r.name, 26)}</span>
             <span class="lib-size">${meta}</span>
         </div>`;
     }
     container.innerHTML = html;
+    setupLibraryDrag(container);
 }
 
 // ── Toast ──
@@ -624,6 +634,74 @@ async function ingestDownloads() {
     }
 
     document.getElementById('btn-ingest').disabled = false;
+}
+
+// ── Drag & Drop ──
+function setupPadDropZones() {
+    const pads = document.querySelectorAll('.pad');
+    pads.forEach(el => {
+        el.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            el.classList.add('drag-over');
+        });
+        el.addEventListener('dragleave', () => {
+            el.classList.remove('drag-over');
+        });
+        el.addEventListener('drop', (e) => {
+            e.preventDefault();
+            el.classList.remove('drag-over');
+            const libraryPath = e.dataTransfer.getData('application/x-library-path');
+            if (libraryPath) {
+                const padNum = parseInt(el.dataset.num);
+                assignToPad(state.currentBank.letter, padNum, libraryPath);
+            }
+        });
+    });
+}
+
+async function assignToPad(bankLetter, padNum, libraryPath) {
+    toast(`Assigning to ${bankLetter.toUpperCase()} Pad ${padNum}...`);
+    try {
+        const result = await api('/api/audio/assign', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({bank: bankLetter, pad: padNum, library_path: libraryPath}),
+        });
+        if (result.ok) {
+            toast(result.message, 'success');
+            // Refresh bank
+            const updated = await api(`/api/banks/${bankLetter}`);
+            const idx = state.banks.findIndex(b => b.letter === bankLetter);
+            if (idx >= 0) state.banks[idx] = updated;
+            if (state.currentBank.letter === bankLetter) {
+                state.currentBank = updated;
+                renderPadGrid(updated);
+                setupPadDropZones();
+                if (state.selectedPad && state.selectedPad.num === padNum) {
+                    const pad = updated.pads.find(p => p.num === padNum);
+                    if (pad) selectPad(pad);
+                }
+            }
+        } else {
+            toast(result.error || 'Assign failed', 'error');
+        }
+    } catch (e) {
+        toast('Assign error: ' + e.message, 'error');
+    }
+}
+
+function makeDraggable(el, libraryPath) {
+    el.draggable = true;
+    el.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/x-library-path', libraryPath);
+        e.dataTransfer.effectAllowed = 'copy';
+        el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        document.querySelectorAll('.pad.drag-over').forEach(p => p.classList.remove('drag-over'));
+    });
 }
 
 // ── Go ──

@@ -471,6 +471,42 @@ main {
 
 .lib-assign:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Drag handle */
+.lib-drag-handle {
+    color: var(--text-muted);
+    cursor: grab;
+    font-size: 14px;
+    flex-shrink: 0;
+    padding: 0 2px;
+    line-height: 1;
+    user-select: none;
+}
+
+.lib-drag-handle:hover { color: var(--accent); }
+
+.lib-file.dragging {
+    opacity: 0.4;
+}
+
+/* Pad drop target */
+.pad.drag-over {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 20px rgba(255, 140, 0, 0.4), inset 0 0 30px rgba(255, 140, 0, 0.1);
+    transform: scale(1.05);
+    background: var(--bg-hover);
+}
+
+.pad.drag-over::after {
+    content: 'Drop here';
+    position: absolute;
+    bottom: 8px;
+    font-size: 10px;
+    font-family: 'Space Mono', monospace;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
 .lib-breadcrumb {
     display: flex;
     align-items: center;
