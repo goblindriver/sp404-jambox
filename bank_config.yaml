@@ -1,162 +1,165 @@
 bank_a:
-  name: EMPTY — Your Space
+  name: Your Space
+  notes: Bank A is yours — resample and chop on-device
 bank_b:
-  name: Weird & Wonderful
-  notes: Oddball voice lines, meme sounds, conversation starters
-  pads:
-    1: vocal male deep weird dark
-    2: vocal whisper eerie dark
-    3: fx cartoon boing bright fun
-    4: fx scratch vinyl oneshot
-    5: vocal female laugh intense
-    6: vocal vocoder robot digital
-    7: vocal dialogue vintage dark cinematic
-    8: vocal crowd gasp ambient
-    9: vocal distorted dark heavy
-    10: vocal radio chatter lo-fi
-    11: fx animal weird ambient
-    12: fx glass impact hard oneshot
-bank_c:
-  name: Lo-Fi Hip-Hop
-  bpm: 88
+  name: Sessions
+  bpm: 120
   key: Am
-  notes: Dusty, warm, tape-saturated vibes
+  notes: Long-form breaks and full tracks for live sampling and chopping
   pads:
-    1: kick soft warm vintage lo-fi
-    2: snare lo-fi compressed warm
-    3: hihat closed soft gentle
-    4: percussion snap rimshot dry
-    5: drum-loop lo-fi 88bpm dusty
-    6: drum-loop lo-fi 88bpm warm
-    7: bass warm deep Am lo-fi
-    8: keys rhodes electric piano Am jazz
-    9: fx vinyl crackle texture loop
-    10: guitar clean warm Am lo-fi
-    11: vocal chop melodic Am lo-fi
-    12: pad ambient Am warm dreamy
+    1: SMP funk soul 112bpm Am warm soulful chop-ready
+    2: SMP disco 120bpm Am bright soulful chop-ready
+    3: SMP electronic 120bpm Dm raw gritty chop-ready
+    4: SMP electronic 128bpm F bright hype chop-ready
+    5: BRK funk 112bpm Em warm soulful loop
+    6: BRK disco 120bpm Am bright warm loop
+    7: BRK electronic 120bpm Dm raw aggressive loop
+    8: BRK electronic 128bpm F bright hype loop
+    9: SMP funk soul 112bpm Em warm nostalgic chop-ready
+    10: SMP disco house 120bpm Am warm soulful chop-ready
+    11: SMP electronic 120bpm Dm dark aggressive chop-ready
+    12: SMP electronic 130bpm Dm aggressive hype chop-ready
+bank_c:
+  name: Drum Loops
+  bpm: 120
+  key: XX
+  notes: Pure rhythm — no melody, all genres, mix and match
+  pads:
+    1: BRK funk 112bpm warm clean loop
+    2: BRK funk 112bpm bright raw loop
+    3: BRK disco 120bpm bright clean loop
+    4: BRK disco 120bpm warm soulful loop
+    5: BRK electronic 120bpm raw gritty loop
+    6: BRK electronic 120bpm raw aggressive loop
+    7: BRK electronic 128bpm bright hype loop
+    8: BRK electronic 128bpm crunchy hype loop
+    9: BRK electronic 130bpm aggressive hard loop
+    10: BRK electronic 130bpm bitcrushed aggressive loop
+    11: BRK house 120bpm clean bright loop
+    12: BRK house 128bpm bright hype loop
 bank_d:
-  name: Witch House / Dark
-  bpm: 70
-  key: Dm
-  notes: Slow, heavy, occult energy — chopped and screwed vibes
+  name: Funk
+  bpm: 112
+  key: Em
+  notes: Live, groovy, !!! energy — guitar-driven dance-punk
   pads:
-    1: kick 808 sub deep heavy
-    2: clap dark reverb heavy
-    3: hihat metallic sharp thin
-    4: percussion industrial metallic dark
-    5: drum-loop dark trap 70bpm heavy
-    6: pad drone dark Dm ambient
-    7: bass sub distorted Dm heavy
-    8: synth pad dark Dm ambient
-    9: fx horror eerie dark texture
-    10: fx reversed vocal cymbal dark
-    11: synth lead detuned dark Dm
-    12: percussion bell chime dark eerie
+    1: KIK clean warm funk one-shot
+    2: SNR clean bright funk one-shot
+    3: HAT bright clean funk one-shot
+    4: CLP bright clean funk one-shot
+    5: BRK funk 112bpm warm bright loop
+    6: BAS Em funk warm soulful loop
+    7: GTR Em funk warm bright loop
+    8: KEY clavinet Em funk bright loop
+    9: KEY organ Em funk warm soulful loop
+    10: BRS Em funk bright hype one-shot
+    11: GTR Em funk raw hype loop
+    12: SMP funk 112bpm Em warm soulful chop-ready
 bank_e:
-  name: Nu-Rave / Electro
-  bpm: 130
-  key: F
-  notes: High energy, neon, 2007 blog-house vibes
+  name: Disco
+  bpm: 120
+  key: Am
+  notes: Four-on-the-floor, warm, danceable — classic disco energy
   pads:
-    1: kick electro punchy hard
-    2: snare clap electro tight
-    3: hihat open bright
-    4: fx zap laser short bright
-    5: drum-loop house 130bpm hard
-    6: drum-loop breakbeat 130bpm electro
-    7: bass acid 303 F squelchy
-    8: synth stab rave chord bright
-    9: synth arp F pulsing bright
-    10: fx riser sweep filter
-    11: vocal chant rave intense
-    12: fx siren alarm loop bright
+    1: KIK clean bright disco one-shot
+    2: SNR clean bright disco one-shot
+    3: HAT open bright clean one-shot
+    4: CLP bright clean disco one-shot
+    5: BRK disco 120bpm bright warm loop
+    6: BAS Am disco warm bright loop
+    7: STR Am disco warm bright loop
+    8: KEY piano Am disco bright soulful loop
+    9: GTR Am disco funk warm loop
+    10: BRS Am disco bright hype one-shot
+    11: SYN stab Am disco bright hype one-shot
+    12: VOX chant disco hype bright chop-ready
 bank_f:
   name: Electroclash
   bpm: 120
-  key: Cm
-  notes: Dirty, minimal, attitude — Peaches / Fischerspooner energy
+  key: Dm
+  notes: Dirty, minimal, Fischerspooner attitude — drum machines and analog synths
   pads:
-    1: kick 808 909 drum-machine
-    2: snare 808 909 drum-machine
-    3: hihat closed drum-machine
-    4: percussion cowbell clave
-    5: drum-loop 120bpm drum-machine minimal
-    6: drum-loop 120bpm drum-machine electro
-    7: bass synth Cm gritty analog
-    8: synth lead Cm aggressive analog
-    9: synth pad Cm cold analog
-    10: vocal spoken attitude dark
-    11: fx noise industrial stab hard
-    12: synth arp Cm minimal analog
+    1: KIK 808 raw electronic one-shot
+    2: SNR 808 raw electronic one-shot
+    3: HAT closed raw electronic one-shot
+    4: PRC cowbell raw electronic one-shot
+    5: BRK electronic 120bpm raw gritty loop
+    6: BAS Dm gritty raw electronic loop
+    7: SYN lead Dm aggressive raw electronic loop
+    8: SYN pad Dm dark raw electronic loop
+    9: SYN arp Dm raw electronic loop
+    10: VOX spoken dark aggressive processed one-shot
+    11: SFX industrial hard gritty one-shot
+    12: SYN stab Dm raw aggressive electronic one-shot
 bank_g:
-  name: Funk & Soul
-  bpm: 110
-  key: E
-  notes: Groovy, live-sounding, James Brown energy
+  name: Nu-Rave
+  bpm: 128
+  key: F
+  notes: Neon, blog-house, 2007 energy — bright and relentless
   pads:
-    1: kick acoustic tight funk
-    2: snare acoustic crispy funk
-    3: hihat crispy acoustic bright
-    4: percussion cymbal tambourine bright
-    5: drum-loop funk 110bpm groove
-    6: drum-loop funk 110bpm break
-    7: bass funk E slap groove
-    8: guitar funk E wah groove
-    9: keys organ E groove warm
-    10: keys clavinet E funk bright
-    11: stab horn brass funk bright
-    12: stab orchestral hit bright
+    1: KIK electro hard bright one-shot
+    2: CLP electro bright clean one-shot
+    3: HAT open bright clean one-shot
+    4: PRC bright hype electronic one-shot
+    5: BRK electronic 128bpm bright hype loop
+    6: BAS acid F gritty electronic loop
+    7: SYN stab F bright hype electronic one-shot
+    8: SYN arp F bright electronic hype loop
+    9: SYN lead F bright electronic hype loop
+    10: VOX chant hype bright electronic chop-ready
+    11: RSR bright hype electronic transition
+    12: SFX alarm bright hype electronic loop
 bank_h:
-  name: IDM / Glitch
-  bpm: 140
-  key: any
-  notes: Broken beats, textures, Autechre / Aphex energy
+  name: Aggressive
+  bpm: 130
+  key: Dm
+  notes: Hard, industrial-tinged, peak-time — maximum energy
   pads:
-    1: kick glitch digital distorted
-    2: snare glitch granular digital
-    3: hihat digital glitch bright
-    4: fx noise glitch oneshot
-    5: drum-loop idm 140bpm glitch
-    6: drum-loop idm 140bpm polymetric
-    7: bass fm granular digital
-    8: fx texture digital glitch loop
-    9: synth bells fm bright digital
-    10: pad drone ambient long
-    11: fx field-recording ambient
-    12: fx noise rhythmic loop industrial
+    1: KIK hard aggressive electronic one-shot
+    2: SNR hard aggressive electronic one-shot
+    3: HAT metallic aggressive electronic one-shot
+    4: PRC industrial dark aggressive one-shot
+    5: BRK electronic 130bpm aggressive hard loop
+    6: BAS Dm aggressive dark gritty electronic loop
+    7: SYN lead Dm aggressive dark electronic loop
+    8: SYN stab Dm aggressive hard electronic one-shot
+    9: SYN pad Dm dark tense electronic loop
+    10: FX industrial dark aggressive one-shot
+    11: FX dark crunchy aggressive electronic loop
+    12: VOX dark aggressive processed distorted one-shot
 bank_i:
-  name: Ambient / Textural
-  bpm: 80
-  key: C
-  notes: Spacious, contemplative, Brian Eno territory
+  name: Textures & Transitions
+  bpm: 120
+  key: Am
+  notes: Pads, risers, ambient glue — connective tissue between banks
   pads:
-    1: kick soft muted ambient
-    2: percussion brush snare soft
-    3: percussion shaker soft ambient
-    4: percussion bell singing-bowl bright
-    5: pad ambient C long reverb
-    6: pad ambient C warm texture
-    7: bass ambient C deep soft
-    8: keys piano C sparse reverb
-    9: fx field-recording water nature ambient
-    10: fx field-recording ambient texture
-    11: fx tape loop warm vintage
-    12: vocal choir drone C ambient
+    1: PAD Am warm dreamy ambient loop
+    2: PAD Am dark eerie ambient loop
+    3: PAD Dm dark tense ambient loop
+    4: PAD F bright airy ambient loop
+    5: RSR bright hype transition
+    6: RSR dark filtered transition
+    7: FX processed transition
+    8: TPE warm nostalgic lo-fi layer
+    9: AMB airy ambient layer
+    10: AMB dark ambient lo-fi layer
+    11: FX vinyl crackle lo-fi ambient layer
+    12: SYN drone Am dark ambient loop
 bank_j:
-  name: Utility / DJ Tools
+  name: Utility & Fun
   bpm: 120
   key: any
-  notes: Transitions, risers, drops, fills — performance tools
+  notes: Speeches, gunshots, cash registers, iconic sounds — performance triggers
   pads:
-    1: fx riser sweep noise long
-    2: fx sweep downer filter
-    3: drum-loop fill snare-roll
-    4: fx cymbal reversed
-    5: fx vinyl stop
-    6: fx tape stop
-    7: stab horn air-horn bright
-    8: fx crowd noise applause ambient
-    9: fx silence
-    10: fx click-track 120bpm
-    11: vocal countdown short
-    12: fx impact boom sub cinematic
+    1: VOX speech famous dramatic one-shot
+    2: VOX speech hype aggressive one-shot
+    3: VOX countdown bright clean one-shot
+    4: VOX crowd cheer hype bright one-shot
+    5: SFX gunshot hard aggressive one-shot
+    6: SFX cannon explosion hard aggressive one-shot
+    7: SFX cash-register bright playful one-shot
+    8: SFX siren alarm bright hype one-shot
+    9: SFX glass impact hard bright one-shot
+    10: SFX horn air-horn bright hype one-shot
+    11: SFX whip crack hard bright one-shot
+    12: SFX impact boom dark heavy cinematic one-shot
