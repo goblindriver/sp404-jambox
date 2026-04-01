@@ -299,13 +299,32 @@ def extract_type_code_from_category(rel_path):
 
 
 def extract_type_code(rel_path, filename):
-    """Extract 3-letter type code using all available signals."""
-    code = extract_type_code_from_dir(rel_path)
-    if not code:
-        code = extract_type_code_from_filename(filename)
-    if not code:
-        code = extract_type_code_from_category(rel_path)
-    return code or "FX"  # fallback
+    """Extract 3-letter type code using all available signals.
+
+    Priority: specific directory > filename pattern > broad directory > fallback.
+    When the directory is a generic top-level category (Drums, Melodic, Loops, etc.),
+    prefer the filename pattern since it's more specific.
+    """
+    dir_code = extract_type_code_from_dir(rel_path)
+    fname_code = extract_type_code_from_filename(filename)
+    cat_code = extract_type_code_from_category(rel_path)
+
+    # If directory gives a specific code (not just a category fallback), trust it
+    if dir_code:
+        # But if filename contradicts with a more specific code, prefer filename
+        # e.g., file named "kick_hard.wav" in /drums/percussion/ should be KIK not PRC
+        if fname_code and fname_code != dir_code:
+            # Filename wins for percussive specificity
+            percussive_specific = {"KIK", "SNR", "CLP", "HAT", "CYM", "RIM"}
+            if fname_code in percussive_specific and dir_code in ("PRC", "DRM", "BRK"):
+                return fname_code
+        return dir_code
+
+    if fname_code:
+        return fname_code
+    if cat_code:
+        return cat_code
+    return "FX"  # fallback
 
 
 # ═══════════════════════════════════════════════════════════
@@ -326,16 +345,95 @@ def extract_tags_from_keywords(text, keyword_map):
     return found
 
 
-def extract_vibe(rel_path, filename):
-    """Extract vibe/mood tags."""
-    text = rel_path + " " + filename
-    return extract_tags_from_keywords(text, VIBE_KEYWORDS)
+# Infer vibe/texture from type_code and directory context when
+# the filename/path keywords alone produce nothing.
+TYPE_VIBE_DEFAULTS = {
+    "KIK": [], "SNR": [], "HAT": [], "CLP": [], "CYM": [], "RIM": [],
+    "PRC": [], "BRK": [],
+    "BAS": [], "GTR": [], "KEY": [], "SYN": [],
+    "PAD": ["dreamy"], "STR": ["soulful"], "BRS": [],
+    "PLK": [], "WND": [],
+    "VOX": [],
+    "FX": [], "SFX": [], "RSR": [],
+    "AMB": ["chill"], "FLY": [], "TPE": ["nostalgic"],
+}
+
+TYPE_TEXTURE_DEFAULTS = {
+    "KIK": [], "SNR": [], "HAT": [], "CLP": [], "CYM": [], "RIM": [],
+    "PRC": [], "BRK": ["raw"],
+    "BAS": [], "GTR": [], "KEY": ["clean"], "SYN": [],
+    "PAD": ["warm"], "STR": ["warm"], "BRS": ["bright"],
+    "PLK": ["glassy"], "WND": ["airy"],
+    "VOX": [],
+    "FX": [], "SFX": [], "RSR": [],
+    "AMB": ["airy"], "FLY": ["raw"], "TPE": ["warm"],
+}
+
+# Pack/directory name hints for vibe + texture
+DIR_VIBE_HINTS = {
+    "dark": "dark", "evil": "dark", "horror": "dark", "noir": "dark",
+    "chill": "chill", "smooth": "chill", "mellow": "mellow",
+    "lofi": "mellow", "lo-fi": "mellow",
+    "hype": "hype", "energy": "hype", "rave": "hype", "party": "hype",
+    "funk": "playful", "disco": "playful",
+    "ambient": "dreamy", "ethereal": "ethereal",
+    "industrial": "aggressive", "hard": "aggressive", "heavy": "aggressive",
+    "vintage": "nostalgic", "retro": "nostalgic", "old": "nostalgic", "classic": "nostalgic",
+    "soul": "soulful", "gospel": "soulful",
+    "glitch": "tense", "cinematic": "tense",
+}
+
+DIR_TEXTURE_HINTS = {
+    "lofi": "lo-fi", "lo-fi": "lo-fi", "low-fi": "lo-fi",
+    "dusty": "dusty", "dust": "dusty",
+    "clean": "clean", "pure": "clean", "crisp": "clean",
+    "raw": "raw", "dirty": "raw", "gritty": "raw",
+    "analog": "warm", "analogue": "warm", "tape": "warm", "vinyl": "warm",
+    "digital": "clean", "fm": "glassy",
+    "80s": "bright", "neon": "bright",
+    "glitch": "bitcrushed", "8bit": "bitcrushed", "chiptune": "bitcrushed",
+    "saturated": "saturated", "driven": "saturated",
+}
 
 
-def extract_texture(rel_path, filename):
-    """Extract texture/sonic character tags."""
+def extract_vibe(rel_path, filename, type_code=None):
+    """Extract vibe/mood tags from text, directory hints, and type defaults."""
     text = rel_path + " " + filename
-    return extract_tags_from_keywords(text, TEXTURE_KEYWORDS)
+    found = extract_tags_from_keywords(text, VIBE_KEYWORDS)
+
+    # Directory/pack name hints
+    if not found:
+        dir_lower = rel_path.lower().replace("-", " ").replace("_", " ")
+        for hint_word, vibe_tag in DIR_VIBE_HINTS.items():
+            if hint_word in dir_lower and vibe_tag not in found:
+                found.append(vibe_tag)
+                break  # one hint is enough
+
+    # Type-code defaults as last resort
+    if not found and type_code and type_code in TYPE_VIBE_DEFAULTS:
+        found = list(TYPE_VIBE_DEFAULTS[type_code])
+
+    return found
+
+
+def extract_texture(rel_path, filename, type_code=None):
+    """Extract texture/sonic character tags from text, directory hints, and type defaults."""
+    text = rel_path + " " + filename
+    found = extract_tags_from_keywords(text, TEXTURE_KEYWORDS)
+
+    # Directory/pack name hints
+    if not found:
+        dir_lower = rel_path.lower().replace("-", " ").replace("_", " ")
+        for hint_word, tex_tag in DIR_TEXTURE_HINTS.items():
+            if hint_word in dir_lower and tex_tag not in found:
+                found.append(tex_tag)
+                break
+
+    # Type-code defaults as last resort
+    if not found and type_code and type_code in TYPE_TEXTURE_DEFAULTS:
+        found = list(TYPE_TEXTURE_DEFAULTS[type_code])
+
+    return found
 
 
 # ═══════════════════════════════════════════════════════════
@@ -489,8 +587,8 @@ def tag_file(rel_path, full_path, get_dur=True):
     type_code = extract_type_code(rel_path, filename)
     bpm = extract_bpm(filename, dirpath)
     key = extract_key(filename)
-    vibe = extract_vibe(rel_path, filename)
-    texture = extract_texture(rel_path, filename)
+    vibe = extract_vibe(rel_path, filename, type_code)
+    texture = extract_texture(rel_path, filename, type_code)
     genres = extract_genres(rel_path)
     source = classify_source(rel_path, filename, type_code)
     energy = classify_energy(bpm, type_code, genres, vibe)
