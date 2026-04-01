@@ -4,7 +4,9 @@
 #   bash ~/path-to/SP-404SX/copy_to_sd.sh
 
 SD_CARD="/Volumes/SP-404SX"
-SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/sd-card-template"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Check SD card is mounted
 if [ ! -d "$SD_CARD" ]; then
@@ -25,7 +27,7 @@ rsync -av --progress "$SOURCE_DIR/ROLAND/" "$SD_CARD/ROLAND/"
 # Copy PAD_MAP.txt cheat sheet
 echo ""
 echo "Copying PAD_MAP.txt..."
-cp -v "$SOURCE_DIR/PAD_MAP.txt" "$SD_CARD/PAD_MAP.txt"
+cp -v "$REPO_DIR/PAD_MAP.txt" "$SD_CARD/PAD_MAP.txt"
 
 # Copy BKUP and FCTRY if they exist (factory data)
 if [ -d "$SOURCE_DIR/BKUP" ]; then
