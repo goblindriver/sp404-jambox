@@ -38,15 +38,23 @@ WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silenc
 Pad convention: Pads 1-4 = drum hits, Pads 5-12 = loops & melodic content
 
 ## Pipeline Commands
-1. Organize raw packs into library: `python scripts/organize_library.py`
-2. Pick best samples for each bank: `python scripts/pick_best_samples.py`
-3. Generate novelty FX for Bank B: `python scripts/gen_novelty.py`
-4. Generate PAD_INFO.BIN (loop/gate/BPM): `python scripts/gen_padinfo.py`
-5. Generate starter beat patterns: `python scripts/gen_patterns.py`
-6. Deploy to SD card: `bash scripts/copy_to_sd.sh`
+1. Edit `bank_config.yaml` to define desired sounds per bank/pad
+2. Fetch samples (local library + Freesound): `python scripts/fetch_samples.py`
+   - Single bank: `python scripts/fetch_samples.py --bank b`
+   - Single pad: `python scripts/fetch_samples.py --bank b --pad 1`
+3. Generate PAD_INFO.BIN (loop/gate/BPM): `python scripts/gen_padinfo.py`
+4. Generate starter beat patterns: `python scripts/gen_patterns.py`
+5. Deploy to SD card: `bash scripts/copy_to_sd.sh`
+
+### Legacy pipeline (still works)
+- Organize raw packs into library: `python scripts/organize_library.py`
+- Pick best samples from library: `python scripts/pick_best_samples.py`
+- Generate novelty FX for Bank B: `python scripts/gen_novelty.py`
 
 ## Sample Sources
-All from MusicRadar SampleRadar (royalty-free). 8 packs total: 80s-synths, drum-samples, funk-samples, hiphop-essentials, idm-samples, lofi-samples, soul-funk-samples, synth-percussion.
+- **Local library**: MusicRadar SampleRadar packs (royalty-free). 8 packs: 80s-synths, drum-samples, funk-samples, hiphop-essentials, idm-samples, lofi-samples, soul-funk-samples, synth-percussion.
+- **Freesound.org**: API-driven search + download. Requires `FREESOUND_API_KEY` in `.env`. Optional OAuth2 for full-quality WAV downloads (run `python -c "import scripts.freesound_client as fs; fs.setup_oauth()"`).
+- Downloads cached to `~/Music/SP404-Sample-Library/Freesound/` with attribution metadata.
 See docs/SAMPLE_SOURCES.md for download URLs and pack details.
 
 ## Sample Library Structure

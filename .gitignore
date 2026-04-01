@@ -12,6 +12,9 @@ _UNZIPPED/
 _CARD_STAGING/
 _BANK_B_STAGING/
 
+# Secrets
+.env
+
 # Python
 __pycache__/
 *.pyc

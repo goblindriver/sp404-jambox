@@ -1,0 +1,180 @@
+# SP-404 Jam Box — Bank Configuration
+# Define what you want on each bank and pad.
+# Pads 1-4: one-shots (drum hits, stabs, FX)
+# Pads 5-12: loops & melodic content
+#
+# After editing, run: python scripts/fetch_samples.py
+# It will search Freesound.org, download matches, convert, and stage.
+
+bank_a:
+  name: "EMPTY — Your Space"
+  # Left empty for your own recordings
+
+bank_b:
+  name: "Weird & Wonderful"
+  notes: "Oddball voice lines, meme sounds, conversation starters"
+  pads:
+    1: "deep male voice saying something weird or funny"
+    2: "creepy whisper or ghostly voice"
+    3: "cartoon sound effect — boing or slide whistle"
+    4: "record scratch or DJ stop sound"
+    5: "woman laughing maniacally"
+    6: "robot or vocoder voice saying a word"
+    7: "old movie dialogue clip — noir or horror"
+    8: "crowd gasp or audience reaction"
+    9: "distorted voice — slowed down or pitched up"
+    10: "walkie talkie or radio chatter"
+    11: "animal sound — weird bird call or whale"
+    12: "glass breaking or dramatic impact"
+
+bank_c:
+  name: "Lo-Fi Hip-Hop"
+  bpm: 88
+  key: "Am"
+  notes: "Dusty, warm, tape-saturated vibes"
+  pads:
+    1: "lo-fi kick — soft, round, vinyl character"
+    2: "lo-fi snare — papery, compressed"
+    3: "closed hi-hat — gentle, not crispy"
+    4: "finger snap or rim shot"
+    5: "lo-fi drum loop 85-90bpm — dusty boom-bap"
+    6: "lo-fi drum loop 85-90bpm — head-nodding groove"
+    7: "bass loop or bass note — warm, Am"
+    8: "rhodes or electric piano loop — Am, jazzy"
+    9: "vinyl crackle texture loop"
+    10: "guitar loop — clean or slightly overdriven, Am"
+    11: "vocal chop or melodic sample — Am"
+    12: "ambient pad or texture — Am, dreamy"
+
+bank_d:
+  name: "Witch House / Dark"
+  bpm: 70
+  key: "Dm"
+  notes: "Slow, heavy, occult energy — chopped and screwed vibes"
+  pads:
+    1: "deep sub kick — 808 style, long decay"
+    2: "clap — dark, reverbed"
+    3: "metallic hi-hat — thin, sharp"
+    4: "percussion hit — industrial or metallic"
+    5: "dark trap beat loop 65-75bpm"
+    6: "dark ambient drone loop — Dm"
+    7: "bass — sub-heavy, distorted, Dm"
+    8: "dark synth pad — minor key, evolving"
+    9: "horror texture — scraping, breathing, eerie"
+    10: "reversed vocal or reversed cymbal"
+    11: "witch house lead — detuned, woozy"
+    12: "ritual bell or chime — dark, resonant"
+
+bank_e:
+  name: "Nu-Rave / Electro"
+  bpm: 130
+  key: "F"
+  notes: "High energy, neon, 2007 blog-house vibes"
+  pads:
+    1: "electro kick — punchy, clicky"
+    2: "electro snare or clap — tight"
+    3: "open hi-hat — sizzly"
+    4: "zap or laser FX — short"
+    5: "four-on-the-floor drum loop 128-132bpm"
+    6: "breakbeat loop 128-132bpm"
+    7: "acid bassline loop — F, squelchy 303"
+    8: "rave stab — big chord hit"
+    9: "arp synth loop — F, pulsing"
+    10: "filter sweep FX — riser or downer"
+    11: "vocal chant or shout — rave energy"
+    12: "siren or alarm loop"
+
+bank_f:
+  name: "Electroclash"
+  bpm: 120
+  key: "Cm"
+  notes: "Dirty, minimal, attitude — Peaches / Fischerspooner energy"
+  pads:
+    1: "drum machine kick — 808 or 909"
+    2: "drum machine snare — 808 or 909"
+    3: "drum machine hi-hat — closed"
+    4: "cowbell or clave"
+    5: "drum machine beat loop 118-122bpm"
+    6: "drum machine beat loop — different groove"
+    7: "synth bass — Cm, gritty, mono"
+    8: "synth lead — Cm, buzzy, aggressive"
+    9: "synth pad — Cm, cold, analog"
+    10: "spoken word or vocal — attitude, short phrase"
+    11: "noise hit or industrial stab"
+    12: "synth arp loop — Cm, minimal"
+
+bank_g:
+  name: "Funk & Soul"
+  bpm: 110
+  key: "E"
+  notes: "Groovy, live-sounding, James Brown energy"
+  pads:
+    1: "acoustic kick — tight, funky"
+    2: "acoustic snare — crack, ghost-note friendly"
+    3: "hi-hat — crispy, real kit"
+    4: "crash cymbal or tambourine"
+    5: "funk drum break 108-112bpm"
+    6: "funk drum break — different groove"
+    7: "funk bass loop — E, slap or fingerstyle"
+    8: "funk guitar loop — E, wah or chicken scratch"
+    9: "organ loop — E, groovy, Hammond-style"
+    10: "clavinet or electric piano loop — E"
+    11: "horn stab or brass hit"
+    12: "string or orchestral hit"
+
+bank_h:
+  name: "IDM / Glitch"
+  bpm: 140
+  key: "any"
+  notes: "Broken beats, textures, Autechre / Aphex energy"
+  pads:
+    1: "glitchy kick — processed, mangled"
+    2: "glitchy snare — granular, fractured"
+    3: "digital hi-hat — aliased, bitcrushed"
+    4: "noise burst or glitch hit"
+    5: "IDM drum loop 135-145bpm — broken, complex"
+    6: "IDM drum loop — different rhythm, polymetric"
+    7: "bass — FM or granular, atonal ok"
+    8: "texture loop — digital artifacts, grain"
+    9: "melodic fragment — bells, FM, crystalline"
+    10: "drone or evolving pad — long, morphing"
+    11: "field recording or found sound — processed"
+    12: "rhythmic noise loop — machine-like"
+
+bank_i:
+  name: "Ambient / Textural"
+  bpm: 80
+  key: "C"
+  notes: "Spacious, contemplative, Brian Eno territory"
+  pads:
+    1: "soft kick or muted thud"
+    2: "brush snare or gentle percussion"
+    3: "shaker or rain stick"
+    4: "singing bowl or bell"
+    5: "ambient pad — C, long evolving, reverb"
+    6: "ambient pad — C, different texture"
+    7: "ambient bass — C, deep, slow"
+    8: "piano or keys — C, sparse, reverbed"
+    9: "field recording — water, wind, nature"
+    10: "field recording — different environment"
+    11: "tape loop or warped texture"
+    12: "choir or vocal drone — C, ethereal"
+
+bank_j:
+  name: "Utility / DJ Tools"
+  bpm: 120
+  key: "any"
+  notes: "Transitions, risers, drops, fills — performance tools"
+  pads:
+    1: "riser — white noise sweep up, 4 bars"
+    2: "downer — sweep down, 2 bars"
+    3: "drum fill — snare roll building"
+    4: "reverse cymbal — classic transition"
+    5: "vinyl stop effect"
+    6: "tape stop effect"
+    7: "air horn — real, not synthesized"
+    8: "crowd noise or applause"
+    9: "silence — 1 bar of nothing (kill switch)"
+    10: "click track — 4 bars at 120bpm"
+    11: "countdown — 3, 2, 1"
+    12: "impact boom — cinematic, sub-heavy"
