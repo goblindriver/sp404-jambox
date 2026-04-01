@@ -12,7 +12,10 @@ Bank layout:
   I: Ambient (80 bpm) - textural, atmospheric
   J: Utility/FX (120 bpm) - transitions, tools
 """
-import os, glob, subprocess, shutil, random
+import os, glob, subprocess, shutil, random, sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from wav_utils import convert_and_tag
 
 SRC = os.path.expanduser("~/Music/SP404-Sample-Library/_RAW-DOWNLOADS")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -371,7 +374,7 @@ for bank_letter, bank_map in all_banks.items():
     for pad_num, src_path in bank_map.items():
         sp404_name = f"{bank_letter}{pad_num:07d}.WAV"
         dst_path = os.path.join(STAGING, sp404_name)
-        if convert_for_sp404(src_path, dst_path):
+        if convert_and_tag(src_path, dst_path, bank_letter, pad_num):
             converted += 1
         else:
             failed += 1

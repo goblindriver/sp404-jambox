@@ -18,8 +18,8 @@ echo "Source: $SOURCE_DIR"
 echo "Destination: $SD_CARD"
 echo ""
 
-# Copy ROLAND folder (contains SMPL with all 110 WAVs)
-echo "Copying ROLAND folder (samples)..."
+# Copy ROLAND folder (contains SMPL with samples + PAD_INFO.BIN, and PTN with patterns)
+echo "Copying ROLAND folder (samples + patterns)..."
 rsync -av --progress "$SOURCE_DIR/ROLAND/" "$SD_CARD/ROLAND/"
 
 # Copy PAD_MAP.txt cheat sheet
