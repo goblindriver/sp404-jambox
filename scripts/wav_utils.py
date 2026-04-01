@@ -100,7 +100,7 @@ def convert_and_tag(src, dst, bank_letter, pad_number, trim_silence=True):
     tmp = dst + '.tmp.wav'
     try:
         subprocess.run([
-            'ffmpeg', '-y', '-i', src,
+            '/opt/homebrew/bin/ffmpeg', '-y', '-i', src,
             '-ar', '44100', '-ac', '1', '-sample_fmt', 's16', '-c:a', 'pcm_s16le',
             tmp
         ], capture_output=True, timeout=30)

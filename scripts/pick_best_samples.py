@@ -28,7 +28,7 @@ def get_wav_info(path):
     """Get duration and sample rate of a WAV file"""
     try:
         result = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', path],
+            ['/opt/homebrew/bin/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', path],
             capture_output=True, text=True, timeout=5
         )
         import json
@@ -45,7 +45,7 @@ def get_wav_info(path):
 def convert_for_sp404(src, dst):
     """Convert any WAV to SP-404 compatible format: 16-bit, 44.1kHz, mono"""
     subprocess.run([
-        'ffmpeg', '-y', '-i', src,
+        '/opt/homebrew/bin/ffmpeg', '-y', '-i', src,
         '-ar', '44100', '-ac', '1', '-sample_fmt', 's16', '-c:a', 'pcm_s16le',
         dst
     ], capture_output=True, timeout=30)
