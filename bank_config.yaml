@@ -7,159 +7,159 @@ bank_b:
   key: Am
   notes: Long-form breaks and full tracks for live sampling and chopping
   pads:
-    1: SMP funk soul 112bpm Am warm soulful chop-ready
-    2: SMP disco 120bpm Am bright soulful chop-ready
-    3: SMP electronic 120bpm Dm raw gritty chop-ready
-    4: SMP electronic 128bpm F bright hype chop-ready
-    5: BRK funk 112bpm Em warm soulful loop
-    6: BRK disco 120bpm Am bright warm loop
-    7: BRK electronic 120bpm Dm raw aggressive loop
-    8: BRK electronic 128bpm F bright hype loop
-    9: SMP funk soul 112bpm Em warm nostalgic chop-ready
-    10: SMP disco house 120bpm Am warm soulful chop-ready
-    11: SMP electronic 120bpm Dm dark aggressive chop-ready
-    12: SMP electronic 130bpm Dm aggressive hype chop-ready
+    1: SMP funk soul chop-ready
+    2: SMP disco bright chop-ready
+    3: SMP electronic raw chop-ready
+    4: SMP electronic hype chop-ready
+    5: BRK funk warm loop
+    6: BRK disco bright loop
+    7: BRK electronic raw loop
+    8: BRK electronic hype loop
+    9: SMP funk nostalgic chop-ready
+    10: SMP disco soulful chop-ready
+    11: SMP electronic dark chop-ready
+    12: SMP electronic aggressive chop-ready
 bank_c:
   name: Drum Loops
   bpm: 120
   key: XX
   notes: Pure rhythm — no melody, all genres, mix and match
   pads:
-    1: BRK funk 112bpm warm clean loop
-    2: BRK funk 112bpm bright raw loop
-    3: BRK disco 120bpm bright clean loop
-    4: BRK disco 120bpm warm soulful loop
-    5: BRK electronic 120bpm raw gritty loop
-    6: BRK electronic 120bpm raw aggressive loop
-    7: BRK electronic 128bpm bright hype loop
-    8: BRK electronic 128bpm crunchy hype loop
-    9: BRK electronic 130bpm aggressive hard loop
-    10: BRK electronic 130bpm bitcrushed aggressive loop
-    11: BRK house 120bpm clean bright loop
-    12: BRK house 128bpm bright hype loop
+    1: BRK funk warm loop
+    2: BRK funk raw loop
+    3: BRK disco bright loop
+    4: BRK disco soulful loop
+    5: BRK electronic raw loop
+    6: BRK electronic aggressive loop
+    7: BRK electronic hype loop
+    8: BRK electronic crunchy loop
+    9: BRK electronic aggressive loop
+    10: BRK electronic bitcrushed loop
+    11: BRK house clean loop
+    12: BRK house bright loop
 bank_d:
   name: Funk
   bpm: 112
   key: Em
   notes: Live, groovy, !!! energy — guitar-driven dance-punk
   pads:
-    1: KIK clean warm funk one-shot
-    2: SNR clean bright funk one-shot
-    3: HAT bright clean funk one-shot
-    4: CLP bright clean funk one-shot
-    5: BRK funk 112bpm warm bright loop
-    6: BAS Em funk warm soulful loop
-    7: GTR Em funk warm bright loop
-    8: KEY clavinet Em funk bright loop
-    9: KEY organ Em funk warm soulful loop
-    10: BRS Em funk bright hype one-shot
-    11: GTR Em funk raw hype loop
-    12: SMP funk 112bpm Em warm soulful chop-ready
+    1: KIK clean funk one-shot
+    2: SNR bright funk one-shot
+    3: HAT bright funk one-shot
+    4: CLP clean funk one-shot
+    5: BRK funk warm loop
+    6: BAS funk warm loop
+    7: GTR funk bright loop
+    8: KEY clavinet funk loop
+    9: KEY organ funk soulful loop
+    10: BRS funk bright one-shot
+    11: GTR funk raw loop
+    12: SMP funk soulful chop-ready
 bank_e:
   name: Disco
   bpm: 120
   key: Am
   notes: Four-on-the-floor, warm, danceable — classic disco energy
   pads:
-    1: KIK clean bright disco one-shot
-    2: SNR clean bright disco one-shot
-    3: HAT open bright clean one-shot
-    4: CLP bright clean disco one-shot
-    5: BRK disco 120bpm bright warm loop
-    6: BAS Am disco warm bright loop
-    7: STR Am disco warm bright loop
-    8: KEY piano Am disco bright soulful loop
-    9: GTR Am disco funk warm loop
-    10: BRS Am disco bright hype one-shot
-    11: SYN stab Am disco bright hype one-shot
-    12: VOX chant disco hype bright chop-ready
+    1: KIK clean disco one-shot
+    2: SNR bright disco one-shot
+    3: HAT open bright one-shot
+    4: CLP disco one-shot
+    5: BRK disco warm loop
+    6: BAS disco warm loop
+    7: STR disco bright loop
+    8: KEY piano disco soulful loop
+    9: GTR disco funk loop
+    10: BRS disco bright one-shot
+    11: SYN stab disco one-shot
+    12: VOX disco hype chop-ready
 bank_f:
   name: Electroclash
   bpm: 120
   key: Dm
   notes: Dirty, minimal, Fischerspooner attitude — drum machines and analog synths
   pads:
-    1: KIK 808 raw electronic one-shot
-    2: SNR 808 raw electronic one-shot
-    3: HAT closed raw electronic one-shot
-    4: PRC cowbell raw electronic one-shot
-    5: BRK electronic 120bpm raw gritty loop
-    6: BAS Dm gritty raw electronic loop
-    7: SYN lead Dm aggressive raw electronic loop
-    8: SYN pad Dm dark raw electronic loop
-    9: SYN arp Dm raw electronic loop
-    10: VOX spoken dark aggressive processed one-shot
-    11: SFX industrial hard gritty one-shot
-    12: SYN stab Dm raw aggressive electronic one-shot
+    1: KIK 808 raw one-shot
+    2: SNR 808 raw one-shot
+    3: HAT closed raw one-shot
+    4: PRC cowbell electronic one-shot
+    5: BRK electronic raw loop
+    6: BAS gritty electronic loop
+    7: SYN lead aggressive loop
+    8: SYN pad dark loop
+    9: SYN arp electronic loop
+    10: VOX spoken dark one-shot
+    11: SFX industrial gritty one-shot
+    12: SYN stab aggressive one-shot
 bank_g:
   name: Nu-Rave
   bpm: 128
   key: F
   notes: Neon, blog-house, 2007 energy — bright and relentless
   pads:
-    1: KIK electro hard bright one-shot
-    2: CLP electro bright clean one-shot
-    3: HAT open bright clean one-shot
-    4: PRC bright hype electronic one-shot
-    5: BRK electronic 128bpm bright hype loop
-    6: BAS acid F gritty electronic loop
-    7: SYN stab F bright hype electronic one-shot
-    8: SYN arp F bright electronic hype loop
-    9: SYN lead F bright electronic hype loop
-    10: VOX chant hype bright electronic chop-ready
-    11: RSR bright hype electronic transition
-    12: SFX alarm bright hype electronic loop
+    1: KIK electro hard one-shot
+    2: CLP electro bright one-shot
+    3: HAT open bright one-shot
+    4: PRC bright electronic one-shot
+    5: BRK electronic hype loop
+    6: BAS acid gritty loop
+    7: SYN stab bright one-shot
+    8: SYN arp bright loop
+    9: SYN lead hype loop
+    10: VOX chant hype chop-ready
+    11: RSR bright transition
+    12: SFX alarm hype loop
 bank_h:
   name: Aggressive
   bpm: 130
   key: Dm
   notes: Hard, industrial-tinged, peak-time — maximum energy
   pads:
-    1: KIK hard aggressive electronic one-shot
-    2: SNR hard aggressive electronic one-shot
-    3: HAT metallic aggressive electronic one-shot
-    4: PRC industrial dark aggressive one-shot
-    5: BRK electronic 130bpm aggressive hard loop
-    6: BAS Dm aggressive dark gritty electronic loop
-    7: SYN lead Dm aggressive dark electronic loop
-    8: SYN stab Dm aggressive hard electronic one-shot
-    9: SYN pad Dm dark tense electronic loop
-    10: FX industrial dark aggressive one-shot
-    11: FX dark crunchy aggressive electronic loop
-    12: VOX dark aggressive processed distorted one-shot
+    1: KIK hard aggressive one-shot
+    2: SNR hard aggressive one-shot
+    3: HAT metallic aggressive one-shot
+    4: PRC industrial dark one-shot
+    5: BRK electronic aggressive loop
+    6: BAS dark gritty loop
+    7: SYN lead dark loop
+    8: SYN stab aggressive one-shot
+    9: SYN pad dark tense loop
+    10: FX industrial dark one-shot
+    11: FX crunchy aggressive loop
+    12: VOX dark aggressive one-shot
 bank_i:
   name: Textures & Transitions
   bpm: 120
   key: Am
   notes: Pads, risers, ambient glue — connective tissue between banks
   pads:
-    1: PAD Am warm dreamy ambient loop
-    2: PAD Am dark eerie ambient loop
-    3: PAD Dm dark tense ambient loop
-    4: PAD F bright airy ambient loop
-    5: RSR bright hype transition
-    6: RSR dark filtered transition
+    1: PAD warm dreamy loop
+    2: PAD dark eerie loop
+    3: PAD dark tense loop
+    4: PAD bright airy loop
+    5: RSR bright transition
+    6: RSR dark transition
     7: FX processed transition
-    8: TPE warm nostalgic lo-fi layer
-    9: AMB airy ambient layer
-    10: AMB dark ambient lo-fi layer
-    11: FX vinyl crackle lo-fi ambient layer
-    12: SYN drone Am dark ambient loop
+    8: TPE warm nostalgic layer
+    9: AMB airy layer
+    10: AMB dark lo-fi layer
+    11: FX vinyl lo-fi layer
+    12: SYN drone dark loop
 bank_j:
   name: Utility & Fun
   bpm: 120
   key: any
   notes: Speeches, gunshots, cash registers, iconic sounds — performance triggers
   pads:
-    1: VOX speech famous dramatic one-shot
-    2: VOX speech hype aggressive one-shot
-    3: VOX countdown bright clean one-shot
-    4: VOX crowd cheer hype bright one-shot
-    5: SFX gunshot hard aggressive one-shot
-    6: SFX cannon explosion hard aggressive one-shot
-    7: SFX cash-register bright playful one-shot
-    8: SFX siren alarm bright hype one-shot
-    9: SFX glass impact hard bright one-shot
-    10: SFX horn air-horn bright hype one-shot
-    11: SFX whip crack hard bright one-shot
-    12: SFX impact boom dark heavy cinematic one-shot
+    1: VOX speech dramatic one-shot
+    2: VOX speech aggressive one-shot
+    3: VOX countdown one-shot
+    4: VOX crowd hype one-shot
+    5: SFX gunshot hard one-shot
+    6: SFX explosion hard one-shot
+    7: SFX cash-register one-shot
+    8: SFX siren hype one-shot
+    9: SFX glass impact one-shot
+    10: SFX air-horn bright one-shot
+    11: SFX whip bright one-shot
+    12: SFX boom dark one-shot

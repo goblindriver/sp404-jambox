@@ -20,6 +20,10 @@ def _run_fetch(job_id, repo_dir, bank=None, pad=None):
         os.makedirs(fs.STAGING, exist_ok=True)
         os.makedirs(fs.FREESOUND_DIR, exist_ok=True)
 
+        # Load tag database and init deduplication set
+        tag_db = fs.load_tag_db()
+        used_files = set()
+
         total_fetched = 0
         total_pads = 0
 
@@ -38,7 +42,7 @@ def _run_fetch(job_id, repo_dir, bank=None, pad=None):
                 pad_query = pads.get(pad) or pads.get(str(pad))
                 if pad_query:
                     _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad}"
-                    result = fs.fetch_pad(letter, pad, pad_query, bank_config)
+                    result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files)
                     if result:
                         total_fetched += 1
                     total_pads += 1
@@ -46,7 +50,7 @@ def _run_fetch(job_id, repo_dir, bank=None, pad=None):
                 for pad_num, pad_query in pads.items():
                     pad_num = int(pad_num)
                     _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad_num}: {pad_query[:40]}"
-                    result = fs.fetch_pad(letter, pad_num, pad_query, bank_config)
+                    result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files)
                     if result:
                         total_fetched += 1
                     total_pads += 1
