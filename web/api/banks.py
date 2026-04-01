@@ -97,6 +97,29 @@ def get_bank(letter):
     })
 
 
+@banks_bp.route('/banks/<letter>', methods=['PUT'])
+def update_bank(letter):
+    data = request.get_json()
+    config = _load_config()
+    bank_key = f'bank_{letter}'
+    if bank_key not in config or not config[bank_key]:
+        config[bank_key] = {'name': letter.upper(), 'pads': {}}
+
+    if 'name' in data:
+        config[bank_key]['name'] = data['name']
+    if 'bpm' in data:
+        config[bank_key]['bpm'] = int(data['bpm']) if data['bpm'] else None
+    if 'key' in data:
+        config[bank_key]['key'] = data['key'] if data['key'] else None
+    if 'notes' in data:
+        config[bank_key]['notes'] = data['notes']
+
+    with open(_config_path(), 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    return jsonify({'ok': True})
+
+
 @banks_bp.route('/banks/<letter>/pads/<int:num>', methods=['PUT'])
 def update_pad(letter, num):
     data = request.get_json()

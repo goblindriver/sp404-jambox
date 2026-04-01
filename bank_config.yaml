@@ -4,159 +4,159 @@ bank_b:
   name: Weird & Wonderful
   notes: Oddball voice lines, meme sounds, conversation starters
   pads:
-    1: deep male voice saying something weird or funny
-    2: creepy whisper or ghostly voice
-    3: cartoon sound effect — boing or slide whistle
-    4: record scratch or DJ stop sound
-    5: woman laughing maniacally
-    6: robot or vocoder voice saying a word
-    7: old movie dialogue clip — noir or horror
-    8: crowd gasp or audience reaction
-    9: distorted voice — slowed down or pitched up
-    10: walkie talkie or radio chatter
-    11: animal sound — weird bird call or whale
-    12: glass breaking or dramatic impact
+    1: vocal male deep weird dark
+    2: vocal whisper eerie dark
+    3: fx cartoon boing bright fun
+    4: fx scratch vinyl oneshot
+    5: vocal female laugh intense
+    6: vocal vocoder robot digital
+    7: vocal dialogue vintage dark cinematic
+    8: vocal crowd gasp ambient
+    9: vocal distorted dark heavy
+    10: vocal radio chatter lo-fi
+    11: fx animal weird ambient
+    12: fx glass impact hard oneshot
 bank_c:
   name: Lo-Fi Hip-Hop
   bpm: 88
   key: Am
   notes: Dusty, warm, tape-saturated vibes
   pads:
-    1: lo-fi kick — soft, round, vinyl character
-    2: lo-fi snare — papery, compressed
-    3: closed hi-hat — gentle, not crispy
-    4: finger snap or rim shot
-    5: lo-fi drum loop 85-90bpm — dusty boom-bap
-    6: lo-fi drum loop 85-90bpm — head-nodding groove
-    7: bass loop or bass note — warm, Am
-    8: rhodes or electric piano loop — Am, jazzy
-    9: vinyl crackle texture loop
-    10: guitar loop — clean or slightly overdriven, Am
-    11: vocal chop or melodic sample — Am
-    12: ambient pad or texture — Am, dreamy
+    1: kick soft warm vintage lo-fi
+    2: snare lo-fi compressed warm
+    3: hihat closed soft gentle
+    4: percussion snap rimshot dry
+    5: drum-loop lo-fi 88bpm dusty
+    6: drum-loop lo-fi 88bpm warm
+    7: bass warm deep Am lo-fi
+    8: keys rhodes electric piano Am jazz
+    9: fx vinyl crackle texture loop
+    10: guitar clean warm Am lo-fi
+    11: vocal chop melodic Am lo-fi
+    12: pad ambient Am warm dreamy
 bank_d:
   name: Witch House / Dark
   bpm: 70
   key: Dm
   notes: Slow, heavy, occult energy — chopped and screwed vibes
   pads:
-    1: deep sub kick — 808 style, long decay
-    2: clap — dark, reverbed
-    3: metallic hi-hat — thin, sharp
-    4: percussion hit — industrial or metallic
-    5: dark trap beat loop 65-75bpm
-    6: dark ambient drone loop — Dm
-    7: bass — sub-heavy, distorted, Dm
-    8: dark synth pad — minor key, evolving
-    9: horror texture — scraping, breathing, eerie
-    10: reversed vocal or reversed cymbal
-    11: witch house lead — detuned, woozy
-    12: ritual bell or chime — dark, resonant
+    1: kick 808 sub deep heavy
+    2: clap dark reverb heavy
+    3: hihat metallic sharp thin
+    4: percussion industrial metallic dark
+    5: drum-loop dark trap 70bpm heavy
+    6: pad drone dark Dm ambient
+    7: bass sub distorted Dm heavy
+    8: synth pad dark Dm ambient
+    9: fx horror eerie dark texture
+    10: fx reversed vocal cymbal dark
+    11: synth lead detuned dark Dm
+    12: percussion bell chime dark eerie
 bank_e:
   name: Nu-Rave / Electro
   bpm: 130
   key: F
   notes: High energy, neon, 2007 blog-house vibes
   pads:
-    1: electro kick — punchy, clicky
-    2: electro snare or clap — tight
-    3: open hi-hat — sizzly
-    4: zap or laser FX — short
-    5: four-on-the-floor drum loop 128-132bpm
-    6: breakbeat loop 128-132bpm
-    7: acid bassline loop — F, squelchy 303
-    8: rave stab — big chord hit
-    9: arp synth loop — F, pulsing
-    10: filter sweep FX — riser or downer
-    11: vocal chant or shout — rave energy
-    12: siren or alarm loop
+    1: kick electro punchy hard
+    2: snare clap electro tight
+    3: hihat open bright
+    4: fx zap laser short bright
+    5: drum-loop house 130bpm hard
+    6: drum-loop breakbeat 130bpm electro
+    7: bass acid 303 F squelchy
+    8: synth stab rave chord bright
+    9: synth arp F pulsing bright
+    10: fx riser sweep filter
+    11: vocal chant rave intense
+    12: fx siren alarm loop bright
 bank_f:
   name: Electroclash
   bpm: 120
   key: Cm
   notes: Dirty, minimal, attitude — Peaches / Fischerspooner energy
   pads:
-    1: drum machine kick — 808 or 909
-    2: drum machine snare — 808 or 909
-    3: drum machine hi-hat — closed
-    4: cowbell or clave
-    5: drum machine beat loop 118-122bpm
-    6: drum machine beat loop — different groove
-    7: synth bass — Cm, gritty, mono
-    8: synth lead — Cm, buzzy, aggressive
-    9: synth pad — Cm, cold, analog
-    10: spoken word or vocal — attitude, short phrase
-    11: noise hit or industrial stab
-    12: synth arp loop — Cm, minimal
+    1: kick 808 909 drum-machine
+    2: snare 808 909 drum-machine
+    3: hihat closed drum-machine
+    4: percussion cowbell clave
+    5: drum-loop 120bpm drum-machine minimal
+    6: drum-loop 120bpm drum-machine electro
+    7: bass synth Cm gritty analog
+    8: synth lead Cm aggressive analog
+    9: synth pad Cm cold analog
+    10: vocal spoken attitude dark
+    11: fx noise industrial stab hard
+    12: synth arp Cm minimal analog
 bank_g:
   name: Funk & Soul
   bpm: 110
   key: E
   notes: Groovy, live-sounding, James Brown energy
   pads:
-    1: acoustic kick — tight, funky
-    2: acoustic snare — crack, ghost-note friendly
-    3: hi-hat — crispy, real kit
-    4: crash cymbal or tambourine
-    5: funk drum break 108-112bpm
-    6: funk drum break — different groove
-    7: funk bass loop — E, slap or fingerstyle
-    8: funk guitar loop — E, wah or chicken scratch
-    9: organ loop — E, groovy, Hammond-style
-    10: clavinet or electric piano loop — E
-    11: horn stab or brass hit
-    12: string or orchestral hit
+    1: kick acoustic tight funk
+    2: snare acoustic crispy funk
+    3: hihat crispy acoustic bright
+    4: percussion cymbal tambourine bright
+    5: drum-loop funk 110bpm groove
+    6: drum-loop funk 110bpm break
+    7: bass funk E slap groove
+    8: guitar funk E wah groove
+    9: keys organ E groove warm
+    10: keys clavinet E funk bright
+    11: stab horn brass funk bright
+    12: stab orchestral hit bright
 bank_h:
   name: IDM / Glitch
   bpm: 140
   key: any
   notes: Broken beats, textures, Autechre / Aphex energy
   pads:
-    1: glitchy kick — processed, mangled
-    2: glitchy snare — granular, fractured
-    3: digital hi-hat — aliased, bitcrushed
-    4: noise burst or glitch hit
-    5: IDM drum loop 135-145bpm — broken, complex
-    6: IDM drum loop — different rhythm, polymetric
-    7: bass — FM or granular, atonal ok
-    8: texture loop — digital artifacts, grain
-    9: melodic fragment — bells, FM, crystalline
-    10: drone or evolving pad — long, morphing
-    11: field recording or found sound — processed
-    12: rhythmic noise loop — machine-like
+    1: kick glitch digital distorted
+    2: snare glitch granular digital
+    3: hihat digital glitch bright
+    4: fx noise glitch oneshot
+    5: drum-loop idm 140bpm glitch
+    6: drum-loop idm 140bpm polymetric
+    7: bass fm granular digital
+    8: fx texture digital glitch loop
+    9: synth bells fm bright digital
+    10: pad drone ambient long
+    11: fx field-recording ambient
+    12: fx noise rhythmic loop industrial
 bank_i:
   name: Ambient / Textural
   bpm: 80
   key: C
   notes: Spacious, contemplative, Brian Eno territory
   pads:
-    1: soft kick or muted thud
-    2: brush snare or gentle percussion
-    3: shaker or rain stick
-    4: singing bowl or bell
-    5: ambient pad — C, long evolving, reverb
-    6: ambient pad — C, different texture
-    7: ambient bass — C, deep, slow
-    8: piano or keys — C, sparse, reverbed
-    9: field recording — water, wind, nature
-    10: field recording — different environment
-    11: tape loop or warped texture
-    12: choir or vocal drone — C, ethereal
+    1: kick soft muted ambient
+    2: percussion brush snare soft
+    3: percussion shaker soft ambient
+    4: percussion bell singing-bowl bright
+    5: pad ambient C long reverb
+    6: pad ambient C warm texture
+    7: bass ambient C deep soft
+    8: keys piano C sparse reverb
+    9: fx field-recording water nature ambient
+    10: fx field-recording ambient texture
+    11: fx tape loop warm vintage
+    12: vocal choir drone C ambient
 bank_j:
   name: Utility / DJ Tools
   bpm: 120
   key: any
   notes: Transitions, risers, drops, fills — performance tools
   pads:
-    1: riser — white noise sweep up, 4 bars
-    2: downer — sweep down, 2 bars
-    3: drum fill — snare roll building
-    4: reverse cymbal — classic transition
-    5: vinyl stop effect
-    6: tape stop effect
-    7: air horn — real, not synthesized
-    8: crowd noise or applause
-    9: silence — 1 bar of nothing (kill switch)
-    10: click track — 4 bars at 120bpm
-    11: countdown — 3, 2, 1
-    12: impact boom — cinematic, sub-heavy
+    1: fx riser sweep noise long
+    2: fx sweep downer filter
+    3: drum-loop fill snare-roll
+    4: fx cymbal reversed
+    5: fx vinyl stop
+    6: fx tape stop
+    7: stab horn air-horn bright
+    8: fx crowd noise applause ambient
+    9: fx silence
+    10: fx click-track 120bpm
+    11: vocal countdown short
+    12: fx impact boom sub cinematic

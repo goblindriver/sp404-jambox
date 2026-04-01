@@ -28,6 +28,27 @@
     <div class="bank-info" id="bank-info">
         <span id="bank-name" class="bank-name"></span>
         <span id="bank-meta" class="bank-meta"></span>
+        <button id="btn-edit-bank" class="btn-edit-bank" title="Edit bank settings">&#9998;</button>
+    </div>
+
+    <div id="bank-edit-modal" class="bank-edit-modal hidden">
+        <div class="bank-edit-inner">
+            <div class="bank-edit-header">
+                <h3>Edit Bank <span id="edit-bank-letter"></span></h3>
+                <button id="bank-edit-close" class="detail-close">&times;</button>
+            </div>
+            <div class="bank-edit-body">
+                <label>Name<input type="text" id="edit-bank-name" /></label>
+                <div class="bank-edit-row">
+                    <label>BPM<input type="number" id="edit-bank-bpm" min="40" max="300" /></label>
+                    <label>Key<input type="text" id="edit-bank-key" placeholder="e.g. Cm, Fs, XX" /></label>
+                </div>
+                <label>Notes<input type="text" id="edit-bank-notes" /></label>
+            </div>
+            <div class="bank-edit-footer">
+                <button id="btn-save-bank" class="btn btn-accent">Save</button>
+            </div>
+        </div>
     </div>
 
     <main>

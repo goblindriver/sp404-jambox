@@ -32,6 +32,11 @@ async function init() {
     document.getElementById('btn-build').onclick = buildAll;
     document.getElementById('btn-deploy').onclick = deploy;
 
+    // Bank edit
+    document.getElementById('btn-edit-bank').onclick = openBankEdit;
+    document.getElementById('bank-edit-close').onclick = closeBankEdit;
+    document.getElementById('btn-save-bank').onclick = saveBankEdit;
+
     // Tutorial
     document.getElementById('tutorial-close').onclick = hideTutorial;
     document.getElementById('tutorial-go').onclick = hideTutorial;
@@ -636,6 +641,45 @@ async function ingestDownloads() {
     document.getElementById('btn-ingest').disabled = false;
 }
 
+// ── Bank Edit ──
+function openBankEdit() {
+    if (!state.currentBank) return;
+    const b = state.currentBank;
+    document.getElementById('edit-bank-letter').textContent = b.letter.toUpperCase();
+    document.getElementById('edit-bank-name').value = b.name || '';
+    document.getElementById('edit-bank-bpm').value = b.bpm || '';
+    document.getElementById('edit-bank-key').value = b.key || '';
+    document.getElementById('edit-bank-notes').value = b.notes || '';
+    document.getElementById('bank-edit-modal').classList.remove('hidden');
+}
+
+function closeBankEdit() {
+    document.getElementById('bank-edit-modal').classList.add('hidden');
+}
+
+async function saveBankEdit() {
+    const letter = state.currentBank.letter;
+    const data = {
+        name: document.getElementById('edit-bank-name').value.trim(),
+        bpm: document.getElementById('edit-bank-bpm').value || null,
+        key: document.getElementById('edit-bank-key').value.trim() || null,
+        notes: document.getElementById('edit-bank-notes').value.trim(),
+    };
+
+    await api(`/api/banks/${letter}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    });
+
+    closeBankEdit();
+    const updated = await api(`/api/banks/${letter}`);
+    const idx = state.banks.findIndex(b => b.letter === letter);
+    if (idx >= 0) state.banks[idx] = updated;
+    switchBank(updated);
+    toast('Bank settings saved', 'success');
+}
+
 // ── Drag & Drop ──
 function setupPadDropZones() {
     const pads = document.querySelectorAll('.pad');
@@ -651,10 +695,18 @@ function setupPadDropZones() {
         el.addEventListener('drop', (e) => {
             e.preventDefault();
             el.classList.remove('drag-over');
+            const padNum = parseInt(el.dataset.num);
+
+            // Check for library drag first
             const libraryPath = e.dataTransfer.getData('application/x-library-path');
             if (libraryPath) {
-                const padNum = parseInt(el.dataset.num);
                 assignToPad(state.currentBank.letter, padNum, libraryPath);
+                return;
+            }
+
+            // OS file drop
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                uploadToPad(state.currentBank.letter, padNum, e.dataTransfer.files[0]);
             }
         });
     });
@@ -688,6 +740,45 @@ async function assignToPad(bankLetter, padNum, libraryPath) {
         }
     } catch (e) {
         toast('Assign error: ' + e.message, 'error');
+    }
+}
+
+async function uploadToPad(bankLetter, padNum, file) {
+    const audioExts = ['.wav', '.aif', '.aiff', '.mp3', '.flac', '.ogg', '.m4a'];
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!audioExts.includes(ext)) {
+        toast(`Unsupported format: ${ext}`, 'error');
+        return;
+    }
+
+    toast(`Uploading ${file.name}...`);
+    const formData = new FormData();
+    formData.append('bank', bankLetter);
+    formData.append('pad', padNum);
+    formData.append('file', file);
+
+    try {
+        const resp = await fetch('/api/audio/upload', { method: 'POST', body: formData });
+        const result = await resp.json();
+        if (result.ok) {
+            toast(result.message, 'success');
+            const updated = await api(`/api/banks/${bankLetter}`);
+            const idx = state.banks.findIndex(b => b.letter === bankLetter);
+            if (idx >= 0) state.banks[idx] = updated;
+            if (state.currentBank.letter === bankLetter) {
+                state.currentBank = updated;
+                renderPadGrid(updated);
+                setupPadDropZones();
+                if (state.selectedPad && state.selectedPad.num === padNum) {
+                    const pad = updated.pads.find(p => p.num === padNum);
+                    if (pad) selectPad(pad);
+                }
+            }
+        } else {
+            toast(result.error || 'Upload failed', 'error');
+        }
+    } catch (e) {
+        toast('Upload error: ' + e.message, 'error');
     }
 }
 
