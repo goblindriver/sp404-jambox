@@ -21,8 +21,18 @@ echo "Destination: $SD_CARD"
 echo ""
 
 # Copy ROLAND folder (contains SMPL with samples + PAD_INFO.BIN, and PTN with patterns)
+# Exclude macOS resource forks and git files that confuse the SP-404
 echo "Copying ROLAND folder (samples + patterns)..."
-rsync -av --progress "$SOURCE_DIR/ROLAND/" "$SD_CARD/ROLAND/"
+rsync -av --progress \
+    --exclude="._*" --exclude=".DS_Store" --exclude=".gitkeep" \
+    "$SOURCE_DIR/ROLAND/" "$SD_CARD/ROLAND/"
+
+# Clean any macOS junk that may have been left from prior copies
+echo ""
+echo "Cleaning macOS resource fork files..."
+find "$SD_CARD/ROLAND" -name "._*" -delete 2>/dev/null
+find "$SD_CARD/ROLAND" -name ".DS_Store" -delete 2>/dev/null
+find "$SD_CARD/ROLAND" -name ".gitkeep" -delete 2>/dev/null
 
 # Copy PAD_MAP.txt cheat sheet
 echo ""
