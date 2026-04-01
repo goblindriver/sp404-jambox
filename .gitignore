@@ -12,6 +12,10 @@ _UNZIPPED/
 _CARD_STAGING/
 _BANK_B_STAGING/
 
+# Generated binary artifacts
+sd-card-template/ROLAND/SP-404SX/PTN/*.BIN
+sd-card-template/ROLAND/SP-404SX/SMPL/PAD_INFO.BIN
+
 # Secrets
 .env
 

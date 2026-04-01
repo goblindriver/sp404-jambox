@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SP-404 JAMBOX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <h1>SP-404 <span class="accent">JAMBOX</span></h1>
+        </div>
+        <div class="header-right">
+            <div id="sd-status" class="sd-indicator">
+                <span class="sd-dot"></span>
+                <span class="sd-text">Checking...</span>
+            </div>
+        </div>
+    </header>
+
+    <nav id="bank-tabs" class="bank-tabs">
+        <!-- Filled by JS -->
+    </nav>
+
+    <div class="bank-info" id="bank-info">
+        <span id="bank-name" class="bank-name"></span>
+        <span id="bank-meta" class="bank-meta"></span>
+    </div>
+
+    <main>
+        <section id="pad-grid" class="pad-grid">
+            <!-- 12 pads filled by JS -->
+        </section>
+
+        <section id="pad-detail" class="pad-detail hidden">
+            <div class="detail-header">
+                <span id="detail-pad-num" class="detail-pad-num"></span>
+                <button id="detail-close" class="detail-close">&times;</button>
+            </div>
+            <div class="detail-body">
+                <div class="detail-status" id="detail-status"></div>
+                <textarea id="detail-desc" class="detail-desc" rows="3" placeholder="Describe the sound you want..."></textarea>
+                <div class="detail-actions">
+                    <button id="btn-save-desc" class="btn btn-sm">Save</button>
+                    <button id="btn-preview" class="btn btn-sm btn-accent" disabled>Preview</button>
+                    <button id="btn-fetch-pad" class="btn btn-sm btn-accent">Fetch</button>
+                </div>
+                <div id="detail-file" class="detail-file"></div>
+            </div>
+        </section>
+    </main>
+
+    <aside id="sidebar" class="sidebar hidden">
+        <div class="sidebar-header">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="browse" onclick="switchSidebarTab('browse')">Browse</button>
+                <button class="sidebar-tab" data-tab="tags" onclick="switchSidebarTab('tags')">Tags</button>
+            </div>
+            <button id="sidebar-close" class="detail-close">&times;</button>
+        </div>
+        <div id="sidebar-content" class="sidebar-content">
+            <!-- Browse tab -->
+            <div id="tab-browse" class="sidebar-tab-content">
+                <div class="search-box">
+                    <input type="text" id="library-search" placeholder="Search library..." />
+                </div>
+                <div id="library-browser"></div>
+            </div>
+            <!-- Tags tab -->
+            <div id="tab-tags" class="sidebar-tab-content hidden">
+                <div id="active-tags" class="active-tags"></div>
+                <div id="tag-sections"></div>
+                <div id="tag-results"></div>
+            </div>
+        </div>
+    </aside>
+
+    <footer class="action-bar">
+        <div class="actions-left">
+            <button id="btn-help" class="btn btn-help" title="How it works">?</button>
+            <button id="btn-library" class="btn">Library</button>
+            <button id="btn-ingest" class="btn">Ingest Downloads</button>
+            <button id="btn-fetch-all" class="btn btn-accent">Fetch All</button>
+        </div>
+        <div id="progress-bar" class="progress-bar hidden">
+            <div class="progress-text" id="progress-text"></div>
+            <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        </div>
+        <div class="actions-right">
+            <button id="btn-build" class="btn">Build</button>
+            <button id="btn-deploy" class="btn btn-deploy">Deploy to SD</button>
+        </div>
+    </footer>
+
+    <!-- Tutorial Overlay -->
+    <div id="tutorial-overlay" class="tutorial-overlay">
+        <div class="tutorial-modal">
+            <div class="tutorial-header">
+                <h2>SP-404 <span class="accent">JAMBOX</span></h2>
+                <button id="tutorial-close" class="detail-close">&times;</button>
+            </div>
+            <div class="tutorial-body">
+                <div class="tutorial-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h4>Describe your sounds</h4>
+                        <p>Click any pad to describe what you want on it. Each bank has a genre and key &mdash; pads 1-4 are drum hits, 5-12 are loops and melodic content.</p>
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h4>Fetch samples</h4>
+                        <p>Hit <strong>Fetch All</strong> to search your local library + Freesound.org for matches. Or click a pad and hit <strong>Fetch</strong> for just that one.</p>
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h4>Ingest new packs</h4>
+                        <p>Drop sample packs into <code>~/Downloads</code> and hit <strong>Ingest Downloads</strong>. RAR archives get extracted, WAVs get categorized into your library automatically.</p>
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <h4>Build &amp; deploy</h4>
+                        <p>Hit <strong>Build</strong> to generate PAD_INFO.BIN and starter patterns. Then insert your SD card and hit <strong>Deploy to SD</strong>.</p>
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <h4>Jam &amp; save your gold</h4>
+                        <p>Bank A is yours &mdash; resample and chop on-device. When you plug the card back in, your Bank A edits get saved to the gold library.</p>
+                    </div>
+                </div>
+                <div class="tutorial-stats" id="tutorial-stats">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+            <div class="tutorial-footer">
+                <button id="tutorial-go" class="btn btn-accent">Let's Go</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <audio id="audio-player"></audio>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

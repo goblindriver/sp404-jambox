@@ -5,7 +5,7 @@ SP-404A/SX sampler SD card builder. Curates royalty-free samples into genre-them
 
 ## Key Paths
 - SD card mount: /Volumes/SP-404SX
-- Sample library: ~/Music/SP404-Sample-Library (~4.4GB, 7,644 WAVs)
+- Sample library: ~/Music/SP404-Sample-Library (~4.4GB, 9,500+ WAVs)
 - Raw downloads archive: ~/Music/SP404-Sample-Library/_RAW-DOWNLOADS/
 - This repo: scripts, docs, and SD card template
 
@@ -25,7 +25,7 @@ WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silenc
 
 ## Current Bank Layout
 - Bank A: EMPTY (user's own sounds)
-- Bank B: Novelty FX (synthesized with numpy) — air horn, laser zap, vinyl stop, etc.
+- Bank B: Weird & Wonderful — oddball voice lines, meme sounds, conversation starters
 - Bank C: Lo-Fi Hip-Hop (88 bpm)
 - Bank D: Witch House (70 bpm)
 - Bank E: Nu-Rave (130 bpm)
@@ -86,6 +86,29 @@ Injected by `scripts/wav_utils.py:inject_rlnd()` during sample conversion.
 - [super-pads](https://github.com/MatthewCallis/super-pads): Visual sample manager (Electron, MIT) — RLND format referenced
 - [@uttori/audio-padinfo](https://github.com/uttori/uttori-audio-padinfo): PAD_INFO.BIN format (JS, MIT) — ported to Python in `gen_padinfo.py`
 - [sp404loader](https://github.com/ashleyknutsen/sp404loader): SD card loader — silence trimming approach referenced
+
+## Web UI
+Launch: `cd web && python app.py` (runs on http://localhost:5404)
+- Visual pad grid mirroring the SP-404 layout
+- Click pads to describe sounds, preview audio, fetch samples
+- Library sidebar with browse + tag-based search
+- Pipeline controls: Fetch All, Ingest Downloads, Build, Deploy
+- SD card status indicator with auto-polling
+- Tutorial overlay on first visit
+
+## Tag System
+- Auto-tag library: `python scripts/tag_library.py` (incremental: `--update`)
+- Tags extracted from: directory structure, filename patterns, BPM/key parsing, ffprobe duration
+- Tag database: `~/Music/SP404-Sample-Library/_tags.json`
+- API: GET `/api/library/tags` (cloud), GET `/api/library/by-tag?tag=kick&tag=funk` (AND filter)
+
+## Ingest Downloads
+`python scripts/ingest_downloads.py` — extracts RAR/ZIP sample packs from ~/Downloads, auto-categorizes WAVs into library.
+- Watch mode: `python scripts/ingest_downloads.py --watch 30`
+- Uses `.sp404-ingested` marker files to avoid re-processing
+
+## Bank A Sync
+`python scripts/sync_bank_a.py pull` — saves Bank A samples from SD card to `~/Music/SP404-Sample-Library/_GOLD/Bank-A/session-{timestamp}/`
 
 ## Important Notes
 - The SP-404A (original, non-SX) is more restrictive — always use 44.1kHz/16-bit/mono
