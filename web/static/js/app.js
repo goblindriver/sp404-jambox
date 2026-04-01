@@ -458,7 +458,21 @@ function setupLibraryDrag(container) {
     });
 }
 
-// ── Tag Cloud ──
+// ── Tag Cloud (dimension-aware) ──
+
+// Full type code names for tooltips
+const TYPE_CODE_NAMES = {
+    KIK:'Kick', SNR:'Snare', CLP:'Clap', HAT:'Hi-Hat', PRC:'Percussion',
+    CYM:'Cymbal', RIM:'Rimshot', BRK:'Break/Loop', DRM:'Drum',
+    BAS:'Bass', GTR:'Guitar', KEY:'Keys/Piano', SYN:'Synth', PAD:'Pad',
+    STR:'Strings', BRS:'Brass', PLK:'Pluck', WND:'Woodwind', VOX:'Vocal',
+    SMP:'Sample', FX:'FX', AMB:'Ambient', FLY:'Foley', TPE:'Tape/Vinyl',
+    RSR:'Riser', SFX:'Stinger',
+};
+
+// Dimension-aware active filters: {dimension: [values]}
+state.activeFilters = {};
+
 async function loadTagCloud() {
     const data = await api('/api/library/tags');
     if (data.error && !data.tags) {
@@ -477,16 +491,14 @@ function renderTagCloud() {
     const sections = document.getElementById('tag-sections');
     let html = '';
 
-    // Instruments
-    html += renderTagSection('Instruments', data.instruments, 'instrument');
+    html += renderTagSection('Type', data.type_codes, 'type_code');
+    html += renderTagSection('Vibe', data.vibes, 'vibe');
+    html += renderTagSection('Texture', data.textures, 'texture');
+    html += renderTagSection('Genre', data.genres, 'genre');
+    html += renderTagSection('Energy', data.energies, 'energy');
+    html += renderTagSection('Source', data.sources, 'source');
+    html += renderTagSection('Playability', data.playabilities, 'playability');
 
-    // Genres
-    html += renderTagSection('Genres', data.genres, 'genre');
-
-    // Duration types
-    html += renderTagSection('Type', data.types, 'type');
-
-    // BPM (show as compact list)
     const bpmTags = {};
     for (const [bpm, count] of Object.entries(data.bpms || {})) {
         bpmTags[bpm + 'bpm'] = count;
@@ -497,11 +509,12 @@ function renderTagCloud() {
     renderActiveTags();
 }
 
-function renderTagSection(title, tagMap, category) {
+function renderTagSection(title, tagMap, dimension) {
     if (!tagMap || Object.keys(tagMap).length === 0) return '';
 
     const entries = Object.entries(tagMap).sort((a, b) => b[1] - a[1]);
     const maxCount = entries[0]?.[1] || 1;
+    const active = state.activeFilters[dimension] || [];
 
     let html = `<div class="tag-section">
         <div class="tag-section-title">${title}</div>
@@ -510,25 +523,31 @@ function renderTagSection(title, tagMap, category) {
     for (const [tag, count] of entries) {
         const ratio = count / maxCount;
         const size = ratio > 0.7 ? 5 : ratio > 0.4 ? 4 : ratio > 0.2 ? 3 : ratio > 0.1 ? 2 : 1;
-        const isActive = state.activeTags.includes(tag);
-        html += `<span class="tag tag-size-${size} ${isActive ? 'active' : ''}"
-                       onclick="toggleTag('${tag}')"
-                       title="${count} samples">${tag}<span class="tag-count">${count}</span></span>`;
+        const isActive = active.includes(tag);
+        const tooltip = TYPE_CODE_NAMES[tag] ? `${TYPE_CODE_NAMES[tag]} (${count})` : `${count} samples`;
+        html += `<span class="tag tag-size-${size} tag-dim-${dimension} ${isActive ? 'active' : ''}"
+                       onclick="toggleTag('${dimension}','${tag}')"
+                       title="${tooltip}">${tag}<span class="tag-count">${count}</span></span>`;
     }
 
     html += '</div></div>';
     return html;
 }
 
-function toggleTag(tag) {
-    const idx = state.activeTags.indexOf(tag);
+function toggleTag(dimension, tag) {
+    if (!state.activeFilters[dimension]) {
+        state.activeFilters[dimension] = [];
+    }
+    const arr = state.activeFilters[dimension];
+    const idx = arr.indexOf(tag);
     if (idx >= 0) {
-        state.activeTags.splice(idx, 1);
+        arr.splice(idx, 1);
+        if (arr.length === 0) delete state.activeFilters[dimension];
     } else {
-        state.activeTags.push(tag);
+        arr.push(tag);
     }
     renderTagCloud();
-    if (state.activeTags.length > 0) {
+    if (Object.keys(state.activeFilters).length > 0) {
         fetchByTags();
     } else {
         document.getElementById('tag-results').innerHTML = '';
@@ -537,18 +556,32 @@ function toggleTag(tag) {
 
 function renderActiveTags() {
     const container = document.getElementById('active-tags');
-    if (state.activeTags.length === 0) {
+    const allFilters = [];
+    for (const [dim, vals] of Object.entries(state.activeFilters)) {
+        for (const v of vals) {
+            allFilters.push({dim, val: v});
+        }
+    }
+    if (allFilters.length === 0) {
         container.innerHTML = '';
         return;
     }
-    container.innerHTML = state.activeTags.map(tag =>
-        `<span class="active-tag" onclick="toggleTag('${tag}')">${tag}<span class="remove">&times;</span></span>`
+    container.innerHTML = allFilters.map(f =>
+        `<span class="active-tag tag-dim-${f.dim}" onclick="toggleTag('${f.dim}','${f.val}')">${f.val}<span class="remove">&times;</span></span>`
     ).join('');
 }
 
 async function fetchByTags() {
-    const params = state.activeTags.map(t => `tag=${encodeURIComponent(t)}`).join('&');
-    const data = await api(`/api/library/by-tag?${params}&limit=50`);
+    const params = [];
+    for (const [dim, vals] of Object.entries(state.activeFilters)) {
+        // BPM uses flat tag search
+        if (dim === 'bpm') {
+            for (const v of vals) params.push(`tag=${encodeURIComponent(v)}`);
+        } else {
+            for (const v of vals) params.push(`${dim}=${encodeURIComponent(v)}`);
+        }
+    }
+    const data = await api(`/api/library/by-tag?${params.join('&')}&limit=50`);
     renderTagResults(data);
 }
 
@@ -562,7 +595,8 @@ function renderTagResults(data) {
     let html = `<div class="tag-results-header">${data.total} matches</div>`;
     for (const r of data.results) {
         const dur = r.duration ? `${r.duration.toFixed(1)}s` : '';
-        const meta = [r.bpm ? r.bpm + 'bpm' : '', r.key || '', dur].filter(Boolean).join(' · ');
+        const code = r.type_code || '';
+        const meta = [code, r.bpm ? r.bpm + 'bpm' : '', r.key || '', dur].filter(Boolean).join(' · ');
         html += `<div class="lib-item lib-file" data-library-path="${r.path}">
             <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
             <button class="lib-play" onclick="previewLibraryFile('${r.path}')" title="Preview">▶</button>

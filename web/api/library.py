@@ -144,30 +144,43 @@ def stats():
 
 @library_bp.route('/library/tags')
 def tag_cloud():
-    """Return tag frequency data for a tag cloud visualization."""
+    """Return tag frequency data by spec dimensions."""
     db = _load_tag_db()
     if not db:
         return jsonify({'error': 'No tag database found. Run: python scripts/tag_library.py', 'tags': {}, 'total': 0})
 
     from collections import Counter
     tag_counts = Counter()
-    instrument_counts = Counter()
+    type_code_counts = Counter()
+    vibe_counts = Counter()
+    texture_counts = Counter()
     genre_counts = Counter()
-    type_counts = Counter()
+    source_counts = Counter()
+    energy_counts = Counter()
+    playability_counts = Counter()
     bpm_counts = Counter()
 
     for entry in db.values():
         for t in entry.get('tags', []):
             tag_counts[t] += 1
-        inst = entry.get('instrument')
-        if inst:
-            instrument_counts[inst] += 1
-        genre = entry.get('genre')
-        if genre:
-            genre_counts[genre] += 1
-        dur_type = entry.get('type')
-        if dur_type:
-            type_counts[dur_type] += 1
+        tc = entry.get('type_code')
+        if tc:
+            type_code_counts[tc] += 1
+        for v in entry.get('vibe', []):
+            vibe_counts[v] += 1
+        for t in entry.get('texture', []):
+            texture_counts[t] += 1
+        for g in entry.get('genre', []):
+            genre_counts[g] += 1
+        s = entry.get('source')
+        if s:
+            source_counts[s] += 1
+        e = entry.get('energy')
+        if e:
+            energy_counts[e] += 1
+        p = entry.get('playability')
+        if p:
+            playability_counts[p] += 1
         bpm = entry.get('bpm')
         if bpm:
             bpm_counts[bpm] += 1
@@ -175,51 +188,90 @@ def tag_cloud():
     return jsonify({
         'total': len(db),
         'tags': dict(tag_counts.most_common(100)),
-        'instruments': dict(instrument_counts.most_common()),
+        'type_codes': dict(type_code_counts.most_common()),
+        'vibes': dict(vibe_counts.most_common()),
+        'textures': dict(texture_counts.most_common()),
         'genres': dict(genre_counts.most_common()),
-        'types': dict(type_counts.most_common()),
+        'sources': dict(source_counts.most_common()),
+        'energies': dict(energy_counts.most_common()),
+        'playabilities': dict(playability_counts.most_common()),
         'bpms': dict(bpm_counts.most_common(30)),
     })
 
 
 @library_bp.route('/library/by-tag')
 def by_tag():
-    """Return files matching ALL given tags.
+    """Return files matching filters.
 
-    Usage: GET /api/library/by-tag?tag=kick&tag=funk
-    Optional: &limit=50 (default 100)
+    Supports both flat tags and dimension-specific filters:
+      GET /api/library/by-tag?tag=KIK&tag=funk           (flat AND)
+      GET /api/library/by-tag?type_code=KIK&vibe=dark    (dimension filters)
     """
     tags = request.args.getlist('tag')
-    if not tags:
-        return jsonify({'error': 'Provide at least one tag parameter', 'results': []})
+    # Dimension-specific filters
+    dim_filters = {}
+    for dim in ('type_code', 'vibe', 'texture', 'genre', 'source', 'energy', 'playability'):
+        vals = request.args.getlist(dim)
+        if vals:
+            dim_filters[dim] = set(v.lower() for v in vals)
 
-    tags_set = set(t.lower() for t in tags)
+    if not tags and not dim_filters:
+        return jsonify({'error': 'Provide at least one filter', 'results': []})
+
+    tags_set = set(t.lower() for t in tags) if tags else set()
     limit = min(int(request.args.get('limit', 100)), 500)
 
     db = _load_tag_db()
     if not db:
-        return jsonify({'error': 'No tag database found. Run: python scripts/tag_library.py', 'results': []})
+        return jsonify({'error': 'No tag database found', 'results': []})
 
     results = []
     for rel_path, entry in db.items():
-        entry_tags = set(t.lower() for t in entry.get('tags', []))
-        if tags_set.issubset(entry_tags):
-            results.append({
-                'name': os.path.basename(rel_path),
-                'path': rel_path,
-                'tags': entry.get('tags', []),
-                'bpm': entry.get('bpm'),
-                'key': entry.get('key'),
-                'duration': entry.get('duration'),
-                'type': entry.get('type'),
-                'instrument': entry.get('instrument'),
-                'genre': entry.get('genre'),
-            })
-            if len(results) >= limit:
+        # Check flat tags (AND)
+        if tags_set:
+            entry_tags = set(t.lower() for t in entry.get('tags', []))
+            if not tags_set.issubset(entry_tags):
+                continue
+
+        # Check dimension filters (AND across dimensions, OR within)
+        match = True
+        for dim, vals in dim_filters.items():
+            entry_val = entry.get(dim)
+            if isinstance(entry_val, list):
+                if not vals.intersection(v.lower() for v in entry_val):
+                    match = False
+                    break
+            elif entry_val:
+                if entry_val.lower() not in vals:
+                    match = False
+                    break
+            else:
+                match = False
                 break
+        if not match:
+            continue
+
+        results.append({
+            'name': os.path.basename(rel_path),
+            'path': rel_path,
+            'tags': entry.get('tags', []),
+            'type_code': entry.get('type_code'),
+            'vibe': entry.get('vibe', []),
+            'texture': entry.get('texture', []),
+            'genre': entry.get('genre', []),
+            'source': entry.get('source'),
+            'energy': entry.get('energy'),
+            'playability': entry.get('playability'),
+            'bpm': entry.get('bpm'),
+            'key': entry.get('key'),
+            'duration': entry.get('duration'),
+        })
+        if len(results) >= limit:
+            break
 
     return jsonify({
         'query_tags': tags,
+        'filters': {k: list(v) for k, v in dim_filters.items()},
         'total': len(results),
         'results': results,
     })
