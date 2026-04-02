@@ -18,6 +18,7 @@ async function init() {
     state.banks = data;
 
     renderBankTabs();
+    setupBankTabDropZones();
     // Default to Bank B (A is empty/creative)
     switchBank(state.banks.find(b => b.letter === 'b') || state.banks[0]);
 
@@ -31,6 +32,12 @@ async function init() {
     document.getElementById('btn-fetch-all').onclick = () => fetchSamples();
     document.getElementById('btn-build').onclick = buildAll;
     document.getElementById('btn-deploy').onclick = deploy;
+    document.getElementById('btn-watcher').onclick = toggleWatcher;
+    document.getElementById('btn-presets').onclick = togglePresetSidebar;
+
+    // Load sets and check watcher on startup
+    loadSets();
+    checkWatcherStatus();
 
     // Bank edit
     document.getElementById('btn-edit-bank').onclick = openBankEdit;
@@ -375,6 +382,8 @@ function toggleLibrary(forceState) {
     sidebar.classList.toggle('hidden', !open);
     state.sidebarOpen = open;
     if (open) {
+        document.getElementById('preset-sidebar')?.classList.add('hidden');
+        document.getElementById('music-sidebar')?.classList.add('hidden');
         if (state.sidebarTab === 'browse' && state.libraryPath === '') {
             browseLibrary('');
         } else if (state.sidebarTab === 'tags' && !state.tagData) {
@@ -704,6 +713,128 @@ async function ingestDownloads() {
     document.getElementById('btn-ingest').disabled = false;
 }
 
+// ── File Watcher ──
+let watcherPolling = null;
+
+async function checkWatcherStatus() {
+    try {
+        const result = await api('/api/pipeline/watcher/status');
+        updateWatcherUI(result.running, result.recent || []);
+    } catch (e) {
+        // Watcher API not available
+    }
+}
+
+function updateWatcherUI(running, recent) {
+    const btn = document.getElementById('btn-watcher');
+    const dot = document.getElementById('watcher-dot');
+
+    if (running) {
+        btn.classList.add('watching');
+        dot.classList.add('active');
+    } else {
+        btn.classList.remove('watching');
+        dot.classList.remove('active');
+    }
+
+    // Update feed if visible
+    const feed = document.getElementById('watcher-feed');
+    if (!feed.classList.contains('hidden') && recent.length > 0) {
+        renderWatcherFeed(recent);
+    }
+}
+
+async function toggleWatcher() {
+    const btn = document.getElementById('btn-watcher');
+    const isRunning = btn.classList.contains('watching');
+
+    try {
+        if (isRunning) {
+            await api('/api/pipeline/watcher/stop', { method: 'POST' });
+            toast('Watcher stopped', 'success');
+            btn.classList.remove('watching');
+            document.getElementById('watcher-dot').classList.remove('active');
+            stopWatcherPolling();
+        } else {
+            toast('Starting file watcher...');
+            const result = await api('/api/pipeline/watcher/start', { method: 'POST' });
+            if (result.ok) {
+                toast('Watcher active — monitoring ~/Downloads', 'success');
+                btn.classList.add('watching');
+                document.getElementById('watcher-dot').classList.add('active');
+                startWatcherPolling();
+            } else {
+                toast(result.error || 'Failed to start watcher', 'error');
+            }
+        }
+    } catch (e) {
+        toast('Watcher error: ' + e.message, 'error');
+    }
+}
+
+function startWatcherPolling() {
+    if (watcherPolling) return;
+    watcherPolling = setInterval(async () => {
+        try {
+            const result = await api('/api/pipeline/watcher/status');
+            updateWatcherUI(result.running, result.recent || []);
+        } catch (e) {}
+    }, 5000);
+}
+
+function stopWatcherPolling() {
+    if (watcherPolling) {
+        clearInterval(watcherPolling);
+        watcherPolling = null;
+    }
+}
+
+function toggleWatcherFeed() {
+    const feed = document.getElementById('watcher-feed');
+    if (feed.classList.contains('hidden')) {
+        feed.classList.remove('hidden');
+        // Load latest
+        checkWatcherStatus().then(() => {
+            api('/api/pipeline/watcher/status').then(result => {
+                renderWatcherFeed(result.recent || []);
+            });
+        });
+        startWatcherPolling();
+    } else {
+        feed.classList.add('hidden');
+    }
+}
+
+function renderWatcherFeed(entries) {
+    const list = document.getElementById('watcher-feed-list');
+    if (!entries.length) {
+        list.innerHTML = '<div class="watcher-empty">No recent activity</div>';
+        return;
+    }
+    list.innerHTML = entries.slice().reverse().map(e => {
+        const time = new Date(e.timestamp).toLocaleTimeString();
+        const cats = e.categories ? Object.entries(e.categories).map(
+            ([cat, n]) => `${cat.split('/').pop()}: ${n}`
+        ).join(', ') : '';
+        return `<div class="watcher-entry">
+            <div class="watcher-entry-time">${time}</div>
+            <div class="watcher-entry-name">${e.source}</div>
+            <div class="watcher-entry-detail">${e.samples} sample${e.samples !== 1 ? 's' : ''} ${cats ? '— ' + cats : ''}</div>
+        </div>`;
+    }).join('');
+}
+
+// Also make the watcher button show the feed on right-click
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btn-watcher');
+    if (btn) {
+        btn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            toggleWatcherFeed();
+        });
+    }
+});
+
 // ── Bank Edit ──
 function openBankEdit() {
     if (!state.currentBank) return;
@@ -859,7 +990,288 @@ function makeDraggable(el, libraryPath) {
 }
 
 // ═══════════════════════════════════════════════════════
-// My Music — Personal Music Library Browser
+// ── Presets & Sets ──
+// ═══════════════════════════════════════════════════════
+
+let presetData = null;
+let presetCategory = null;
+let presetPreviewRef = null;
+
+function togglePresetSidebar() {
+    const sidebar = document.getElementById('preset-sidebar');
+    const isOpen = !sidebar.classList.contains('hidden');
+    if (isOpen) {
+        closePresetSidebar();
+    } else {
+        document.getElementById('sidebar')?.classList.add('hidden');
+        document.getElementById('music-sidebar')?.classList.add('hidden');
+        sidebar.classList.remove('hidden');
+        if (!presetData) loadPresets();
+    }
+}
+
+function closePresetSidebar() {
+    document.getElementById('preset-sidebar').classList.add('hidden');
+}
+
+function switchPresetTab(tab) {
+    document.querySelectorAll('#preset-sidebar .sidebar-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tab === tab));
+    document.getElementById('preset-tab-browse')?.classList.toggle('hidden', tab !== 'browse');
+    document.getElementById('preset-tab-search')?.classList.toggle('hidden', tab !== 'search');
+    document.getElementById('preset-preview')?.classList.add('hidden');
+}
+
+async function loadPresets(category) {
+    try {
+        // Load categories
+        const cats = await api('/api/presets/categories');
+        renderPresetCategories(cats.categories);
+
+        // Load presets
+        let url = '/api/presets';
+        if (category) url += `?category=${category}`;
+        const data = await api(url);
+        presetData = data.presets;
+        renderPresetCards(data.presets, 'preset-list');
+    } catch (e) {
+        document.getElementById('preset-list').innerHTML =
+            '<div style="padding:16px;color:var(--text-dim)">Error loading presets</div>';
+    }
+}
+
+function renderPresetCategories(categories) {
+    const el = document.getElementById('preset-categories');
+    let html = `<button class="preset-cat-pill ${!presetCategory ? 'active' : ''}" onclick="filterPresetCategory(null)">All</button>`;
+    for (const cat of categories) {
+        if (cat.count === 0) continue;
+        const active = presetCategory === cat.name ? 'active' : '';
+        html += `<button class="preset-cat-pill ${active}" onclick="filterPresetCategory('${cat.name}')">${cat.name} (${cat.count})</button>`;
+    }
+    el.innerHTML = html;
+}
+
+function filterPresetCategory(cat) {
+    presetCategory = cat;
+    loadPresets(cat);
+}
+
+function renderPresetCards(presets, elId) {
+    const el = document.getElementById(elId);
+    if (!presets || !presets.length) {
+        el.innerHTML = '<div style="padding:16px;color:var(--text-dim)">No presets found</div>';
+        return;
+    }
+    el.innerHTML = presets.map(p => `
+        <div class="preset-card" draggable="true"
+             ondragstart="dragPreset(event, '${p.ref}')"
+             onclick="previewPreset('${p.ref}')">
+            <div class="preset-card-name">${p.name}</div>
+            <div class="preset-card-meta">${p.bpm || '—'} BPM · ${p.key || '—'} · ${p.category}</div>
+            ${p.vibe ? `<div class="preset-card-vibe">${p.vibe.substring(0, 60)}</div>` : ''}
+            ${p.tags?.length ? `<div class="preset-card-tags">${p.tags.slice(0, 6).map(t => `<span class="preset-tag">${t}</span>`).join('')}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+async function previewPreset(ref) {
+    const data = await api(`/api/presets/${ref}`);
+    if (!data || data.error) return;
+
+    presetPreviewRef = ref;
+
+    // Hide browse/search, show preview
+    document.getElementById('preset-tab-browse')?.classList.add('hidden');
+    document.getElementById('preset-tab-search')?.classList.add('hidden');
+    const preview = document.getElementById('preset-preview');
+    preview.classList.remove('hidden');
+
+    // Header
+    document.getElementById('preset-preview-header').innerHTML = `
+        <h4>${data.name}</h4>
+        <div style="font-size:11px;color:var(--text-dim)">${data.bpm || '—'} BPM · ${data.key || '—'} · ${data.category || ''}</div>
+        ${data.vibe ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:4px">${data.vibe}</div>` : ''}
+        ${data.tags?.length ? `<div style="margin-top:6px">${data.tags.map(t => `<span class="preset-tag">${t}</span>`).join(' ')}</div>` : ''}
+    `;
+
+    // Pad grid
+    const padsEl = document.getElementById('preset-preview-pads');
+    let html = '';
+    for (let i = 1; i <= 12; i++) {
+        const desc = data.pads?.[i] || data.pads?.[String(i)] || '';
+        html += `<div class="preset-preview-pad">
+            <div class="preset-preview-pad-num">${i}</div>
+            <div class="preset-preview-pad-desc">${desc || '—'}</div>
+        </div>`;
+    }
+    padsEl.innerHTML = html;
+}
+
+function closePresetPreview() {
+    document.getElementById('preset-preview').classList.add('hidden');
+    const tab = document.querySelector('#preset-sidebar .sidebar-tab.active');
+    const tabName = tab?.dataset.tab || 'browse';
+    document.getElementById(`preset-tab-${tabName}`)?.classList.remove('hidden');
+    presetPreviewRef = null;
+}
+
+async function loadPreviewedPreset() {
+    if (!presetPreviewRef || !state.currentBank) return;
+    const bank = state.currentBank.letter;
+
+    try {
+        const result = await api('/api/presets/load', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ref: presetPreviewRef, bank}),
+        });
+        if (result.ok) {
+            toast(`Loaded "${result.name}" to Bank ${bank.toUpperCase()}`, 'success');
+            closePresetPreview();
+            closePresetSidebar();
+            await refreshBanks();
+        } else {
+            toast(result.error || 'Load failed', 'error');
+        }
+    } catch (e) {
+        toast('Load failed: ' + e.message, 'error');
+    }
+}
+
+// Drag preset to bank tab
+function dragPreset(event, ref) {
+    event.dataTransfer.setData('application/x-preset-ref', ref);
+    event.dataTransfer.effectAllowed = 'copy';
+}
+
+function setupBankTabDropZones() {
+    document.querySelectorAll('.bank-tab').forEach(tab => {
+        tab.addEventListener('dragover', (e) => {
+            if (e.dataTransfer.types.includes('application/x-preset-ref')) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                tab.classList.add('preset-drop-target');
+            }
+        });
+        tab.addEventListener('dragleave', () => {
+            tab.classList.remove('preset-drop-target');
+        });
+        tab.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            tab.classList.remove('preset-drop-target');
+            const ref = e.dataTransfer.getData('application/x-preset-ref');
+            if (!ref) return;
+            const letter = tab.dataset.letter;
+            try {
+                const result = await api('/api/presets/load', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ref, bank: letter}),
+                });
+                if (result.ok) {
+                    toast(`Loaded preset to Bank ${letter.toUpperCase()}`, 'success');
+                    await refreshBanks();
+                }
+            } catch (e) {
+                toast('Drop failed', 'error');
+            }
+        });
+    });
+}
+
+async function searchPresets(query) {
+    if (!query || query.length < 2) return;
+    switchPresetTab('search');
+    const data = await api(`/api/presets?q=${encodeURIComponent(query)}`);
+    renderPresetCards(data.presets || [], 'preset-search-results');
+}
+
+// Save current bank as preset
+async function saveAsPreset() {
+    if (!state.currentBank) return;
+    const name = prompt('Preset name:', state.currentBank.name || '');
+    if (!name) return;
+    const category = prompt('Category (genre, utility, song-kits, palette, community):', 'community');
+    if (!category) return;
+    const vibe = prompt('Vibe description (one line):', '');
+
+    try {
+        const result = await api(`/api/presets/from-bank/${state.currentBank.letter}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, category, vibe}),
+        });
+        if (result.ok) {
+            toast(`Saved as preset: ${result.ref}`, 'success');
+            presetData = null; // force reload
+            closeBankEdit();
+        } else {
+            toast(result.error || 'Save failed', 'error');
+        }
+    } catch (e) {
+        toast('Save failed: ' + e.message, 'error');
+    }
+}
+
+// ── Set Management ──
+
+async function loadSets() {
+    try {
+        const data = await api('/api/sets');
+        const sel = document.getElementById('set-selector');
+        sel.innerHTML = data.sets.map(s =>
+            `<option value="${s.slug}" ${s.active ? 'selected' : ''}>${s.name}</option>`
+        ).join('');
+    } catch (e) {}
+}
+
+async function switchSet(slug) {
+    toast(`Switching to set: ${slug}...`);
+    try {
+        const result = await api(`/api/sets/${slug}/apply`, { method: 'POST' });
+        if (result.ok) {
+            toast('Set applied', 'success');
+            await refreshBanks();
+        } else {
+            toast(result.error || 'Switch failed', 'error');
+        }
+    } catch (e) {
+        toast('Switch failed: ' + e.message, 'error');
+    }
+}
+
+async function saveCurrentSet() {
+    const name = prompt('Set name:');
+    if (!name) return;
+    try {
+        const result = await api('/api/sets/save-current', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name}),
+        });
+        if (result.ok) {
+            toast(`Set saved: ${result.slug}`, 'success');
+            loadSets();
+        } else {
+            toast(result.error || 'Save failed', 'error');
+        }
+    } catch (e) {
+        toast('Save failed: ' + e.message, 'error');
+    }
+}
+
+async function refreshBanks() {
+    const data = await api('/api/banks');
+    state.banks = data;
+    renderBankTabs();
+    setupBankTabDropZones();
+    if (state.currentBank) {
+        const updated = data.find(b => b.letter === state.currentBank.letter);
+        if (updated) switchBank(updated);
+    }
+}
+
+// My Music — Plex-Powered Personal Music Library Browser
 // ═══════════════════════════════════════════════════════
 
 let musicBrowseData = null;
@@ -873,8 +1285,8 @@ function toggleMusicSidebar() {
     if (isOpen) {
         closeMusicSidebar();
     } else {
-        // Close library sidebar if open
         document.getElementById('sidebar')?.classList.add('hidden');
+        document.getElementById('preset-sidebar')?.classList.add('hidden');
         sidebar.classList.remove('hidden');
         if (!musicBrowseData) loadMusicBrowse();
     }
@@ -886,13 +1298,22 @@ function closeMusicSidebar() {
 
 async function loadMusicBrowse() {
     try {
+        const status = await api('/api/music/status');
+        const bar = document.getElementById('music-status-bar');
+        if (status.source === 'plex') {
+            bar.innerHTML = `<span class="plex-badge">PLEX</span> ${status.track_count.toLocaleString()} tracks · ${status.mood_count} moods · ${status.style_count} styles`;
+        } else {
+            bar.innerHTML = `${status.track_count?.toLocaleString() || 0} tracks (ID3)`;
+        }
+
         const data = await api('/api/music/browse');
         musicBrowseData = data;
-        renderMusicArtists(data.artists);
-        renderMusicGenres(data.genres);
+        renderMusicArtists(data.artists || []);
+        renderMusicMoods(data.moods || {});
+        renderMusicStyles(data.styles || {});
     } catch (e) {
         document.getElementById('music-artists-list').innerHTML =
-            '<div style="padding:16px;color:var(--text-dim)">Music library not indexed.<br>Run: <code>python scripts/index_music.py</code></div>';
+            '<div style="padding:16px;color:var(--text-dim)">Plex not available.<br>Check database path.</div>';
     }
 }
 
@@ -900,15 +1321,15 @@ function switchMusicTab(tab) {
     musicCurrentTab = tab;
     document.querySelectorAll('#music-sidebar .sidebar-tab').forEach(t =>
         t.classList.toggle('active', t.dataset.tab === tab));
-    document.getElementById('music-tab-artists').classList.toggle('hidden', tab !== 'artists');
-    document.getElementById('music-tab-genres').classList.toggle('hidden', tab !== 'genres');
-    document.getElementById('music-tab-search').classList.toggle('hidden', tab !== 'search');
+    ['artists', 'moods', 'styles', 'search'].forEach(id =>
+        document.getElementById(`music-tab-${id}`)?.classList.toggle('hidden', tab !== id));
     document.getElementById('music-detail').classList.add('hidden');
+    document.getElementById('music-tag-results').classList.add('hidden');
 }
 
 function renderMusicArtists(artists) {
     const el = document.getElementById('music-artists-list');
-    el.innerHTML = artists.map(a => `
+    el.innerHTML = artists.filter(a => a.name).map(a => `
         <div class="music-item" onclick="loadArtist('${a.name.replace(/'/g, "\\'")}')">
             <span class="music-item-name">${a.name}</span>
             <span class="music-item-meta">${a.album_count} albums · ${a.track_count} tracks</span>
@@ -916,47 +1337,134 @@ function renderMusicArtists(artists) {
     `).join('');
 }
 
-function renderMusicGenres(genres) {
-    const el = document.getElementById('music-genres-list');
-    el.innerHTML = Object.entries(genres).map(([g, count]) => `
-        <div class="music-item" onclick="searchMyMusic('${g}')">
-            <span class="music-item-name">${g}</span>
-            <span class="music-item-meta">${count} tracks</span>
+function renderMusicMoods(moods) {
+    const el = document.getElementById('music-moods-list');
+    const max = Math.max(...Object.values(moods), 1);
+    el.innerHTML = Object.entries(moods).map(([mood, count]) => {
+        const size = 0.7 + (count / max) * 0.6;
+        const opacity = 0.5 + (count / max) * 0.5;
+        return `<span class="mood-tag" style="font-size:${size}em;opacity:${opacity}"
+                      onclick="loadMoodResults('${mood}')" title="${count} tracks">${mood}</span>`;
+    }).join(' ');
+}
+
+function renderMusicStyles(styles) {
+    const el = document.getElementById('music-styles-list');
+    const max = Math.max(...Object.values(styles), 1);
+    el.innerHTML = Object.entries(styles).map(([style, count]) => {
+        const size = 0.7 + (count / max) * 0.5;
+        const opacity = 0.5 + (count / max) * 0.5;
+        return `<span class="style-tag" style="font-size:${size}em;opacity:${opacity}"
+                      onclick="loadStyleResults('${style.replace(/'/g, "\\'")}')" title="${count} tracks">${style}</span>`;
+    }).join(' ');
+}
+
+async function loadMoodResults(mood) {
+    document.querySelectorAll('#music-sidebar .sidebar-tab-content').forEach(t => t.classList.add('hidden'));
+    const container = document.getElementById('music-tag-results');
+    container.classList.remove('hidden');
+    document.getElementById('music-tag-results-title').textContent = `Mood: ${mood}`;
+    document.getElementById('music-tag-results-list').innerHTML = '<div style="padding:16px;color:var(--text-dim)">Loading...</div>';
+
+    const data = await api(`/api/music/mood/${encodeURIComponent(mood)}`);
+    renderTrackResults(data.results || [], 'music-tag-results-list');
+}
+
+async function loadStyleResults(style) {
+    document.querySelectorAll('#music-sidebar .sidebar-tab-content').forEach(t => t.classList.add('hidden'));
+    const container = document.getElementById('music-tag-results');
+    container.classList.remove('hidden');
+    document.getElementById('music-tag-results-title').textContent = `Style: ${style}`;
+    document.getElementById('music-tag-results-list').innerHTML = '<div style="padding:16px;color:var(--text-dim)">Loading...</div>';
+
+    const data = await api(`/api/music/style/${encodeURIComponent(style)}`);
+    renderTrackResults(data.results || [], 'music-tag-results-list');
+}
+
+function renderTrackResults(tracks, elId) {
+    const el = document.getElementById(elId);
+    if (!tracks.length) {
+        el.innerHTML = '<div style="padding:16px;color:var(--text-dim)">No tracks found</div>';
+        return;
+    }
+    el.innerHTML = tracks.map(r => `
+        <div class="music-track">
+            ${r.thumb_url ? `<img class="music-track-art" src="${r.thumb_url}" onerror="this.style.display='none'" />` : ''}
+            <div class="music-track-info">
+                <span class="music-track-title">${r.title || 'Unknown'}</span>
+                <span class="music-item-meta">${r.artist || ''} · ${r.album || ''}</span>
+            </div>
+            <span class="music-track-dur">${r.duration_str || ''}</span>
+            <button class="btn btn-sm btn-accent music-split-btn"
+                    onclick="splitTrack(${r.id}, this)" title="Split into stems">Split</button>
         </div>
     `).join('');
 }
 
 async function loadArtist(name) {
     const data = await api(`/api/music/artist/${encodeURIComponent(name)}`);
+    if (!data || data.error) return;
 
-    // Hide browse tabs, show detail
     document.querySelectorAll('#music-sidebar .sidebar-tab-content').forEach(t => t.classList.add('hidden'));
     const detail = document.getElementById('music-detail');
     detail.classList.remove('hidden');
-    document.getElementById('music-detail-title').textContent = name;
 
-    const tracks = document.getElementById('music-detail-tracks');
+    // Artist header with bio + vibes
+    const header = document.getElementById('music-detail-header');
+    let headerHtml = `<h4 style="color:var(--accent);margin-bottom:4px">${data.name}</h4>`;
+    if (data.vibes && data.vibes.length) {
+        headerHtml += `<div class="music-vibes">${data.vibes.map(v => `<span class="vibe-chip">${v}</span>`).join('')}</div>`;
+    }
+    if (data.styles && data.styles.length) {
+        headerHtml += `<div class="music-styles-line">${data.styles.slice(0, 5).join(' · ')}</div>`;
+    }
+    if (data.country && data.country.length) {
+        headerHtml += `<div class="music-meta-line">${data.country.join(', ')}</div>`;
+    }
+    if (data.summary) {
+        const bio = data.summary.length > 200 ? data.summary.substring(0, 200) + '...' : data.summary;
+        headerHtml += `<div class="music-bio">${bio}</div>`;
+    }
+    header.innerHTML = headerHtml;
+
+    // Albums and tracks
+    const tracksEl = document.getElementById('music-detail-tracks');
     let html = '';
-    for (const album of data.albums) {
-        html += `<div class="music-album-header">${album.name}${album.year ? ` (${album.year})` : ''}</div>`;
-        for (const t of album.tracks) {
-            const dur = t.duration ? `${Math.floor(t.duration / 60)}:${String(Math.floor(t.duration % 60)).padStart(2, '0')}` : '';
+    for (const album of (data.albums || [])) {
+        const artUrl = album.thumb_url || '';
+        html += `<div class="music-album-header">
+            ${artUrl ? `<img class="music-album-art" src="${artUrl}" onerror="this.style.display='none'" />` : ''}
+            <div>
+                <span class="music-album-title">${album.title}</span>
+                ${album.year ? `<span class="music-album-year">${album.year}</span>` : ''}
+                ${album.studio ? `<span class="music-album-label">${album.studio}</span>` : ''}
+            </div>
+        </div>`;
+
+        for (const t of (album.tracks || [])) {
+            const vibeChips = (t.vibes || []).map(v => `<span class="vibe-chip vibe-sm">${v}</span>`).join('');
             html += `
                 <div class="music-track">
                     <span class="music-track-num">${t.track_num || ''}</span>
-                    <span class="music-track-title">${t.title}</span>
-                    <span class="music-track-dur">${dur}</span>
-                    <button class="btn btn-sm btn-accent music-split-btn" onclick="splitTrack('${t.path.replace(/'/g, "\\'")}', this)" title="Split into stems">✂ Split</button>
+                    <div class="music-track-info">
+                        <span class="music-track-title">${t.title}</span>
+                        ${vibeChips ? `<div class="music-track-vibes">${vibeChips}</div>` : ''}
+                    </div>
+                    <span class="music-track-dur">${t.duration_str || ''}</span>
+                    <button class="btn btn-sm btn-accent music-split-btn"
+                            onclick="splitTrack(${t.id}, this)" title="Split into stems">Split</button>
                 </div>
             `;
         }
     }
-    tracks.innerHTML = html;
+    tracksEl.innerHTML = html;
 }
 
 function backToMusicBrowse() {
     document.getElementById('music-detail').classList.add('hidden');
-    document.getElementById(`music-tab-${musicCurrentTab}`).classList.remove('hidden');
+    document.getElementById('music-tag-results').classList.add('hidden');
+    const tabEl = document.getElementById(`music-tab-${musicCurrentTab}`);
+    if (tabEl) tabEl.classList.remove('hidden');
 }
 
 let searchTimeout = null;
@@ -964,66 +1472,53 @@ async function searchMyMusic(query) {
     if (searchTimeout) clearTimeout(searchTimeout);
     if (!query || query.length < 2) return;
 
-    // Switch to search tab
     switchMusicTab('search');
     document.getElementById('music-search').value = query;
 
     searchTimeout = setTimeout(async () => {
         const data = await api(`/api/music/search?q=${encodeURIComponent(query)}`);
-        const el = document.getElementById('music-search-results');
-        if (!data.results.length) {
-            el.innerHTML = '<div style="padding:16px;color:var(--text-dim)">No results</div>';
-            return;
-        }
-        el.innerHTML = data.results.map(r => `
-            <div class="music-track">
-                <div>
-                    <span class="music-track-title">${r.title || 'Unknown'}</span>
-                    <span class="music-item-meta">${r.artist || ''} · ${r.album || ''} · ${r.genre || ''}</span>
-                </div>
-                <button class="btn btn-sm btn-accent music-split-btn" onclick="splitTrack('${r.path.replace(/'/g, "\\'")}', this)" title="Split into stems">✂ Split</button>
-            </div>
-        `).join('');
+        renderTrackResults(data.results || [], 'music-search-results');
     }, 300);
 }
 
-async function splitTrack(path, btn) {
+async function splitTrack(trackId, btn) {
     if (btn) {
         btn.disabled = true;
-        btn.textContent = '⏳ Splitting...';
+        btn.textContent = 'Splitting...';
     }
 
     try {
         const data = await api('/api/music/split', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path}),
+            body: JSON.stringify({track_id: trackId}),
         });
 
         if (data.error) {
-            showToast(`Split error: ${data.error}`, 'error');
-            if (btn) { btn.disabled = false; btn.textContent = '✂ Split'; }
+            toast(`Split error: ${data.error}`, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
             return;
         }
 
-        // Poll for completion
         const jobId = data.job_id;
+        toast(`Splitting: ${data.track}...`);
+
         const poll = setInterval(async () => {
             const status = await api(`/api/music/split/status/${jobId}`);
             if (status.status === 'done') {
                 clearInterval(poll);
                 const stems = status.result.stems;
-                showToast(`✓ Split into ${stems.length} stems (${status.result.source})`, 'success');
-                if (btn) { btn.disabled = false; btn.textContent = '✓ Done'; }
+                toast(`Split into ${stems.length} stems (${status.result.source})`, 'success');
+                if (btn) { btn.disabled = false; btn.textContent = 'Done'; }
             } else if (status.status === 'error') {
                 clearInterval(poll);
-                showToast(`Split error: ${status.result}`, 'error');
-                if (btn) { btn.disabled = false; btn.textContent = '✂ Split'; }
+                toast(`Split error: ${status.result}`, 'error');
+                if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
             }
         }, 2000);
     } catch (e) {
-        showToast(`Split failed: ${e.message}`, 'error');
-        if (btn) { btn.disabled = false; btn.textContent = '✂ Split'; }
+        toast(`Split failed: ${e.message}`, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
     }
 }
 

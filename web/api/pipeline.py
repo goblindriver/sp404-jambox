@@ -1,5 +1,5 @@
-"""Pipeline control API — fetch, build, deploy."""
-import os, sys, threading, time, subprocess, uuid
+"""Pipeline control API — fetch, build, deploy, watcher."""
+import os, sys, threading, time, subprocess, uuid, json
 from flask import Blueprint, jsonify, request, current_app, Response
 
 pipeline_bp = Blueprint('pipeline', __name__)
@@ -154,6 +154,71 @@ def ingest_downloads():
         return jsonify({'ok': False, 'error': 'Ingest timed out (5min limit)'}), 500
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@pipeline_bp.route('/pipeline/watcher/start', methods=['POST'])
+def watcher_start():
+    """Start the background file watcher."""
+    try:
+        sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
+        import ingest_downloads as ingest
+        # Reload to get fresh module state if restarting
+        import importlib
+        importlib.reload(ingest)
+
+        if ingest.get_watcher_state()['running']:
+            return jsonify({'ok': True, 'message': 'Watcher already running'})
+
+        success = ingest.start_watcher()
+        if success:
+            return jsonify({'ok': True, 'message': 'Watcher started'})
+        else:
+            return jsonify({'ok': False, 'error': 'Failed to start watcher'}), 500
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@pipeline_bp.route('/pipeline/watcher/stop', methods=['POST'])
+def watcher_stop():
+    """Stop the background file watcher."""
+    try:
+        sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
+        import ingest_downloads as ingest
+
+        ingest.stop_watcher()
+        return jsonify({'ok': True, 'message': 'Watcher stopped'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@pipeline_bp.route('/pipeline/watcher/status')
+def watcher_status():
+    """Get watcher state and recent activity."""
+    try:
+        sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
+        import ingest_downloads as ingest
+
+        state = ingest.get_watcher_state()
+
+        # Also read from ingest log for historical data
+        log_path = os.path.join(os.path.expanduser("~/Music/SP404-Sample-Library"), "_ingest_log.json")
+        log = []
+        if os.path.exists(log_path):
+            try:
+                with open(log_path) as f:
+                    log = json.load(f)
+                # Return last 20 entries
+                log = log[-20:]
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        return jsonify({
+            'running': state['running'],
+            'recent': state['recent'][-20:] if state['recent'] else log,
+            'stats': state['stats'],
+        })
+    except Exception as e:
+        return jsonify({'running': False, 'recent': [], 'stats': {}, 'error': str(e)})
 
 
 @pipeline_bp.route('/pipeline/deploy', methods=['POST'])

@@ -1,21 +1,39 @@
 #!/usr/bin/env python3
 """
 Ingest sample packs from ~/Downloads into the SP-404 sample library.
-1. Find sample pack folders (RAR archives or already-extracted WAVs)
-2. Extract RAR archives
-3. Categorize WAVs by filename/folder keywords
-4. Copy to ~/Music/SP404-Sample-Library/ in the right category
 
-Usage:
-    python scripts/ingest_downloads.py              # process all packs
+Modes:
+    python scripts/ingest_downloads.py              # one-shot: process everything now
     python scripts/ingest_downloads.py --dry-run     # show what would happen
-    python scripts/ingest_downloads.py --watch       # keep watching for new packs
+    python scripts/ingest_downloads.py --watch       # background watcher daemon
+
+The watcher uses watchdog to monitor ~/Downloads for new audio files and
+sample packs. It waits for downloads to finish (stable file size), ingests
+them, auto-tags with tag_library.py --update, and logs everything.
 """
-import os, sys, re, shutil, glob, time, argparse, subprocess
+import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading
+from datetime import datetime
 
 DOWNLOADS = os.path.expanduser("~/Downloads")
 LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
 RAW_ARCHIVE = os.path.join(LIBRARY, "_RAW-DOWNLOADS")
+INGEST_LOG = os.path.join(LIBRARY, "_ingest_log.json")
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# File extensions we care about
+AUDIO_EXTENSIONS = {'.wav', '.mp3', '.aiff', '.aif', '.flac', '.ogg'}
+ARCHIVE_EXTENSIONS = {'.zip', '.rar', '.7z'}
+ALLOWED_EXTENSIONS = AUDIO_EXTENSIONS | ARCHIVE_EXTENSIONS
+
+# Extensions to always ignore
+IGNORE_EXTENSIONS = {
+    '.dmg', '.pkg', '.app', '.exe', '.msi', '.iso',  # installers
+    '.pdf', '.doc', '.docx', '.txt', '.md',           # documents
+    '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', # images
+    '.mp4', '.mov', '.avi', '.mkv',                    # video
+    '.torrent', '.crdownload', '.part',                # incomplete
+    '.ds_store',
+}
 
 # Patterns that identify sample pack folders (vs. music albums)
 SAMPLE_PACK_SUFFIXES = [
@@ -27,15 +45,64 @@ SAMPLE_PACK_SUFFIXES = [
 # Already-processed marker file
 MARKER = '.sp404-ingested'
 
+# Watcher state — shared with web API
+_watcher_state = {
+    'running': False,
+    'recent': [],       # last 50 ingested items
+    'stats': {'files': 0, 'packs': 0, 'since': None},
+}
+_watcher_lock = threading.Lock()
+_watcher_thread = None
+_watcher_stop = threading.Event()
+
+
+def get_watcher_state():
+    """Get current watcher state (thread-safe)."""
+    with _watcher_lock:
+        return dict(_watcher_state)
+
+
+def _log_ingest(source_name, num_samples, categories, source_type='pack'):
+    """Write to ingest log and update watcher state."""
+    entry = {
+        'timestamp': datetime.now().isoformat(),
+        'source': source_name,
+        'type': source_type,
+        'samples': num_samples,
+        'categories': categories,
+    }
+
+    # Append to log file
+    log = []
+    if os.path.exists(INGEST_LOG):
+        try:
+            with open(INGEST_LOG) as f:
+                log = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            log = []
+    log.append(entry)
+    # Keep last 500 entries
+    log = log[-500:]
+    with open(INGEST_LOG, 'w') as f:
+        json.dump(log, f, indent=2)
+
+    # Update watcher state
+    with _watcher_lock:
+        _watcher_state['recent'].append(entry)
+        _watcher_state['recent'] = _watcher_state['recent'][-50:]
+        _watcher_state['stats']['files'] += num_samples
+        if source_type == 'pack':
+            _watcher_state['stats']['packs'] += 1
+
 
 def is_sample_pack(dirname):
     """Check if a directory name looks like a sample pack."""
     for suffix in SAMPLE_PACK_SUFFIXES:
         if suffix in dirname:
             return True
-    # Also match folders that are clearly sample-related
     name_lower = dirname.lower()
-    if any(kw in name_lower for kw in ['prime loops', 'sample magic', 'loopmasters']):
+    if any(kw in name_lower for kw in ['prime loops', 'sample magic', 'loopmasters',
+                                        'sampleradar', 'musicradar', 'samples']):
         return True
     return False
 
@@ -43,6 +110,38 @@ def is_sample_pack(dirname):
 def has_rar_files(folder):
     """Check if folder contains RAR archives."""
     return any(f.endswith('.rar') for f in os.listdir(folder))
+
+
+def extract_archive(filepath, dest):
+    """Extract zip/rar archive to destination."""
+    os.makedirs(dest, exist_ok=True)
+    ext = os.path.splitext(filepath)[1].lower()
+
+    if ext == '.zip':
+        print(f"  Extracting ZIP: {os.path.basename(filepath)}...")
+        result = subprocess.run(
+            ['unzip', '-o', '-q', filepath, '-d', dest],
+            capture_output=True, text=True
+        )
+    elif ext == '.rar':
+        print(f"  Extracting RAR: {os.path.basename(filepath)}...")
+        result = subprocess.run(
+            ['/opt/homebrew/bin/unar', '-o', dest, '-f', filepath],
+            capture_output=True, text=True
+        )
+    elif ext == '.7z':
+        print(f"  Extracting 7z: {os.path.basename(filepath)}...")
+        result = subprocess.run(
+            ['7z', 'x', filepath, f'-o{dest}', '-y'],
+            capture_output=True, text=True
+        )
+    else:
+        return False
+
+    if result.returncode != 0:
+        print(f"  Extract failed: {result.stderr[:200]}")
+        return False
+    return True
 
 
 def extract_rar(folder, dest):
@@ -54,17 +153,7 @@ def extract_rar(folder, dest):
             break
     if not rar_file:
         return False
-
-    os.makedirs(dest, exist_ok=True)
-    print(f"  Extracting: {os.path.basename(rar_file)}...")
-    result = subprocess.run(
-        ['/opt/homebrew/bin/unar', '-o', dest, '-f', rar_file],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        print(f"  Extract failed: {result.stderr[:200]}")
-        return False
-    return True
+    return extract_archive(rar_file, dest)
 
 
 def categorize_wav(filepath, pack_name):
@@ -149,16 +238,103 @@ def categorize_wav(filepath, pack_name):
 
 def make_prefix(pack_name):
     """Create a short prefix from the pack name for organized files."""
-    # Clean up scene naming: "Black.Octopus.Sound.Delicious.House.Drums" -> "BOS-House-Drums"
     clean = pack_name.split('.WAV')[0].split('.MULTi')[0]
     clean = clean.replace('.', ' ').replace('-', ' ').replace('_', ' ')
     words = clean.split()
-    # Remove common filler words
     skip = {'wav', 'maschine', 'expansion', 'sonitus', 'loops', 'samples', 'and', 'the', 'for'}
     words = [w for w in words if w.lower() not in skip]
     if len(words) > 4:
         words = words[:4]
     return '-'.join(words)
+
+
+def read_source_context(filepath):
+    """Check for a _SOURCE.txt alongside a file (from Cowork)."""
+    base = os.path.splitext(filepath)[0]
+    for suffix in ['_SOURCE.txt', '_source.txt', '.source.txt']:
+        source_path = base + suffix
+        if os.path.exists(source_path):
+            try:
+                with open(source_path) as f:
+                    return f.read().strip()
+            except IOError:
+                pass
+    # Also check same directory for a general _SOURCE.txt
+    dir_source = os.path.join(os.path.dirname(filepath), '_SOURCE.txt')
+    if os.path.exists(dir_source):
+        try:
+            with open(dir_source) as f:
+                return f.read().strip()
+        except IOError:
+            pass
+    return None
+
+
+def ingest_single_file(filepath, dry_run=False):
+    """Ingest a single audio file (not a pack) into the library."""
+    fname = os.path.basename(filepath)
+    ext = os.path.splitext(fname)[1].lower()
+
+    if ext not in AUDIO_EXTENSIONS:
+        return 0
+
+    # Read any source context from Cowork
+    source_context = read_source_context(filepath)
+
+    category = categorize_wav(filepath, fname)
+    dest_dir = os.path.join(LIBRARY, category)
+    dest_path = os.path.join(dest_dir, fname)
+
+    if os.path.exists(dest_path):
+        print(f"  Already exists: {category}/{fname}")
+        return 0
+
+    if dry_run:
+        print(f"  Would copy: {fname} → {category}")
+        return 1
+
+    os.makedirs(dest_dir, exist_ok=True)
+    shutil.copy2(filepath, dest_path)
+    print(f"  → {category}/{fname}")
+
+    # Store source context if available
+    if source_context:
+        _store_source_context(dest_path, source_context)
+
+    # Move original out of Downloads
+    archive_dest = os.path.join(RAW_ARCHIVE, fname)
+    if filepath.startswith(DOWNLOADS):
+        try:
+            shutil.move(filepath, archive_dest)
+            # Also move source file if it exists
+            for suffix in ['_SOURCE.txt', '_source.txt', '.source.txt']:
+                src = os.path.splitext(filepath)[0] + suffix
+                if os.path.exists(src):
+                    shutil.move(src, os.path.join(RAW_ARCHIVE, os.path.basename(src)))
+        except Exception as e:
+            print(f"  Could not move: {e}")
+
+    _log_ingest(fname, 1, {category: 1}, source_type='file')
+    return 1
+
+
+def _store_source_context(wav_path, context):
+    """Store Cowork source context in _tags.json for a file."""
+    tags_path = os.path.join(LIBRARY, '_tags.json')
+    if not os.path.exists(tags_path):
+        return
+    try:
+        with open(tags_path) as f:
+            tags = json.load(f)
+        rel = os.path.relpath(wav_path, LIBRARY)
+        if rel in tags:
+            tags[rel]['cowork_source'] = context
+        else:
+            tags[rel] = {'cowork_source': context}
+        with open(tags_path, 'w') as f:
+            json.dump(tags, f, indent=2)
+    except (json.JSONDecodeError, IOError):
+        pass
 
 
 def ingest_pack(pack_dir, dry_run=False):
@@ -187,18 +363,21 @@ def ingest_pack(pack_dir, dry_run=False):
         else:
             print(f"  Already extracted to: {extract_dir}")
 
-    # Step 2: Find all WAV files
+    # Step 2: Find all audio files
     wav_files = []
     for root, dirs, files in os.walk(extract_dir):
         for f in files:
-            if f.lower().endswith(('.wav', '.aif', '.aiff')):
+            if os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS:
                 wav_files.append(os.path.join(root, f))
 
     if not wav_files:
-        print(f"  No WAV files found")
+        print(f"  No audio files found")
         return 0
 
     print(f"  Found {len(wav_files)} audio files")
+
+    # Read source context
+    source_context = read_source_context(pack_dir)
 
     # Step 3: Categorize and copy
     prefix = make_prefix(pack_name)
@@ -219,6 +398,9 @@ def ingest_pack(pack_dir, dry_run=False):
             shutil.copy2(wav, dest_path)
             counts[category] = counts.get(category, 0) + 1
 
+            if source_context:
+                _store_source_context(dest_path, source_context)
+
     for cat in sorted(counts):
         print(f"  → {cat}: {counts[cat]} files")
     total = sum(counts.values())
@@ -229,7 +411,7 @@ def ingest_pack(pack_dir, dry_run=False):
         with open(marker_path, 'w') as f:
             f.write(f"Ingested {total} files at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-        # Move the processed pack folder to _RAW-DOWNLOADS to declutter ~/Downloads
+        # Move the processed pack folder to _RAW-DOWNLOADS
         archive_dest = os.path.join(RAW_ARCHIVE, pack_name)
         if pack_dir.startswith(DOWNLOADS) and not os.path.exists(archive_dest):
             try:
@@ -237,6 +419,88 @@ def ingest_pack(pack_dir, dry_run=False):
                 print(f"  Moved to: {archive_dest}")
             except Exception as e:
                 print(f"  Could not move pack: {e}")
+
+        _log_ingest(pack_name, total, counts, source_type='pack')
+
+    return total
+
+
+def ingest_archive_file(filepath, dry_run=False):
+    """Ingest a standalone archive file (.zip, .rar, .7z)."""
+    fname = os.path.basename(filepath)
+    name_no_ext = os.path.splitext(fname)[0]
+
+    # Extract to temp location
+    extract_dest = os.path.join(RAW_ARCHIVE, name_no_ext)
+    if os.path.exists(extract_dest):
+        print(f"  Already extracted: {name_no_ext}")
+        return 0
+
+    print(f"\n{'='*60}")
+    print(f"Processing archive: {fname}")
+
+    if dry_run:
+        print(f"  Would extract to: {extract_dest}")
+        return 1  # Approximate
+
+    if not extract_archive(filepath, extract_dest):
+        return 0
+
+    # Find audio files in extracted content
+    wav_files = []
+    for root, dirs, files in os.walk(extract_dest):
+        for f in files:
+            if os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS:
+                wav_files.append(os.path.join(root, f))
+
+    if not wav_files:
+        print(f"  No audio files in archive")
+        return 0
+
+    print(f"  Found {len(wav_files)} audio files")
+
+    source_context = read_source_context(filepath)
+    prefix = make_prefix(name_no_ext)
+    counts = {}
+
+    for wav in wav_files:
+        category = categorize_wav(wav, name_no_ext)
+        dest_dir = os.path.join(LIBRARY, category)
+        wav_fname = os.path.basename(wav)
+        dest_path = os.path.join(dest_dir, f"{prefix}_{wav_fname}")
+
+        if os.path.exists(dest_path):
+            continue
+
+        if dry_run:
+            counts[category] = counts.get(category, 0) + 1
+        else:
+            os.makedirs(dest_dir, exist_ok=True)
+            shutil.copy2(wav, dest_path)
+            counts[category] = counts.get(category, 0) + 1
+            if source_context:
+                _store_source_context(dest_path, source_context)
+
+    for cat in sorted(counts):
+        print(f"  → {cat}: {counts[cat]} files")
+    total = sum(counts.values())
+    print(f"  Total: {total} files {'would be ' if dry_run else ''}organized")
+
+    # Move original archive to _RAW-DOWNLOADS
+    if not dry_run and filepath.startswith(DOWNLOADS):
+        try:
+            shutil.move(filepath, os.path.join(RAW_ARCHIVE, fname))
+            print(f"  Moved archive to _RAW-DOWNLOADS")
+            # Also move source file if exists
+            for suffix in ['_SOURCE.txt', '_source.txt', '.source.txt']:
+                src = os.path.splitext(filepath)[0] + suffix
+                if os.path.exists(src):
+                    shutil.move(src, os.path.join(RAW_ARCHIVE, os.path.basename(src)))
+        except Exception as e:
+            print(f"  Could not move: {e}")
+
+    if total > 0:
+        _log_ingest(fname, total, counts, source_type='pack')
 
     return total
 
@@ -253,36 +517,291 @@ def find_sample_packs():
     return packs
 
 
+def run_auto_tag():
+    """Run tag_library.py --update on new files."""
+    tag_script = os.path.join(SCRIPTS_DIR, 'tag_library.py')
+    if not os.path.exists(tag_script):
+        print("  tag_library.py not found, skipping auto-tag")
+        return
+    print("  Auto-tagging new files...")
+    try:
+        result = subprocess.run(
+            [sys.executable, tag_script, '--update'],
+            capture_output=True, text=True, timeout=120,
+            env={**os.environ, 'PATH': f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"},
+        )
+        if result.returncode == 0:
+            # Count tagged
+            for line in result.stdout.split('\n'):
+                if 'tagged' in line.lower() or 'updated' in line.lower():
+                    print(f"  {line.strip()}")
+        else:
+            print(f"  Tag update warning: {result.stderr[:200]}")
+    except subprocess.TimeoutExpired:
+        print("  Tag update timed out (2min)")
+    except Exception as e:
+        print(f"  Tag update error: {e}")
+
+
+def wait_for_stable(filepath, poll_interval=2.0, stable_count=3):
+    """Wait for a file to stop growing (download complete)."""
+    last_size = -1
+    stable = 0
+    for _ in range(60):  # Max ~2 minutes
+        try:
+            size = os.path.getsize(filepath)
+        except OSError:
+            return False  # File disappeared
+
+        if size == last_size and size > 0:
+            stable += 1
+            if stable >= stable_count:
+                return True
+        else:
+            stable = 0
+        last_size = size
+        time.sleep(poll_interval)
+    return False
+
+
+def should_ignore(filepath):
+    """Check if a file should be ignored."""
+    fname = os.path.basename(filepath)
+    ext = os.path.splitext(fname)[1].lower()
+
+    # Ignore by extension
+    if ext in IGNORE_EXTENSIONS:
+        return True
+
+    # Not in our allowlist
+    if ext not in ALLOWED_EXTENSIONS:
+        return True
+
+    # Hidden files
+    if fname.startswith('.'):
+        return True
+
+    # Already in _RAW-DOWNLOADS
+    if RAW_ARCHIVE in filepath:
+        return True
+
+    return False
+
+
+# ── Watchdog Watcher ──
+
+def start_watcher():
+    """Start the background file watcher daemon."""
+    global _watcher_thread
+    try:
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler
+    except ImportError:
+        print("ERROR: watchdog not installed. Run: pip install watchdog")
+        return False
+
+    if _watcher_state['running']:
+        print("Watcher already running")
+        return True
+
+    _watcher_stop.clear()
+
+    class IngestHandler(FileSystemEventHandler):
+        """Handle new files appearing in ~/Downloads."""
+
+        def __init__(self):
+            super().__init__()
+            self._pending = {}  # filepath -> first_seen_time
+            self._processed = set()
+
+        def on_created(self, event):
+            if event.is_directory:
+                return
+            filepath = event.src_path
+            if should_ignore(filepath):
+                return
+            self._pending[filepath] = time.time()
+
+        def on_moved(self, event):
+            """Handle files moved into Downloads (e.g., browser moves .crdownload → .zip)."""
+            if event.is_directory:
+                return
+            filepath = event.dest_path
+            if should_ignore(filepath):
+                return
+            self._pending[filepath] = time.time()
+
+        def process_pending(self):
+            """Check pending files and ingest stable ones."""
+            to_remove = []
+            ingested_any = False
+
+            for filepath, first_seen in list(self._pending.items()):
+                if filepath in self._processed:
+                    to_remove.append(filepath)
+                    continue
+
+                if not os.path.exists(filepath):
+                    to_remove.append(filepath)
+                    continue
+
+                # Wait at least 5 seconds before checking
+                if time.time() - first_seen < 5:
+                    continue
+
+                # Check if file is stable
+                try:
+                    size1 = os.path.getsize(filepath)
+                    time.sleep(2)
+                    size2 = os.path.getsize(filepath)
+                except OSError:
+                    to_remove.append(filepath)
+                    continue
+
+                if size1 != size2 or size1 == 0:
+                    continue  # Still downloading
+
+                # File is stable — ingest it
+                fname = os.path.basename(filepath)
+                ext = os.path.splitext(fname)[1].lower()
+                print(f"\n[WATCHER] New file ready: {fname}")
+
+                if ext in ARCHIVE_EXTENSIONS:
+                    count = ingest_archive_file(filepath)
+                elif ext in AUDIO_EXTENSIONS:
+                    count = ingest_single_file(filepath)
+                else:
+                    count = 0
+
+                if count > 0:
+                    ingested_any = True
+                    print(f"[WATCHER] Ingested {count} sample(s) from {fname}")
+
+                self._processed.add(filepath)
+                to_remove.append(filepath)
+
+            for fp in to_remove:
+                self._pending.pop(fp, None)
+
+            # Auto-tag after ingesting
+            if ingested_any:
+                run_auto_tag()
+
+    handler = IngestHandler()
+    observer = Observer()
+    observer.schedule(handler, DOWNLOADS, recursive=False)
+
+    def watcher_loop():
+        observer.start()
+        with _watcher_lock:
+            _watcher_state['running'] = True
+            _watcher_state['stats']['since'] = datetime.now().isoformat()
+        print(f"[WATCHER] Monitoring {DOWNLOADS} for new samples...")
+
+        try:
+            while not _watcher_stop.is_set():
+                handler.process_pending()
+                _watcher_stop.wait(timeout=3)
+        except Exception as e:
+            print(f"[WATCHER] Error: {e}")
+        finally:
+            observer.stop()
+            observer.join()
+            with _watcher_lock:
+                _watcher_state['running'] = False
+            print("[WATCHER] Stopped")
+
+    _watcher_thread = threading.Thread(target=watcher_loop, daemon=True)
+    _watcher_thread.start()
+    return True
+
+
+def stop_watcher():
+    """Stop the background file watcher."""
+    if not _watcher_state['running']:
+        return
+    _watcher_stop.set()
+    if _watcher_thread:
+        _watcher_thread.join(timeout=10)
+    with _watcher_lock:
+        _watcher_state['running'] = False
+
+
+def one_shot_ingest(dry_run=False):
+    """Run a single ingest pass (original behavior)."""
+    os.makedirs(LIBRARY, exist_ok=True)
+    os.makedirs(RAW_ARCHIVE, exist_ok=True)
+
+    # Process sample pack folders
+    packs = find_sample_packs()
+    total = 0
+    pack_count = 0
+
+    if packs:
+        for pack in packs:
+            count = ingest_pack(pack, dry_run=dry_run)
+            total += count
+            if count > 0:
+                pack_count += 1
+
+    # Also check for standalone audio files and archives in Downloads
+    for item in sorted(os.listdir(DOWNLOADS)):
+        filepath = os.path.join(DOWNLOADS, item)
+        if os.path.isdir(filepath):
+            continue
+        if should_ignore(filepath):
+            continue
+
+        ext = os.path.splitext(item)[1].lower()
+        if ext in ARCHIVE_EXTENSIONS:
+            total += ingest_archive_file(filepath, dry_run=dry_run)
+            pack_count += 1
+        elif ext in AUDIO_EXTENSIONS:
+            total += ingest_single_file(filepath, dry_run=dry_run)
+
+    if total == 0 and not packs:
+        print("No sample packs or audio files found in Downloads.")
+    else:
+        print(f"\n{'='*60}")
+        print(f"Processed {pack_count} packs, {total} files organized")
+        print(f"Library: {LIBRARY}")
+
+        # Auto-tag new files
+        if total > 0 and not dry_run:
+            run_auto_tag()
+
+    return total
+
+
 def main():
     parser = argparse.ArgumentParser(description='Ingest sample packs from Downloads')
     parser.add_argument('--dry-run', action='store_true', help='Show what would happen')
-    parser.add_argument('--watch', action='store_true', help='Keep watching for new packs')
-    parser.add_argument('--interval', type=int, default=60, help='Watch interval in seconds')
+    parser.add_argument('--watch', action='store_true', help='Run as background watcher daemon')
     args = parser.parse_args()
 
     os.makedirs(LIBRARY, exist_ok=True)
     os.makedirs(RAW_ARCHIVE, exist_ok=True)
 
-    while True:
-        packs = find_sample_packs()
-        if not packs:
-            if not args.watch:
-                print("No sample packs found in Downloads.")
-                break
-        else:
-            total = 0
-            for pack in packs:
-                total += ingest_pack(pack, dry_run=args.dry_run)
+    if args.watch:
+        # Watcher mode — run one pass first, then watch
+        print("Running initial ingest pass...")
+        one_shot_ingest(dry_run=args.dry_run)
 
-            print(f"\n{'='*60}")
-            print(f"Processed {len(packs)} packs, {total} files organized")
-            print(f"Library: {LIBRARY}")
+        if args.dry_run:
+            print("\nDry run — not starting watcher")
+            return
 
-        if not args.watch:
-            break
+        if not start_watcher():
+            sys.exit(1)
 
-        print(f"\nWatching for new packs (every {args.interval}s)... Ctrl+C to stop")
-        time.sleep(args.interval)
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nStopping watcher...")
+            stop_watcher()
+    else:
+        one_shot_ingest(dry_run=args.dry_run)
 
 
 if __name__ == '__main__':

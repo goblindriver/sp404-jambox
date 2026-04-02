@@ -25,6 +25,12 @@
         <!-- Filled by JS -->
     </nav>
 
+    <div class="set-bar" id="set-bar">
+        <span class="set-bar-label">Set:</span>
+        <select id="set-selector" class="set-selector" onchange="switchSet(this.value)"></select>
+        <button class="btn btn-sm" onclick="saveCurrentSet()" title="Save current config as a new set">Save Set</button>
+    </div>
+
     <div class="bank-info" id="bank-info">
         <span id="bank-name" class="bank-name"></span>
         <span id="bank-meta" class="bank-meta"></span>
@@ -47,6 +53,7 @@
             </div>
             <div class="bank-edit-footer">
                 <button id="btn-save-bank" class="btn btn-accent">Save</button>
+                <button class="btn" onclick="saveAsPreset()" title="Save this bank as a reusable preset">Save as Preset</button>
             </div>
         </div>
     </div>
@@ -99,22 +106,63 @@
         </div>
     </aside>
 
-    <!-- My Music Sidebar -->
+    <!-- Preset Browser Sidebar -->
+    <aside id="preset-sidebar" class="sidebar hidden">
+        <div class="sidebar-header">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="browse" onclick="switchPresetTab('browse')">Browse</button>
+                <button class="sidebar-tab" data-tab="search" onclick="switchPresetTab('search')">Search</button>
+            </div>
+            <button class="detail-close" onclick="closePresetSidebar()">&times;</button>
+        </div>
+        <div class="sidebar-content">
+            <!-- Category filter pills -->
+            <div id="preset-categories" class="preset-categories"></div>
+
+            <div id="preset-tab-browse" class="sidebar-tab-content">
+                <div id="preset-list" class="preset-list"></div>
+            </div>
+            <div id="preset-tab-search" class="sidebar-tab-content hidden">
+                <div class="search-box">
+                    <input type="text" id="preset-search" placeholder="Search presets..." oninput="searchPresets(this.value)" />
+                </div>
+                <div id="preset-search-results" class="preset-list"></div>
+            </div>
+            <!-- Preset preview -->
+            <div id="preset-preview" class="preset-preview hidden">
+                <button class="btn btn-sm" onclick="closePresetPreview()" style="margin-bottom:8px">&larr; Back</button>
+                <div id="preset-preview-header" class="preset-preview-header"></div>
+                <div id="preset-preview-pads" class="preset-preview-pads"></div>
+                <div class="preset-preview-actions">
+                    <button class="btn btn-accent" id="btn-load-preset" onclick="loadPreviewedPreset()">Load to Current Bank</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- My Music Sidebar (Plex-powered) -->
     <aside id="music-sidebar" class="sidebar hidden">
         <div class="sidebar-header">
             <div class="sidebar-tabs">
                 <button class="sidebar-tab active" data-tab="artists" onclick="switchMusicTab('artists')">Artists</button>
-                <button class="sidebar-tab" data-tab="genres" onclick="switchMusicTab('genres')">Genres</button>
+                <button class="sidebar-tab" data-tab="moods" onclick="switchMusicTab('moods')">Moods</button>
+                <button class="sidebar-tab" data-tab="styles" onclick="switchMusicTab('styles')">Styles</button>
                 <button class="sidebar-tab" data-tab="search" onclick="switchMusicTab('search')">Search</button>
             </div>
             <button id="music-sidebar-close" class="detail-close" onclick="closeMusicSidebar()">&times;</button>
         </div>
         <div id="music-sidebar-content" class="sidebar-content">
+            <!-- Library status bar -->
+            <div id="music-status-bar" class="music-status-bar"></div>
+
             <div id="music-tab-artists" class="sidebar-tab-content">
                 <div id="music-artists-list" class="music-browse-list"></div>
             </div>
-            <div id="music-tab-genres" class="sidebar-tab-content hidden">
-                <div id="music-genres-list" class="music-browse-list"></div>
+            <div id="music-tab-moods" class="sidebar-tab-content hidden">
+                <div id="music-moods-list" class="music-browse-list music-tag-cloud"></div>
+            </div>
+            <div id="music-tab-styles" class="sidebar-tab-content hidden">
+                <div id="music-styles-list" class="music-browse-list music-tag-cloud"></div>
             </div>
             <div id="music-tab-search" class="sidebar-tab-content hidden">
                 <div class="search-box">
@@ -124,19 +172,40 @@
             </div>
             <!-- Artist detail / track list -->
             <div id="music-detail" class="sidebar-tab-content hidden">
-                <button class="btn btn-sm" onclick="backToMusicBrowse()" style="margin-bottom:8px">← Back</button>
-                <h4 id="music-detail-title" style="color:var(--accent);margin-bottom:8px"></h4>
+                <button class="btn btn-sm" onclick="backToMusicBrowse()" style="margin-bottom:8px">&larr; Back</button>
+                <div id="music-detail-header" class="music-detail-header"></div>
                 <div id="music-detail-tracks" class="music-browse-list"></div>
+            </div>
+            <!-- Mood/Style results -->
+            <div id="music-tag-results" class="sidebar-tab-content hidden">
+                <button class="btn btn-sm" onclick="backToMusicBrowse()" style="margin-bottom:8px">&larr; Back</button>
+                <h4 id="music-tag-results-title" style="color:var(--accent);margin-bottom:8px"></h4>
+                <div id="music-tag-results-list" class="music-browse-list"></div>
             </div>
         </div>
     </aside>
+
+    <!-- Watcher Activity Feed -->
+    <div id="watcher-feed" class="watcher-feed hidden">
+        <div class="watcher-feed-header">
+            <h4>Ingest Activity</h4>
+            <button class="detail-close" onclick="toggleWatcherFeed()">&times;</button>
+        </div>
+        <div id="watcher-feed-list" class="watcher-feed-list">
+            <div class="watcher-empty">No recent activity</div>
+        </div>
+    </div>
 
     <footer class="action-bar">
         <div class="actions-left">
             <button id="btn-help" class="btn btn-help" title="How it works">?</button>
             <button id="btn-library" class="btn">Library</button>
+            <button id="btn-presets" class="btn">Presets</button>
             <button id="btn-my-music" class="btn">My Music</button>
             <button id="btn-ingest" class="btn">Ingest Downloads</button>
+            <button id="btn-watcher" class="btn btn-watcher" title="File watcher — auto-ingest from Downloads">
+                <span id="watcher-dot" class="watcher-dot"></span> Watch
+            </button>
             <button id="btn-fetch-all" class="btn btn-accent">Fetch All</button>
         </div>
         <div id="progress-bar" class="progress-bar hidden">
