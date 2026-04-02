@@ -29,8 +29,8 @@ PLEX_DB_PATH = os.path.expanduser(
     "Plug-in Support/Databases/com.plexapp.plugins.library.db"
 )
 
-# Music library section ID (discovered from schema exploration)
-MUSIC_SECTION_ID = 3
+# Music library section ID (auto-detected on first use, fallback to 3)
+MUSIC_SECTION_ID_DEFAULT = 3  # fallback if auto-detect fails
 
 # Plex metadata_type constants
 TYPE_ARTIST = 8
@@ -114,7 +114,7 @@ MOOD_TO_VIBE = {
 
 # Style → genre dimension mapping
 STYLE_TO_GENRE = {
-    'alternative/indie rock': 'rock', 'heavy metal': 'electronic',
+    'alternative/indie rock': 'rock', 'heavy metal': 'rock',
     'alternative pop/rock': 'rock', 'indie rock': 'rock',
     'alternative metal': 'rock', 'punk revival': 'rock',
     'punk/new wave': 'rock', 'hardcore punk': 'rock',
@@ -155,6 +155,23 @@ class PlexMusicDB:
                 f"Plex database not found at {self.db_path}. "
                 "Is Plex Media Server installed?"
             )
+        self._section_id = self._detect_music_section()
+
+    def _detect_music_section(self):
+        """Auto-detect the music library section ID (section_type=8 for music)."""
+        try:
+            conn = self._connect()
+            row = conn.execute("""
+                SELECT id FROM library_sections
+                WHERE section_type = 8
+                ORDER BY id LIMIT 1
+            """).fetchone()
+            conn.close()
+            if row:
+                return row['id']
+        except Exception:
+            pass
+        return MUSIC_SECTION_ID_DEFAULT
 
     def _connect(self):
         """Open a read-only connection to the Plex database."""
@@ -175,18 +192,23 @@ class PlexMusicDB:
         return [r['tag'] for r in rows]
 
     def _get_tags_bulk(self, conn, item_ids, tag_type):
-        """Get tags for multiple items at once. Returns {item_id: [tags]}."""
+        """Get tags for multiple items at once. Returns {item_id: [tags]}.
+        Chunks queries to stay within SQLite variable limits."""
         if not item_ids:
             return {}
-        placeholders = ','.join('?' * len(item_ids))
-        rows = conn.execute(f"""
-            SELECT tg.metadata_item_id, t.tag FROM tags t
-            JOIN taggings tg ON t.id = tg.tag_id
-            WHERE tg.metadata_item_id IN ({placeholders}) AND t.tag_type = ?
-        """, list(item_ids) + [tag_type]).fetchall()
         result = defaultdict(list)
-        for r in rows:
-            result[r['metadata_item_id']].append(r['tag'])
+        # SQLite has a variable limit (default 999). Chunk to be safe.
+        chunk_size = 900
+        for i in range(0, len(item_ids), chunk_size):
+            chunk = item_ids[i:i + chunk_size]
+            placeholders = ','.join('?' * len(chunk))
+            rows = conn.execute(f"""
+                SELECT tg.metadata_item_id, t.tag FROM tags t
+                JOIN taggings tg ON t.id = tg.tag_id
+                WHERE tg.metadata_item_id IN ({placeholders}) AND t.tag_type = ?
+            """, list(chunk) + [tag_type]).fetchall()
+            for r in rows:
+                result[r['metadata_item_id']].append(r['tag'])
         return dict(result)
 
     def _moods_to_vibes(self, moods):
@@ -212,7 +234,7 @@ class PlexMusicDB:
         try:
             conn = self._connect()
             conn.execute("SELECT 1 FROM library_sections WHERE id=?",
-                         (MUSIC_SECTION_ID,)).fetchone()
+                         (self._section_id,)).fetchone()
             conn.close()
             return True
         except Exception:
@@ -229,7 +251,7 @@ class PlexMusicDB:
                 row = conn.execute("""
                     SELECT COUNT(*) as c FROM metadata_items
                     WHERE library_section_id=? AND metadata_type=?
-                """, (MUSIC_SECTION_ID, mtype)).fetchone()
+                """, (self._section_id, mtype)).fetchone()
                 counts[label] = row['c']
 
             # Mood count
@@ -238,7 +260,7 @@ class PlexMusicDB:
                 JOIN taggings tg ON t.id = tg.tag_id
                 JOIN metadata_items mi ON tg.metadata_item_id = mi.id
                 WHERE mi.library_section_id=? AND t.tag_type=?
-            """, (MUSIC_SECTION_ID, TAG_MOOD)).fetchone()
+            """, (self._section_id, TAG_MOOD)).fetchone()
             counts['moods'] = row['c']
 
             # Style count
@@ -247,14 +269,14 @@ class PlexMusicDB:
                 JOIN taggings tg ON t.id = tg.tag_id
                 JOIN metadata_items mi ON tg.metadata_item_id = mi.id
                 WHERE mi.library_section_id=? AND t.tag_type=?
-            """, (MUSIC_SECTION_ID, TAG_STYLE)).fetchone()
+            """, (self._section_id, TAG_STYLE)).fetchone()
             counts['styles'] = row['c']
 
             # Root path
             row = conn.execute("""
                 SELECT root_path FROM section_locations
                 WHERE library_section_id=?
-            """, (MUSIC_SECTION_ID,)).fetchone()
+            """, (self._section_id,)).fetchone()
             counts['root_path'] = row['root_path'] if row else None
 
             return counts
@@ -278,7 +300,7 @@ class PlexMusicDB:
                 WHERE mi.library_section_id = ? AND mi.metadata_type = ?
                 GROUP BY mi.id
                 ORDER BY mi.title_sort COLLATE NOCASE
-            """, (TYPE_ALBUM, TYPE_TRACK, MUSIC_SECTION_ID, TYPE_ARTIST)).fetchall()
+            """, (TYPE_ALBUM, TYPE_TRACK, self._section_id, TYPE_ARTIST)).fetchall()
 
             artist_list = [{
                 'id': a['id'],
@@ -296,7 +318,7 @@ class PlexMusicDB:
                 JOIN metadata_items mi ON tg.metadata_item_id = mi.id
                 WHERE mi.library_section_id=? AND t.tag_type=?
                 GROUP BY t.tag ORDER BY c DESC
-            """, (MUSIC_SECTION_ID, TAG_GENRE)).fetchall()
+            """, (self._section_id, TAG_GENRE)).fetchall()
 
             # Moods (from tracks — most interesting)
             moods = conn.execute("""
@@ -307,7 +329,7 @@ class PlexMusicDB:
                 WHERE mi.library_section_id=? AND t.tag_type=?
                   AND mi.metadata_type=?
                 GROUP BY t.tag ORDER BY c DESC
-            """, (MUSIC_SECTION_ID, TAG_MOOD, TYPE_TRACK)).fetchall()
+            """, (self._section_id, TAG_MOOD, TYPE_TRACK)).fetchall()
 
             # Styles
             styles = conn.execute("""
@@ -317,7 +339,7 @@ class PlexMusicDB:
                 JOIN metadata_items mi ON tg.metadata_item_id = mi.id
                 WHERE mi.library_section_id=? AND t.tag_type=?
                 GROUP BY t.tag ORDER BY c DESC
-            """, (MUSIC_SECTION_ID, TAG_STYLE)).fetchall()
+            """, (self._section_id, TAG_STYLE)).fetchall()
 
             # Decades (tracks rarely have year, use album year)
             decades = conn.execute("""
@@ -329,7 +351,7 @@ class PlexMusicDB:
                   AND COALESCE(mi.year, album.year) IS NOT NULL
                   AND COALESCE(mi.year, album.year) >= 1900
                 GROUP BY decade ORDER BY decade
-            """, (MUSIC_SECTION_ID, TYPE_TRACK)).fetchall()
+            """, (self._section_id, TYPE_TRACK)).fetchall()
 
             return {
                 'artists': artist_list,
@@ -357,7 +379,7 @@ class PlexMusicDB:
                     SELECT * FROM metadata_items
                     WHERE library_section_id=? AND metadata_type=?
                       AND title=? COLLATE NOCASE
-                """, (MUSIC_SECTION_ID, TYPE_ARTIST, artist_name)).fetchone()
+                """, (self._section_id, TYPE_ARTIST, artist_name)).fetchone()
 
             if not artist_row:
                 return None
@@ -548,7 +570,7 @@ class PlexMusicDB:
                   AND (mi.title LIKE ? OR artist.title LIKE ?
                        OR album.title LIKE ?)
                 LIMIT ?
-            """, (MUSIC_SECTION_ID, TYPE_TRACK, q, q, q, limit)).fetchall()
+            """, (self._section_id, TYPE_TRACK, q, q, q, limit)).fetchall()
 
             for t in tracks:
                 score = 0
@@ -593,7 +615,7 @@ class PlexMusicDB:
                 WHERE mi.library_section_id=? AND mi.metadata_type=?
                   AND t.tag_type=? AND t.tag=? COLLATE NOCASE
                 LIMIT ?
-            """, (MUSIC_SECTION_ID, TYPE_TRACK, TAG_MOOD, mood, limit)).fetchall()
+            """, (self._section_id, TYPE_TRACK, TAG_MOOD, mood, limit)).fetchall()
 
             return [{
                 'id': r['id'],
@@ -624,7 +646,7 @@ class PlexMusicDB:
                 WHERE mi.library_section_id=? AND mi.metadata_type=?
                   AND t.tag_type=? AND t.tag=? COLLATE NOCASE
                 LIMIT ?
-            """, (MUSIC_SECTION_ID, TYPE_TRACK, TAG_STYLE, style, limit)).fetchall()
+            """, (self._section_id, TYPE_TRACK, TAG_STYLE, style, limit)).fetchall()
 
             return [{
                 'id': r['id'],
@@ -675,7 +697,7 @@ class PlexMusicDB:
                 GROUP BY miv.guid
                 ORDER BY play_count DESC
                 LIMIT ?
-            """, (MUSIC_SECTION_ID, limit)).fetchall()
+            """, (self._section_id, limit)).fetchall()
 
             return [{
                 'artist': r['artist'],
@@ -700,7 +722,7 @@ class PlexMusicDB:
             root_row = conn.execute("""
                 SELECT root_path FROM section_locations
                 WHERE library_section_id=?
-            """, (MUSIC_SECTION_ID,)).fetchone()
+            """, (self._section_id,)).fetchone()
             root_path = root_row['root_path'] if root_row else ''
 
             # All tracks with file paths
@@ -719,7 +741,7 @@ class PlexMusicDB:
                 LEFT JOIN media_items mitem ON mitem.metadata_item_id = mi.id
                 LEFT JOIN media_parts mp ON mp.media_item_id = mitem.id
                 WHERE mi.library_section_id=? AND mi.metadata_type=?
-            """, (MUSIC_SECTION_ID, TYPE_TRACK)).fetchall()
+            """, (self._section_id, TYPE_TRACK)).fetchall()
 
             # Bulk fetch all tags
             all_track_ids = [t['id'] for t in tracks]

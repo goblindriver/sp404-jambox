@@ -160,11 +160,10 @@ def ingest_downloads():
 def watcher_start():
     """Start the background file watcher."""
     try:
-        sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
+        scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
         import ingest_downloads as ingest
-        # Reload to get fresh module state if restarting
-        import importlib
-        importlib.reload(ingest)
 
         if ingest.get_watcher_state()['running']:
             return jsonify({'ok': True, 'message': 'Watcher already running'})
@@ -182,7 +181,9 @@ def watcher_start():
 def watcher_stop():
     """Stop the background file watcher."""
     try:
-        sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
+        scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
         import ingest_downloads as ingest
 
         ingest.stop_watcher()
@@ -195,7 +196,9 @@ def watcher_stop():
 def watcher_status():
     """Get watcher state and recent activity."""
     try:
-        sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
+        scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
         import ingest_downloads as ingest
 
         state = ingest.get_watcher_state()

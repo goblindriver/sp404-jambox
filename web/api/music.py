@@ -24,15 +24,20 @@ if os.path.isdir(_scripts_dir):
     sys.path.insert(0, os.path.abspath(_scripts_dir))
 
 _plex = None
-_plex_checked = False
+_plex_last_check = 0
+_PLEX_RETRY_SECONDS = 60
 
 
 def _get_plex():
-    """Lazy-init Plex client, returns None if unavailable."""
-    global _plex, _plex_checked
-    if _plex_checked:
+    """Lazy-init Plex client, returns None if unavailable. Retries every 60s."""
+    global _plex, _plex_last_check
+    import time
+    now = time.time()
+    if _plex is not None:
         return _plex
-    _plex_checked = True
+    if now - _plex_last_check < _PLEX_RETRY_SECONDS:
+        return None
+    _plex_last_check = now
     try:
         from plex_client import PlexMusicDB
         p = PlexMusicDB()
@@ -301,24 +306,30 @@ def album_art():
 
     # Fallback: try Plex metadata filesystem
     try:
-        meta_base = os.path.expanduser(
+        meta_base = os.path.realpath(os.path.expanduser(
             "~/Library/Application Support/Plex Media Server/Metadata"
-        )
-        # The hash is in the URL
+        ))
+        # The hash is in the URL — sanitize to alphanumeric only
         if 'posters/' in thumb:
             poster_hash = thumb.split('posters/')[-1]
         else:
             poster_hash = thumb.split('_')[-1] if '_' in thumb else thumb
 
-        # Plex stores files in hash-bucketed directories
+        # Validate hash is alphanumeric (no path traversal)
+        import re as _re
+        if not _re.match(r'^[a-zA-Z0-9]+$', poster_hash):
+            abort(404)
+
         if len(poster_hash) >= 2:
             for sub in ['Albums', 'Artists']:
-                art_path = os.path.join(
+                art_path = os.path.realpath(os.path.join(
                     meta_base, sub,
                     poster_hash[0],
                     f"{poster_hash}.bundle",
                     "Contents", "_stored", poster_hash
-                )
+                ))
+                if not art_path.startswith(meta_base):
+                    continue  # path traversal
                 if os.path.exists(art_path):
                     return send_file(art_path, mimetype='image/jpeg',
                                      max_age=86400)
@@ -340,7 +351,13 @@ def preview_track(track_id):
         if not t or not t.get('file_path'):
             abort(404)
 
-        full = t['file_path']
+        full = os.path.realpath(t['file_path'])
+        # Validate path is within the music library root
+        stats = plex.stats()
+        root = os.path.realpath(stats.get('root_path', ''))
+        if not root or not full.startswith(root):
+            abort(403)
+
         if not os.path.isfile(full):
             abort(404)
 

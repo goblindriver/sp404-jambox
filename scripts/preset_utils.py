@@ -33,12 +33,16 @@ def slugify(name):
 
 def load_preset(ref):
     """Load a preset by reference (e.g. 'genre/funk-dance-punk').
-    Returns dict or None if not found."""
-    path = os.path.join(PRESETS_DIR, f"{ref}.yaml")
+    Returns dict or None if not found. Validates path stays within PRESETS_DIR."""
+    path = os.path.realpath(os.path.join(PRESETS_DIR, f"{ref}.yaml"))
+    if not path.startswith(os.path.realpath(PRESETS_DIR)):
+        return None  # path traversal attempt
     if not os.path.exists(path):
         return None
     with open(path) as f:
         data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        return None
     data['_ref'] = ref
     data['_path'] = path
     return data
@@ -47,6 +51,8 @@ def load_preset(ref):
 def save_preset(preset, category=None):
     """Save a preset dict to disk. Returns the ref string."""
     slug = preset.get('slug') or slugify(preset.get('name', 'untitled'))
+    if not slug:
+        slug = 'untitled'
     preset['slug'] = slug
     cat = category or preset.get('category', 'community')
     if cat not in CATEGORIES:
@@ -61,7 +67,7 @@ def save_preset(preset, category=None):
 
     path = os.path.join(cat_dir, f"{slug}.yaml")
     with open(path, 'w') as f:
-        yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     ref = f"{cat}/{slug}"
     return ref
@@ -201,7 +207,7 @@ def save_set(set_data):
     save_data = {k: v for k, v in set_data.items() if not k.startswith('_')}
     path = os.path.join(SETS_DIR, f"{slug}.yaml")
     with open(path, 'w') as f:
-        yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     return slug
 
 
@@ -348,4 +354,4 @@ def _load_config():
 def _save_config(config):
     """Write bank_config.yaml preserving structure."""
     with open(CONFIG_PATH, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)

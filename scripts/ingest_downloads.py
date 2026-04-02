@@ -11,7 +11,7 @@ The watcher uses watchdog to monitor ~/Downloads for new audio files and
 sample packs. It waits for downloads to finish (stable file size), ingests
 them, auto-tags with tag_library.py --update, and logs everything.
 """
-import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading
+import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading, fcntl
 from datetime import datetime
 
 DOWNLOADS = os.path.expanduser("~/Downloads")
@@ -72,19 +72,26 @@ def _log_ingest(source_name, num_samples, categories, source_type='pack'):
         'categories': categories,
     }
 
-    # Append to log file
+    # Append to log file (with file locking to prevent concurrent clobber)
     log = []
-    if os.path.exists(INGEST_LOG):
-        try:
-            with open(INGEST_LOG) as f:
+    try:
+        with open(INGEST_LOG, 'r+') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
                 log = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            log = []
-    log.append(entry)
-    # Keep last 500 entries
-    log = log[-500:]
-    with open(INGEST_LOG, 'w') as f:
-        json.dump(log, f, indent=2)
+            except (json.JSONDecodeError, ValueError):
+                log = []
+            log.append(entry)
+            log = log[-500:]
+            f.seek(0)
+            f.truncate()
+            json.dump(log, f, indent=2)
+            fcntl.flock(f, fcntl.LOCK_UN)
+    except FileNotFoundError:
+        with open(INGEST_LOG, 'w') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            json.dump([entry], f, indent=2)
+            fcntl.flock(f, fcntl.LOCK_UN)
 
     # Update watcher state
     with _watcher_lock:
@@ -319,20 +326,23 @@ def ingest_single_file(filepath, dry_run=False):
 
 
 def _store_source_context(wav_path, context):
-    """Store Cowork source context in _tags.json for a file."""
+    """Store Cowork source context in _tags.json for a file (with file locking)."""
     tags_path = os.path.join(LIBRARY, '_tags.json')
     if not os.path.exists(tags_path):
         return
     try:
-        with open(tags_path) as f:
+        with open(tags_path, 'r+') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
             tags = json.load(f)
-        rel = os.path.relpath(wav_path, LIBRARY)
-        if rel in tags:
-            tags[rel]['cowork_source'] = context
-        else:
-            tags[rel] = {'cowork_source': context}
-        with open(tags_path, 'w') as f:
+            rel = os.path.relpath(wav_path, LIBRARY)
+            if rel in tags:
+                tags[rel]['cowork_source'] = context
+            else:
+                tags[rel] = {'cowork_source': context}
+            f.seek(0)
+            f.truncate()
             json.dump(tags, f, indent=2)
+            fcntl.flock(f, fcntl.LOCK_UN)
     except (json.JSONDecodeError, IOError):
         pass
 
