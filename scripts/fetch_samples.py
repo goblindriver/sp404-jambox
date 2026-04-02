@@ -190,6 +190,15 @@ def score_from_tags(entry, parsed_query, bank_config):
     if q["playability"] == "loop" and duration < 1:
         score -= 3
 
+    # --- Plex metadata bonuses ---
+    # Stems from personal library with Plex moods get a small bonus
+    # because the vibes are machine-tagged (more reliable than filename inference)
+    if entry.get("plex_moods"):
+        score += 1  # Plex-tagged = higher confidence metadata
+    # Samples from tracks with play history rank higher (user actually listens to these)
+    if entry.get("plex_play_count", 0) > 0:
+        score += 2
+
     return score
 
 

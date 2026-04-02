@@ -1,176 +1,359 @@
-"""My Music — personal music library browser API."""
+"""My Music — Plex-powered personal music library browser API.
+
+Reads from the local Plex database for rich metadata: moods, styles,
+genres, album art, artist bios, play counts. Falls back to the old
+ID3-based index if Plex isn't available.
+"""
 import json
 import os
-import re
 import sys
 import threading
-from flask import Blueprint, jsonify, request, send_file, abort
+import uuid
+from flask import Blueprint, jsonify, request, send_file, abort, Response
 
 music_bp = Blueprint('music', __name__)
 
-MUSIC_LIBRARY = '/Volumes/Temp QNAP/Music'
 SAMPLE_LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
 INDEX_FILE = os.path.join(SAMPLE_LIBRARY, "_music_index.json")
 STEMS_DIR = os.path.join(SAMPLE_LIBRARY, "Stems")
 
-_index_cache = None
-_index_mtime = 0
+# Add scripts dir to path for plex_client
+_scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            '..', 'scripts')
+if os.path.isdir(_scripts_dir):
+    sys.path.insert(0, os.path.abspath(_scripts_dir))
+
+_plex = None
+_plex_checked = False
 
 
-def _load_index():
-    """Load music index with caching."""
-    global _index_cache, _index_mtime
+def _get_plex():
+    """Lazy-init Plex client, returns None if unavailable."""
+    global _plex, _plex_checked
+    if _plex_checked:
+        return _plex
+    _plex_checked = True
     try:
-        mtime = os.path.getmtime(INDEX_FILE)
-        if _index_cache is None or mtime > _index_mtime:
-            with open(INDEX_FILE) as f:
-                _index_cache = json.load(f)
-            _index_mtime = mtime
-        return _index_cache
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+        from plex_client import PlexMusicDB
+        p = PlexMusicDB()
+        if p.is_available():
+            _plex = p
+    except Exception:
+        pass
+    return _plex
+
+
+def _plex_thumb_to_url(thumb):
+    """Convert Plex metadata:// thumb URL to a proxied URL."""
+    if not thumb:
+        return None
+    # We'll serve album art through our own proxy endpoint
+    # Strip the metadata:// prefix and encode
+    return f"/api/music/art?thumb={thumb}"
 
 
 @music_bp.route('/music/status')
 def music_status():
     """Check if music library is accessible and indexed."""
-    available = os.path.isdir(MUSIC_LIBRARY)
-    index = _load_index()
-    return jsonify({
-        'available': available,
-        'indexed': len(index) > 0,
-        'track_count': len(index),
-        'library_path': MUSIC_LIBRARY,
-    })
+    plex = _get_plex()
+    if plex:
+        try:
+            s = plex.stats()
+            return jsonify({
+                'available': True,
+                'source': 'plex',
+                'indexed': True,
+                'track_count': s['tracks'],
+                'artist_count': s['artists'],
+                'album_count': s['albums'],
+                'mood_count': s['moods'],
+                'style_count': s['styles'],
+                'library_path': s['root_path'],
+            })
+        except Exception as e:
+            pass
+
+    # Fallback to old index
+    try:
+        with open(INDEX_FILE) as f:
+            index = json.load(f)
+        count = len(index.get('tracks', index))
+        return jsonify({
+            'available': True,
+            'source': 'id3',
+            'indexed': count > 0,
+            'track_count': count,
+        })
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify({'available': False, 'source': None, 'indexed': False})
 
 
 @music_bp.route('/music/browse')
 def browse():
-    """Browse music library. Returns artists, genres, decades."""
-    index = _load_index()
-    if not index:
-        return jsonify({'error': 'Not indexed. Run: python scripts/index_music.py'}), 404
+    """Browse music library. Returns artists, genres, moods, styles, decades."""
+    plex = _get_plex()
+    if plex:
+        try:
+            data = plex.browse()
+            # Add thumb proxy URLs
+            for artist in data.get('artists', []):
+                artist['thumb'] = None  # Artist thumbs need API, skip for now
+            return jsonify(data)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
-    artists = {}
-    genres = {}
-    decades = {}
-
-    for rel_path, entry in index.items():
-        artist = entry.get('artist', 'Unknown')
-        genre = entry.get('genre')
-        year = entry.get('year')
-
-        if artist not in artists:
-            artists[artist] = {'track_count': 0, 'albums': set()}
-        artists[artist]['track_count'] += 1
-        if entry.get('album'):
-            artists[artist]['albums'].add(entry['album'])
-
-        if genre:
-            genres[genre] = genres.get(genre, 0) + 1
-
-        if year and year >= 1900:
-            decade = f"{(year // 10) * 10}s"
-            decades[decade] = decades.get(decade, 0) + 1
-
-    # Serialize (sets → counts)
-    artist_list = sorted([
-        {'name': k, 'track_count': v['track_count'], 'album_count': len(v['albums'])}
-        for k, v in artists.items()
-    ], key=lambda x: x['name'].lower())
-
-    return jsonify({
-        'artists': artist_list,
-        'genres': dict(sorted(genres.items(), key=lambda x: -x[1])),
-        'decades': dict(sorted(decades.items())),
-        'total_tracks': len(index),
-    })
+    return jsonify({'error': 'Plex not available and no index found'}), 404
 
 
 @music_bp.route('/music/artist/<path:artist_name>')
 def artist_detail(artist_name):
-    """Get albums and tracks for an artist."""
-    index = _load_index()
-    albums = {}
+    """Get full artist detail: bio, albums, tracks with moods/vibes."""
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'error': 'Plex not available'}), 404
 
-    for rel_path, entry in index.items():
-        if (entry.get('artist') or '').lower() != artist_name.lower():
-            continue
-        album = entry.get('album', 'Unknown')
-        if album not in albums:
-            albums[album] = {'name': album, 'year': entry.get('year'), 'tracks': []}
-        albums[album]['tracks'].append({
-            'path': rel_path,
-            'title': entry.get('title', os.path.basename(rel_path)),
-            'duration': entry.get('duration', 0),
-            'track_num': entry.get('track_num'),
-            'bpm': entry.get('bpm'),
-            'genre': entry.get('genre'),
-            'year': entry.get('year'),
-        })
+    try:
+        data = plex.artist(artist_name)
+        if not data:
+            return jsonify({'error': f'Artist not found: {artist_name}'}), 404
 
-    # Sort tracks by track number
-    for album in albums.values():
-        album['tracks'].sort(key=lambda t: t.get('track_num') or 999)
+        # Add art proxy URLs
+        for album in data.get('albums', []):
+            album['thumb_url'] = _plex_thumb_to_url(album.get('thumb'))
 
-    album_list = sorted(albums.values(), key=lambda a: a.get('year') or 9999)
-    return jsonify({'artist': artist_name, 'albums': album_list})
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@music_bp.route('/music/artist_by_id/<int:artist_id>')
+def artist_detail_by_id(artist_id):
+    """Get artist by Plex ID."""
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'error': 'Plex not available'}), 404
+
+    try:
+        data = plex.artist(artist_id=artist_id)
+        if not data:
+            return jsonify({'error': 'Artist not found'}), 404
+
+        for album in data.get('albums', []):
+            album['thumb_url'] = _plex_thumb_to_url(album.get('thumb'))
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@music_bp.route('/music/track/<int:track_id>')
+def track_detail(track_id):
+    """Get full metadata for a single track."""
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'error': 'Plex not available'}), 404
+
+    try:
+        data = plex.track(track_id)
+        if not data:
+            return jsonify({'error': 'Track not found'}), 404
+        data['album_thumb_url'] = _plex_thumb_to_url(data.get('album_thumb'))
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @music_bp.route('/music/search')
 def search():
     """Search music library by text query."""
-    q = request.args.get('q', '').strip().lower()
+    q = request.args.get('q', '').strip()
     if not q or len(q) < 2:
         return jsonify({'results': []})
 
-    index = _load_index()
-    results = []
+    plex = _get_plex()
+    if plex:
+        try:
+            results = plex.search(q, limit=100)
+            for r in results:
+                r['thumb_url'] = _plex_thumb_to_url(r.get('thumb'))
+            return jsonify({'results': results, 'total': len(results), 'query': q})
+        except Exception as e:
+            return jsonify({'results': [], 'error': str(e)})
 
-    for rel_path, entry in index.items():
-        score = 0
-        artist = (entry.get('artist') or '').lower()
-        album = (entry.get('album') or '').lower()
-        title = (entry.get('title') or '').lower()
-        genre = (entry.get('genre') or '').lower()
-
-        if q in artist:
-            score += 3
-        if q in title:
-            score += 2
-        if q in album:
-            score += 1
-        if q in genre:
-            score += 1
-
-        if score > 0:
-            results.append({
-                'path': rel_path,
-                'artist': entry.get('artist'),
-                'album': entry.get('album'),
-                'title': entry.get('title', os.path.basename(rel_path)),
-                'genre': entry.get('genre'),
-                'year': entry.get('year'),
-                'duration': entry.get('duration', 0),
-                'bpm': entry.get('bpm'),
-                'score': score,
-            })
-
-    results.sort(key=lambda r: (-r['score'], r.get('artist', '').lower()))
-    return jsonify({'results': results[:100], 'total': len(results), 'query': q})
+    return jsonify({'results': []})
 
 
-@music_bp.route('/music/preview/<path:rel_path>')
-def preview_track(rel_path):
-    """Stream a track from the music library for preview."""
-    full = os.path.join(MUSIC_LIBRARY, rel_path)
-    full = os.path.realpath(full)
-    if not full.startswith(os.path.realpath(MUSIC_LIBRARY)) or not os.path.isfile(full):
+@music_bp.route('/music/mood/<mood>')
+def by_mood(mood):
+    """Find tracks by Plex mood tag."""
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'error': 'Plex not available'}), 404
+
+    try:
+        results = plex.search_by_mood(mood, limit=100)
+        for r in results:
+            r['thumb_url'] = _plex_thumb_to_url(r.get('thumb'))
+        return jsonify({'results': results, 'mood': mood})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@music_bp.route('/music/style/<path:style>')
+def by_style(style):
+    """Find tracks by Plex style tag."""
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'error': 'Plex not available'}), 404
+
+    try:
+        results = plex.search_by_style(style, limit=100)
+        for r in results:
+            r['thumb_url'] = _plex_thumb_to_url(r.get('thumb'))
+        return jsonify({'results': results, 'style': style})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@music_bp.route('/music/playlists')
+def playlists():
+    """List Plex playlists."""
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'playlists': []})
+
+    try:
+        return jsonify({'playlists': plex.playlists()})
+    except Exception as e:
+        return jsonify({'playlists': [], 'error': str(e)})
+
+
+@music_bp.route('/music/most-played')
+def most_played():
+    """Get most-played tracks."""
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'tracks': []})
+
+    try:
+        return jsonify({'tracks': plex.most_played(limit=50)})
+    except Exception as e:
+        return jsonify({'tracks': [], 'error': str(e)})
+
+
+@music_bp.route('/music/art')
+def album_art():
+    """Proxy album art from Plex metadata store.
+
+    Plex stores album art as metadata://posters/HASH — we need to look up
+    the actual blob in the Plex blobs database or filesystem.
+    """
+    thumb = request.args.get('thumb', '')
+    if not thumb:
         abort(404)
-    ext = os.path.splitext(full)[1].lower()
-    mimes = {'.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.m4a': 'audio/mp4',
-             '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.aif': 'audio/aiff'}
-    return send_file(full, mimetype=mimes.get(ext, 'audio/mpeg'))
+
+    # Plex stores art in the metadata directory
+    # Format: metadata://posters/<hash>
+    # Actual file: ~/Library/Application Support/Plex Media Server/Metadata/
+    #              Artists/<hash[0]>/<hash>.bundle/Contents/_stored/<hash>
+    # But it's easier to check the blobs database
+
+    try:
+        import sqlite3
+        blobs_db = os.path.expanduser(
+            "~/Library/Application Support/Plex Media Server/"
+            "Plug-in Support/Databases/com.plexapp.plugins.library.blobs.db"
+        )
+        if not os.path.exists(blobs_db):
+            abort(404)
+
+        # Extract the hash from the metadata:// URL
+        # Format: metadata://posters/<hash> or tv.plex.agents.music_<hash>
+        hash_part = thumb.split('/')[-1] if '/' in thumb else thumb
+
+        uri = f"file:{blobs_db}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        conn.row_factory = sqlite3.Row
+
+        # Try to find the blob
+        row = conn.execute("""
+            SELECT blob_data FROM blobs
+            WHERE linked_id IN (
+                SELECT id FROM metadata_items WHERE user_thumb_url = ?
+            ) LIMIT 1
+        """, (thumb,)).fetchone()
+
+        conn.close()
+
+        if row and row['blob_data']:
+            # Detect image type from magic bytes
+            data = row['blob_data']
+            content_type = 'image/jpeg'  # default
+            if data[:4] == b'\x89PNG':
+                content_type = 'image/png'
+            elif data[:4] == b'RIFF':
+                content_type = 'image/webp'
+
+            return Response(data, mimetype=content_type,
+                            headers={'Cache-Control': 'public, max-age=86400'})
+    except Exception:
+        pass
+
+    # Fallback: try Plex metadata filesystem
+    try:
+        meta_base = os.path.expanduser(
+            "~/Library/Application Support/Plex Media Server/Metadata"
+        )
+        # The hash is in the URL
+        if 'posters/' in thumb:
+            poster_hash = thumb.split('posters/')[-1]
+        else:
+            poster_hash = thumb.split('_')[-1] if '_' in thumb else thumb
+
+        # Plex stores files in hash-bucketed directories
+        if len(poster_hash) >= 2:
+            for sub in ['Albums', 'Artists']:
+                art_path = os.path.join(
+                    meta_base, sub,
+                    poster_hash[0],
+                    f"{poster_hash}.bundle",
+                    "Contents", "_stored", poster_hash
+                )
+                if os.path.exists(art_path):
+                    return send_file(art_path, mimetype='image/jpeg',
+                                     max_age=86400)
+    except Exception:
+        pass
+
+    abort(404)
+
+
+@music_bp.route('/music/preview/<int:track_id>')
+def preview_track(track_id):
+    """Stream a track from the music library for preview."""
+    plex = _get_plex()
+    if not plex:
+        abort(404)
+
+    try:
+        t = plex.track(track_id)
+        if not t or not t.get('file_path'):
+            abort(404)
+
+        full = t['file_path']
+        if not os.path.isfile(full):
+            abort(404)
+
+        ext = os.path.splitext(full)[1].lower()
+        mimes = {
+            '.mp3': 'audio/mpeg', '.flac': 'audio/flac',
+            '.m4a': 'audio/mp4', '.wav': 'audio/wav',
+            '.ogg': 'audio/ogg', '.aif': 'audio/aiff',
+            '.aiff': 'audio/aiff',
+        }
+        return send_file(full, mimetype=mimes.get(ext, 'audio/mpeg'))
+    except Exception:
+        abort(404)
 
 
 # ── Stem splitting ──
@@ -179,25 +362,28 @@ _split_jobs = {}
 _split_lock = threading.Lock()
 
 
-def _run_split(job_id, track_path, rel_path, entry):
-    """Background thread: run demucs and tag stems."""
+def _run_split(job_id, track_data):
+    """Background thread: run demucs and tag stems with Plex metadata."""
     try:
         _split_jobs[job_id]['status'] = 'splitting'
 
-        scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts')
+        scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   '..', 'scripts')
+        scripts_dir = os.path.abspath(scripts_dir)
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
 
         from stem_split import (run_demucs, copy_stem_to_library, tag_stem,
                                 source_id, get_duration, load_tag_db, save_tag_db,
                                 STEM_TYPE_MAP)
+        from plex_client import MOOD_TO_VIBE, STYLE_TO_GENRE
 
         import tempfile
         tmp_dir = tempfile.mkdtemp(prefix="demucs_web_")
 
-        # Build source name from metadata
-        artist = entry.get('artist', 'Unknown')
-        title = entry.get('title', os.path.splitext(os.path.basename(track_path))[0])
+        track_path = track_data['file_path']
+        artist = track_data.get('artist', 'Unknown')
+        title = track_data.get('title', os.path.splitext(os.path.basename(track_path))[0])
         source_name = f"{artist} - {title}"
         src_id = source_id(track_path)
 
@@ -208,34 +394,50 @@ def _run_split(job_id, track_path, rel_path, entry):
             _split_jobs[job_id]['result'] = 'Demucs produced no output'
             return
 
-        # Build parent tags from ID3 metadata
+        # Build parent tags from Plex metadata
+        moods = track_data.get('moods', [])
+        vibes = track_data.get('vibes', [])
+        styles = track_data.get('styles', [])
+        plex_genres = track_data.get('genres', [])
+
+        # Map Plex styles to our genre dimension
+        our_genres = set()
+        for s in styles:
+            g = STYLE_TO_GENRE.get(s.lower())
+            if g:
+                our_genres.add(g)
+        for g in plex_genres:
+            our_genres.add(g.lower())
+
+        # Infer texture from moods
+        texture = []
+        if any(m.lower() in ('visceral', 'raw', 'brash', 'abrasive') for m in moods):
+            texture.append('raw')
+        elif any(m.lower() in ('warm', 'tender', 'intimate') for m in moods):
+            texture.append('warm')
+        elif any(m.lower() in ('ethereal', 'shimmering', 'atmospheric') for m in moods):
+            texture.append('airy')
+
+        # Infer energy
+        energy = 'mid'
+        high_moods = {'aggressive', 'energetic', 'intense', 'fiery', 'rousing',
+                      'boisterous', 'volatile', 'hostile'}
+        low_moods = {'mellow', 'calm', 'peaceful', 'serene', 'gentle', 'meditative'}
+        mood_lower = {m.lower() for m in moods}
+        if mood_lower & high_moods:
+            energy = 'high'
+        elif mood_lower & low_moods:
+            energy = 'low'
+
         parent_tags = {
-            'bpm': entry.get('bpm'),
+            'bpm': None,
             'key': None,
-            'genre': [entry['genre'].lower()] if entry.get('genre') else [],
-            'vibe': [],
-            'texture': [],
-            'energy': 'mid',
+            'genre': sorted(our_genres),
+            'vibe': vibes,
+            'texture': texture,
+            'energy': energy,
             'source': 'personal',
         }
-
-        # Enrich vibe/texture from genre
-        genre_lower = (entry.get('genre') or '').lower()
-        if any(w in genre_lower for w in ['punk', 'metal', 'hard', 'industrial']):
-            parent_tags['vibe'] = ['aggressive']
-            parent_tags['texture'] = ['raw']
-        elif any(w in genre_lower for w in ['soul', 'jazz', 'r&b', 'gospel']):
-            parent_tags['vibe'] = ['soulful']
-            parent_tags['texture'] = ['warm']
-        elif any(w in genre_lower for w in ['electronic', 'techno', 'house', 'electro']):
-            parent_tags['vibe'] = ['hype']
-            parent_tags['texture'] = ['clean']
-        elif any(w in genre_lower for w in ['ambient', 'chill', 'lo-fi']):
-            parent_tags['vibe'] = ['chill']
-            parent_tags['texture'] = ['lo-fi']
-        elif any(w in genre_lower for w in ['funk', 'disco']):
-            parent_tags['vibe'] = ['playful']
-            parent_tags['texture'] = ['warm']
 
         db = load_tag_db()
         created_stems = []
@@ -247,15 +449,16 @@ def _run_split(job_id, track_path, rel_path, entry):
 
             stem_rel = copy_stem_to_library(stem_path, source_name, stem_name)
 
-            # Tag with personal source
             stem_entry = tag_stem(stem_rel, stem_name, parent_tags, src_id, dur)
             stem_entry['source'] = 'personal'
             stem_entry['source_artist'] = artist
-            stem_entry['source_album'] = entry.get('album')
+            stem_entry['source_album'] = track_data.get('album')
             stem_entry['source_title'] = title
-            stem_entry['source_year'] = entry.get('year')
+            stem_entry['source_year'] = track_data.get('year')
+            stem_entry['plex_moods'] = moods
+            stem_entry['plex_styles'] = styles
+            stem_entry['plex_id'] = track_data.get('id')
 
-            # Add 'personal' to flat tags
             if 'personal' not in stem_entry.get('tags', []):
                 stem_entry.setdefault('tags', []).append('personal')
                 stem_entry['tags'] = sorted(stem_entry['tags'])
@@ -271,7 +474,6 @@ def _run_split(job_id, track_path, rel_path, entry):
 
         save_tag_db(db)
 
-        # Cleanup
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -289,41 +491,44 @@ def _run_split(job_id, track_path, rel_path, entry):
 
 @music_bp.route('/music/split', methods=['POST'])
 def split_track():
-    """Split a track from the music library into stems via Demucs."""
+    """Split a track into stems via Demucs. Accepts Plex track ID."""
     data = request.get_json()
-    track_path_rel = data.get('path', '')
+    track_id = data.get('track_id') or data.get('id')
 
-    if not track_path_rel:
-        return jsonify({'error': 'No track path provided'}), 400
+    if not track_id:
+        return jsonify({'error': 'No track ID provided'}), 400
 
-    full_path = os.path.join(MUSIC_LIBRARY, track_path_rel)
-    if not os.path.isfile(full_path):
+    plex = _get_plex()
+    if not plex:
+        return jsonify({'error': 'Plex not available'}), 500
+
+    track_data = plex.track(int(track_id))
+    if not track_data:
         return jsonify({'error': 'Track not found'}), 404
+
+    if not track_data.get('file_path') or not os.path.isfile(track_data['file_path']):
+        return jsonify({'error': 'Track file not accessible'}), 404
 
     # Check if already splitting
     with _split_lock:
         for j in _split_jobs.values():
-            if j['status'] in ('splitting',) and j.get('track') == track_path_rel:
-                return jsonify({'error': 'Already splitting this track', 'job_id': j['id']}), 409
+            if j['status'] == 'splitting' and j.get('track_id') == track_id:
+                return jsonify({'error': 'Already splitting', 'job_id': j['id']}), 409
 
-    # Get track metadata from index
-    index = _load_index()
-    entry = index.get(track_path_rel, {})
-
-    import uuid
     job_id = str(uuid.uuid4())[:8]
     _split_jobs[job_id] = {
         'id': job_id,
         'status': 'starting',
-        'track': track_path_rel,
+        'track_id': track_id,
+        'track': f"{track_data.get('artist', '?')} — {track_data.get('title', '?')}",
         'result': None,
     }
 
-    t = threading.Thread(target=_run_split, args=(job_id, full_path, track_path_rel, entry))
+    t = threading.Thread(target=_run_split, args=(job_id, track_data))
     t.daemon = True
     t.start()
 
-    return jsonify({'job_id': job_id, 'track': track_path_rel})
+    return jsonify({'job_id': job_id, 'track': _split_jobs[job_id]['track']})
 
 
 @music_bp.route('/music/split/status/<job_id>')

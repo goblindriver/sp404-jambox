@@ -27,8 +27,10 @@ This project is worked on by multiple Claude agents coordinated by the user:
 - **Raw downloads archive**: `~/Music/SP404-Sample-Library/_RAW-DOWNLOADS/`
 - **Bank config**: `bank_config.yaml` (defines all banks, pads, BPM, key)
 - **Tagging spec**: `docs/TAGGING_SPEC.md` (type codes, tag dimensions, filename conventions)
-- **Personal music library**: `/Volumes/Temp QNAP/Music/` (~493GB, QNAP NAS)
-- **Music index**: `~/Music/SP404-Sample-Library/_music_index.json`
+- **Personal music library**: `/Volumes/Jansen's FL Drobo/Multimedia/Music` (~33,400 tracks, Drobo NAS)
+- **Plex database**: `~/Library/Application Support/Plex Media Server/Plug-in Support/Databases/com.plexapp.plugins.library.db` (READ-ONLY)
+- **Plex client**: `scripts/plex_client.py` (read-only SQLite queries for moods, styles, art, play counts)
+- **Ingest log**: `~/Music/SP404-Sample-Library/_ingest_log.json`
 - **Web UI**: `web/` (Flask app on http://localhost:5404)
 
 ## Audio Format (CRITICAL)
@@ -103,7 +105,51 @@ Example: `KIK hard aggressive one-shot` — finds a hard aggressive kick
 5. Deploy to SD card: `bash scripts/copy_to_sd.sh`
 
 ## Ingest Downloads
-`python scripts/ingest_downloads.py` — extracts sample packs from ~/Downloads, auto-categorizes WAVs into library, then moves processed packs to `_RAW-DOWNLOADS/` to keep Downloads clean.
+- One-shot: `python scripts/ingest_downloads.py` — process all pending packs/files from ~/Downloads
+- Watcher mode: `python scripts/ingest_downloads.py --watch` — background daemon using watchdog, auto-ingests new files as they appear in ~/Downloads
+- The watcher waits for file sizes to stabilize before processing (handles in-progress downloads)
+- After ingest, auto-runs `tag_library.py --update` on new files
+- Logs to `~/Music/SP404-Sample-Library/_ingest_log.json`
+- Reads `_SOURCE.txt` files left by Cowork and stores context in `_tags.json`
+- Web UI has a Watch toggle button to start/stop the watcher, and an activity feed
+
+## Plex Integration (Personal Music)
+The "My Music" browser in the web UI reads from the local Plex Media Server's SQLite database (read-only, never writes).
+
+### What Plex provides
+- **298 mood tags** per track (Aggressive, Brooding, Energetic, etc.) → mapped to our vibe dimension
+- **412 style tags** (Alternative/Indie Rock, Hardcore Punk, etc.) → mapped to our genre dimension
+- **Artist bios/summaries**, country, album art
+- **Record labels** per album
+- **Audio loudness analysis** (gain, peak, LRA)
+- **Play counts** (when available) → used as relevance boost in fetch scoring
+- **33,408 tracks** across 1,005 artists
+
+### Mood → Vibe mapping
+Plex moods are mapped to our 15 vibe tags in `scripts/plex_client.py:MOOD_TO_VIBE`. Examples:
+- Aggressive/Hostile/Menacing → `aggressive`
+- Energetic/Rousing/Lively → `hype`
+- Brooding/Ominous/Sinister → `dark`
+- Passionate/Earnest/Heartfelt → `soulful`
+
+### Music API (web/api/music.py)
+- `GET /api/music/status` — library stats, source (plex vs id3)
+- `GET /api/music/browse` — artists, genres, moods, styles, decades
+- `GET /api/music/artist/<name>` — full artist detail with albums, tracks, vibes
+- `GET /api/music/track/<id>` — full track metadata including moods, loudness
+- `GET /api/music/mood/<mood>` — tracks by Plex mood
+- `GET /api/music/style/<style>` — tracks by Plex style
+- `GET /api/music/search?q=` — text search
+- `POST /api/music/split` — stem-split a track (carries Plex metadata to stems)
+- `GET /api/music/art?thumb=<url>` — proxy album art from Plex metadata store
+
+### Split & Sample with Plex metadata
+When stem-splitting a personal track, all Plex metadata flows through:
+- Plex moods → `plex_moods` + mapped `vibe` tags in `_tags.json`
+- Plex styles → mapped `genre` tags
+- Energy inferred from moods (high/mid/low)
+- Texture inferred from moods (raw/warm/airy)
+- Source marked as `personal` with artist/album/title provenance
 
 ## Sample Library Structure
 ```
