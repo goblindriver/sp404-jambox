@@ -783,17 +783,180 @@ def one_shot_ingest(dry_run=False):
     return total
 
 
+def cleanup_downloads(dry_run=False):
+    """Remove already-ingested packs and archives from ~/Downloads to free disk space."""
+    freed = 0
+    removed = 0
+
+    print(f"Scanning {DOWNLOADS} for already-ingested items...")
+
+    for item in sorted(os.listdir(DOWNLOADS)):
+        full_path = os.path.join(DOWNLOADS, item)
+
+        # Skip non-directories and non-archives at top level
+        if os.path.isdir(full_path):
+            marker = os.path.join(full_path, MARKER)
+            if os.path.exists(marker):
+                size = _dir_size(full_path)
+                print(f"  {'Would remove' if dry_run else 'Removing'}: {item} ({_human_size(size)})")
+                if not dry_run:
+                    shutil.rmtree(full_path, ignore_errors=True)
+                freed += size
+                removed += 1
+        else:
+            ext = os.path.splitext(item)[1].lower()
+            if ext in ARCHIVE_EXTENSIONS:
+                # Check if this archive was already extracted to _RAW-DOWNLOADS
+                name_no_ext = os.path.splitext(item)[0]
+                archive_dest = os.path.join(RAW_ARCHIVE, name_no_ext)
+                if os.path.exists(archive_dest):
+                    size = os.path.getsize(full_path)
+                    print(f"  {'Would remove' if dry_run else 'Removing'}: {item} ({_human_size(size)})")
+                    if not dry_run:
+                        os.remove(full_path)
+                    freed += size
+                    removed += 1
+
+    print(f"\n{'Would free' if dry_run else 'Freed'}: {_human_size(freed)} ({removed} items)")
+    return freed, removed
+
+
+def purge_raw_archive(dry_run=False):
+    """Purge _RAW-DOWNLOADS to free disk space. These are originals kept after ingest."""
+    if not os.path.isdir(RAW_ARCHIVE):
+        print("No _RAW-DOWNLOADS directory found.")
+        return 0, 0
+
+    size = _dir_size(RAW_ARCHIVE)
+    count = sum(1 for _ in os.scandir(RAW_ARCHIVE))
+    print(f"_RAW-DOWNLOADS: {_human_size(size)} ({count} items)")
+
+    if dry_run:
+        print(f"Would free: {_human_size(size)}")
+        return size, count
+
+    for item in os.listdir(RAW_ARCHIVE):
+        full = os.path.join(RAW_ARCHIVE, item)
+        if os.path.isdir(full):
+            shutil.rmtree(full, ignore_errors=True)
+        else:
+            os.remove(full)
+
+    print(f"Freed: {_human_size(size)} ({count} items)")
+    return size, count
+
+
+def disk_usage_report():
+    """Report disk usage for Downloads and library."""
+    import shutil as sh
+    total, used, free = sh.disk_usage('/')
+
+    downloads_size = _dir_size(DOWNLOADS) if os.path.isdir(DOWNLOADS) else 0
+    archive_size = _dir_size(RAW_ARCHIVE) if os.path.isdir(RAW_ARCHIVE) else 0
+    library_size = _dir_size(LIBRARY) if os.path.isdir(LIBRARY) else 0
+
+    # Count cleanable items in Downloads
+    cleanable = 0
+    cleanable_count = 0
+    for item in os.listdir(DOWNLOADS):
+        full = os.path.join(DOWNLOADS, item)
+        if os.path.isdir(full) and os.path.exists(os.path.join(full, MARKER)):
+            cleanable += _dir_size(full)
+            cleanable_count += 1
+        elif os.path.isfile(full):
+            ext = os.path.splitext(item)[1].lower()
+            if ext in ARCHIVE_EXTENSIONS:
+                name_no_ext = os.path.splitext(item)[0]
+                if os.path.exists(os.path.join(RAW_ARCHIVE, name_no_ext)):
+                    cleanable += os.path.getsize(full)
+                    cleanable_count += 1
+
+    return {
+        'disk_free': free,
+        'disk_free_str': _human_size(free),
+        'disk_total': total,
+        'downloads_size': downloads_size,
+        'downloads_str': _human_size(downloads_size),
+        'archive_size': archive_size,
+        'archive_str': _human_size(archive_size),
+        'library_size': library_size,
+        'library_str': _human_size(library_size),
+        'cleanable_size': cleanable,
+        'cleanable_str': _human_size(cleanable),
+        'cleanable_count': cleanable_count,
+        'downloads_path': DOWNLOADS,
+    }
+
+
+def _dir_size(path):
+    """Get total size of a directory."""
+    total = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                try:
+                    total += os.path.getsize(os.path.join(dirpath, f))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
+
+
+def _human_size(size):
+    """Format bytes as human-readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} PB"
+
+
+def set_downloads_path(path):
+    """Change the downloads watch path (runtime only)."""
+    global DOWNLOADS
+    path = os.path.expanduser(path)
+    if not os.path.isdir(path):
+        raise ValueError(f"Not a directory: {path}")
+    DOWNLOADS = path
+    return DOWNLOADS
+
+
 def main():
     parser = argparse.ArgumentParser(description='Ingest sample packs from Downloads')
     parser.add_argument('--dry-run', action='store_true', help='Show what would happen')
     parser.add_argument('--watch', action='store_true', help='Run as background watcher daemon')
+    parser.add_argument('--cleanup', action='store_true', help='Remove already-ingested items from Downloads')
+    parser.add_argument('--purge-archive', action='store_true', help='Delete _RAW-DOWNLOADS to free space')
+    parser.add_argument('--disk-report', action='store_true', help='Show disk usage report')
+    parser.add_argument('--downloads-path', type=str, help='Override downloads folder path')
     args = parser.parse_args()
+
+    if args.downloads_path:
+        set_downloads_path(args.downloads_path)
 
     os.makedirs(LIBRARY, exist_ok=True)
     os.makedirs(RAW_ARCHIVE, exist_ok=True)
 
+    if args.disk_report:
+        report = disk_usage_report()
+        print(f"Disk free:      {report['disk_free_str']}")
+        print(f"Downloads:      {report['downloads_str']}")
+        print(f"  Cleanable:    {report['cleanable_str']} ({report['cleanable_count']} items)")
+        print(f"Archive:        {report['archive_str']}")
+        print(f"Library:        {report['library_str']}")
+        print(f"Downloads path: {report['downloads_path']}")
+        return
+
+    if args.cleanup:
+        cleanup_downloads(dry_run=args.dry_run)
+        return
+
+    if args.purge_archive:
+        purge_raw_archive(dry_run=args.dry_run)
+        return
+
     if args.watch:
-        # Watcher mode — run one pass first, then watch
         print("Running initial ingest pass...")
         one_shot_ingest(dry_run=args.dry_run)
 

@@ -824,6 +824,81 @@ function renderWatcherFeed(entries) {
     }).join('');
 }
 
+// ── Disk Panel ──
+
+async function toggleDiskPanel() {
+    const panel = document.getElementById('disk-panel');
+    if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        loadDiskReport();
+    } else {
+        panel.classList.add('hidden');
+    }
+}
+
+function closeDiskPanel() {
+    document.getElementById('disk-panel').classList.add('hidden');
+}
+
+async function loadDiskReport() {
+    const el = document.getElementById('disk-report');
+    try {
+        const d = await api('/api/pipeline/disk-report');
+        const freeClass = d.disk_free < 500 * 1024 * 1024 ? 'disk-warn' : 'disk-ok';
+        el.innerHTML = `
+            <div>Disk free: <span class="${freeClass}">${d.disk_free_str}</span></div>
+            <div>Downloads: ${d.downloads_str}</div>
+            <div>Cleanable: <strong>${d.cleanable_str}</strong> (${d.cleanable_count} ingested items)</div>
+            <div>Archive (_RAW-DOWNLOADS): ${d.archive_str}</div>
+            <div>Sample library: ${d.library_str}</div>
+        `;
+        document.getElementById('downloads-path-input').value = d.downloads_path;
+    } catch (e) {
+        el.innerHTML = '<div style="color:var(--text-dim)">Could not load disk report</div>';
+    }
+}
+
+async function runCleanup(purgeArchive) {
+    const action = purgeArchive ? 'Clean Downloads + purge archive' : 'Clean Downloads';
+    if (!confirm(`${action}? This permanently deletes already-ingested files.`)) return;
+
+    toast('Cleaning up...');
+    try {
+        const result = await api('/api/pipeline/cleanup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({purge_archive: purgeArchive}),
+        });
+        if (result.ok) {
+            toast(`Freed ${result.freed_str} (${result.count} items removed)`, 'success');
+            loadDiskReport();
+        } else {
+            toast(result.error || 'Cleanup failed', 'error');
+        }
+    } catch (e) {
+        toast('Cleanup failed: ' + e.message, 'error');
+    }
+}
+
+async function setDownloadsPath() {
+    const path = document.getElementById('downloads-path-input').value.trim();
+    if (!path) return;
+    try {
+        const result = await api('/api/pipeline/downloads-path', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path}),
+        });
+        if (result.ok) {
+            toast(`Downloads path set to: ${result.path}`, 'success');
+        } else {
+            toast(result.error || 'Invalid path', 'error');
+        }
+    } catch (e) {
+        toast('Failed: ' + e.message, 'error');
+    }
+}
+
 // Also make the watcher button show the feed on right-click
 document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('btn-watcher');

@@ -185,6 +185,28 @@
         </div>
     </aside>
 
+    <!-- Disk / Cleanup Panel -->
+    <div id="disk-panel" class="disk-panel hidden">
+        <div class="watcher-feed-header">
+            <h4>Disk &amp; Cleanup</h4>
+            <button class="detail-close" onclick="closeDiskPanel()">&times;</button>
+        </div>
+        <div class="disk-panel-body">
+            <div id="disk-report" class="disk-report">Loading...</div>
+            <div class="disk-actions">
+                <button class="btn btn-sm" onclick="runCleanup(false)">Clean Downloads</button>
+                <button class="btn btn-sm" onclick="runCleanup(true)" title="Also purge _RAW-DOWNLOADS archive">Clean + Purge Archive</button>
+            </div>
+            <div class="disk-path-setting">
+                <label>Downloads folder:</label>
+                <div class="disk-path-row">
+                    <input type="text" id="downloads-path-input" class="disk-path-input" />
+                    <button class="btn btn-sm" onclick="setDownloadsPath()">Set</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Watcher Activity Feed -->
     <div id="watcher-feed" class="watcher-feed hidden">
         <div class="watcher-feed-header">
@@ -206,6 +228,7 @@
             <button id="btn-watcher" class="btn btn-watcher" title="File watcher — auto-ingest from Downloads">
                 <span id="watcher-dot" class="watcher-dot"></span> Watch
             </button>
+            <button id="btn-disk" class="btn" onclick="toggleDiskPanel()" title="Disk usage &amp; cleanup">Disk</button>
             <button id="btn-fetch-all" class="btn btn-accent">Fetch All</button>
         </div>
         <div id="progress-bar" class="progress-bar hidden">

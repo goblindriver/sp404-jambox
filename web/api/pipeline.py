@@ -224,6 +224,72 @@ def watcher_status():
         return jsonify({'running': False, 'recent': [], 'stats': {}, 'error': str(e)})
 
 
+@pipeline_bp.route('/pipeline/disk-report')
+def disk_report():
+    """Get disk usage report."""
+    try:
+        scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import ingest_downloads as ingest
+        return jsonify(ingest.disk_usage_report())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@pipeline_bp.route('/pipeline/cleanup', methods=['POST'])
+def cleanup():
+    """Remove already-ingested items from Downloads."""
+    try:
+        scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import ingest_downloads as ingest
+
+        data = request.get_json() or {}
+        purge_archive = data.get('purge_archive', False)
+
+        freed1, count1 = ingest.cleanup_downloads()
+        freed2, count2 = 0, 0
+        if purge_archive:
+            freed2, count2 = ingest.purge_raw_archive()
+
+        total_freed = freed1 + freed2
+        total_count = count1 + count2
+        return jsonify({
+            'ok': True,
+            'freed': total_freed,
+            'freed_str': ingest._human_size(total_freed),
+            'count': total_count,
+            'downloads_cleaned': count1,
+            'archive_purged': count2,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@pipeline_bp.route('/pipeline/downloads-path', methods=['GET', 'POST'])
+def downloads_path():
+    """Get or set the downloads watch path."""
+    scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import ingest_downloads as ingest
+
+    if request.method == 'GET':
+        return jsonify({'path': ingest.DOWNLOADS})
+
+    data = request.get_json() or {}
+    new_path = data.get('path', '')
+    if not new_path:
+        return jsonify({'error': 'path required'}), 400
+    try:
+        result = ingest.set_downloads_path(new_path)
+        return jsonify({'ok': True, 'path': result})
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+
+
 @pipeline_bp.route('/pipeline/deploy', methods=['POST'])
 def deploy():
     repo_dir = current_app.config['REPO_DIR']

@@ -1356,6 +1356,57 @@ main {
 /* Hidden utility */
 .hidden { display: none !important; }
 
+/* ── Disk Panel ── */
+.disk-panel {
+    position: fixed;
+    bottom: 60px;
+    left: 16px;
+    width: 360px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    z-index: 200;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.disk-panel-body { padding: 12px; }
+.disk-report {
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+}
+.disk-report .disk-warn { color: #f44; font-weight: 600; }
+.disk-report .disk-ok { color: #4caf50; }
+.disk-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.disk-path-setting {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+}
+.disk-path-setting label {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 4px;
+}
+.disk-path-row {
+    display: flex;
+    gap: 6px;
+}
+.disk-path-input {
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+}
+
 /* ── Watcher ── */
 .btn-watcher {
     display: inline-flex;
