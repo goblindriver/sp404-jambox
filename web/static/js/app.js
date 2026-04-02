@@ -32,8 +32,11 @@ async function init() {
     document.getElementById('btn-fetch-all').onclick = () => fetchSamples();
     document.getElementById('btn-build').onclick = buildAll;
     document.getElementById('btn-deploy').onclick = deploy;
+    document.getElementById('btn-generate-pattern').onclick = generatePattern;
     document.getElementById('btn-watcher').onclick = toggleWatcher;
     document.getElementById('btn-presets').onclick = togglePresetSidebar;
+    document.getElementById('btn-vibe-generate').onclick = generateVibeSuggestions;
+    document.getElementById('btn-daily-bank').onclick = generateDailyBank;
 
     // Load sets and check watcher on startup
     loadSets();
@@ -62,6 +65,9 @@ async function init() {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => searchLibrary(e.target.value), 300);
     };
+    document.getElementById('vibe-prompt').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') generateVibeSuggestions();
+    });
 
     // Audio ended
     audio.onended = () => {
@@ -346,8 +352,34 @@ async function buildAll() {
     if (padinfo.ok && patterns.ok) {
         toast('Build complete', 'success');
     } else {
-        toast('Build had errors — check console', 'error');
+        const message = padinfo.error || patterns.error || 'Build had errors';
+        toast(message, 'error');
         console.log(padinfo, patterns);
+    }
+}
+
+async function generatePattern() {
+    if (!state.currentBank) return;
+    const variant = prompt('Pattern variant (drum, melody, trio):', 'drum');
+    if (!variant) return;
+    const bars = parseInt(prompt('Bars:', '2') || '2', 10);
+    toast(`Generating ${variant} pattern...`);
+    const result = await api('/api/pattern/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            variant,
+            bars: Number.isFinite(bars) ? bars : 2,
+            bpm: state.currentBank.bpm || 120,
+            key: state.currentBank.key || '',
+            bank: state.currentBank.letter,
+            pad: 1,
+        }),
+    });
+    if (result.ok) {
+        toast(`Pattern generated: ${result.path}`, 'success');
+    } else {
+        toast(result.error || 'Pattern generation failed', 'error');
     }
 }
 
@@ -359,6 +391,74 @@ async function deploy() {
         checkSDCard();
     } else {
         toast(result.error || 'Deploy failed', 'error');
+    }
+}
+
+async function generateVibeSuggestions() {
+    const promptValue = document.getElementById('vibe-prompt').value.trim();
+    if (!promptValue) {
+        toast('Enter a vibe prompt first', 'error');
+        return;
+    }
+
+    const payload = {
+        prompt: promptValue,
+        bpm: state.currentBank?.bpm || null,
+        key: state.currentBank?.key || null,
+        bank: state.currentBank?.letter || null,
+    };
+    toast('Generating vibe suggestions...');
+    const response = await api('/api/vibe/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        toast(response.error || 'Vibe generation failed', 'error');
+        return;
+    }
+    renderVibeResults(response.result);
+    toast('Suggestions ready', 'success');
+}
+
+function renderVibeResults(result) {
+    const container = document.getElementById('vibe-results');
+    const banks = (result.bank_suggestions || []).map(
+        (bank) => `${bank.bank.toUpperCase()} ${bank.name} (${bank.score})`
+    );
+    const samples = (result.sample_suggestions || []).slice(0, 4).map(
+        (sample) => `${sample.rel_path} [${sample.score}]`
+    );
+    container.innerHTML = `
+        <div class="vibe-result-card">
+            <strong>Query</strong><br>${result.query || 'No query generated'}
+        </div>
+        <div class="vibe-result-card">
+            <strong>Tags</strong><br>${(result.parsed?.keywords || []).join(', ') || 'No keywords'}
+        </div>
+        <div class="vibe-result-card">
+            <strong>Suggested Banks</strong><br>${banks.join('<br>') || 'No bank suggestions'}
+        </div>
+        <div class="vibe-result-card">
+            <strong>Suggested Samples</strong><br>${samples.join('<br>') || 'No sample suggestions'}
+        </div>
+    `;
+}
+
+async function generateDailyBank() {
+    if (!state.currentBank) return;
+    toast('Generating daily bank...');
+    const result = await api('/api/presets/daily', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({bank: state.currentBank.letter}),
+    });
+    if (result.ok) {
+        await refreshBanks();
+        await loadSets();
+        toast(`Daily bank loaded from ${result.ref}`, 'success');
+    } else {
+        toast(result.error || 'Daily bank generation failed', 'error');
     }
 }
 

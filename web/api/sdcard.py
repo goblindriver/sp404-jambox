@@ -4,26 +4,35 @@ from flask import Blueprint, jsonify, current_app
 
 sdcard_bp = Blueprint('sdcard', __name__)
 
-SD_CARD = "/Volumes/SP-404SX"
-SD_SMPL = os.path.join(SD_CARD, "ROLAND", "SP-404SX", "SMPL")
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-GOLD_DIR = os.path.join(LIBRARY, "_GOLD", "Bank-A")
+
+def _sd_card():
+    return current_app.config['SD_CARD']
+
+
+def _sd_smpl_dir():
+    return current_app.config['SD_SMPL_DIR']
+
+
+def _gold_dir():
+    return current_app.config['GOLD_BANK_A_DIR']
 
 
 @sdcard_bp.route('/sdcard/status')
 def status():
-    mounted = os.path.isdir(SD_SMPL)
+    sd_card = _sd_card()
+    sd_smpl = _sd_smpl_dir()
+    mounted = os.path.isdir(sd_smpl)
     info = {'mounted': mounted}
     if mounted:
         try:
-            usage = shutil.disk_usage(SD_CARD)
+            usage = shutil.disk_usage(sd_card)
             info['free_mb'] = round(usage.free / (1024 * 1024))
             info['total_mb'] = round(usage.total / (1024 * 1024))
         except Exception:
             pass
         # Count samples on card
         try:
-            wavs = [f for f in os.listdir(SD_SMPL) if f.endswith('.WAV')]
+            wavs = [f for f in os.listdir(sd_smpl) if f.endswith('.WAV')]
             info['sample_count'] = len(wavs)
             bank_a = [f for f in wavs if f.startswith('A')]
             info['bank_a_count'] = len(bank_a)
@@ -34,7 +43,7 @@ def status():
 
 @sdcard_bp.route('/sdcard/pull-bank-a', methods=['POST'])
 def pull_bank_a():
-    if not os.path.isdir(SD_SMPL):
+    if not os.path.isdir(_sd_smpl_dir()):
         return jsonify({'ok': False, 'error': 'SD card not mounted'}), 400
 
     import sys
@@ -46,13 +55,14 @@ def pull_bank_a():
 
 @sdcard_bp.route('/gold/sessions')
 def gold_sessions():
-    if not os.path.isdir(GOLD_DIR):
+    gold_dir = _gold_dir()
+    if not os.path.isdir(gold_dir):
         return jsonify({'sessions': []})
     sessions = []
-    for d in sorted(os.listdir(GOLD_DIR)):
+    for d in sorted(os.listdir(gold_dir)):
         if not d.startswith('session-'):
             continue
-        path = os.path.join(GOLD_DIR, d)
+        path = os.path.join(gold_dir, d)
         files = [f for f in os.listdir(path) if f.endswith('.WAV')]
         sessions.append({'name': d, 'count': len(files)})
     return jsonify({'sessions': sessions})

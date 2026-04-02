@@ -32,11 +32,15 @@ import subprocess
 import sys
 import time
 
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-STEMS_DIR = os.path.join(LIBRARY, "Stems")
-TAGS_FILE = os.path.join(LIBRARY, "_tags.json")
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
-PYTHON = "/usr/bin/python3"
+from jambox_config import load_settings_for_script
+
+SETTINGS = load_settings_for_script(__file__)
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+STEMS_DIR = SETTINGS["STEMS_DIR"]
+TAGS_FILE = SETTINGS["TAGS_FILE"]
+FFMPEG = SETTINGS["FFMPEG_BIN"]
+FFPROBE = SETTINGS["FFPROBE_BIN"]
+PYTHON = sys.executable
 
 # Demucs stem name → type code mapping
 STEM_TYPE_MAP = {
@@ -60,7 +64,7 @@ def get_duration(filepath):
     """Get audio duration via ffprobe."""
     try:
         result = subprocess.run(
-            ["/opt/homebrew/bin/ffprobe", "-v", "quiet", "-print_format", "json",
+            [FFPROBE, "-v", "quiet", "-print_format", "json",
              "-show_format", filepath],
             capture_output=True, text=True, timeout=10,
         )

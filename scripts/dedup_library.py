@@ -28,11 +28,13 @@ import sys
 import tempfile
 import time
 import numpy as np
+from jambox_config import load_settings_for_script
 
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-TAGS_FILE = os.path.join(LIBRARY, "_tags.json")
+SETTINGS = load_settings_for_script(__file__)
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+TAGS_FILE = SETTINGS["TAGS_FILE"]
 DUPES_DIR = os.path.join(LIBRARY, "_DUPES")
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
+FFMPEG = SETTINGS["FFMPEG_BIN"]
 SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES"}
 
 

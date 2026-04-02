@@ -14,12 +14,18 @@ them, auto-tags with tag_library.py --update, and logs everything.
 import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading, fcntl
 from datetime import datetime
 
-DOWNLOADS = os.path.expanduser("~/Downloads")
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-RAW_ARCHIVE = os.path.join(LIBRARY, "_RAW-DOWNLOADS")
-INGEST_LOG = os.path.join(LIBRARY, "_ingest_log.json")
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
+
+from jambox_config import build_subprocess_env, load_settings_for_script
+
+SETTINGS = load_settings_for_script(__file__)
+DOWNLOADS = SETTINGS["DOWNLOADS_PATH"]
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+RAW_ARCHIVE = SETTINGS["RAW_ARCHIVE"]
+INGEST_LOG = SETTINGS["INGEST_LOG"]
+FFMPEG = SETTINGS["FFMPEG_BIN"]
 
 # File extensions we care about
 AUDIO_EXTENSIONS = {'.wav', '.mp3', '.aiff', '.aif', '.flac', '.ogg'}
@@ -134,7 +140,7 @@ def extract_archive(filepath, dest):
     elif ext == '.rar':
         print(f"  Extracting RAR: {os.path.basename(filepath)}...")
         result = subprocess.run(
-            ['/opt/homebrew/bin/unar', '-o', dest, '-f', filepath],
+            [SETTINGS["UNAR_BIN"], '-o', dest, '-f', filepath],
             capture_output=True, text=True
         )
     elif ext == '.7z':
@@ -567,7 +573,7 @@ def run_auto_tag():
         result = subprocess.run(
             [sys.executable, tag_script, '--update'],
             capture_output=True, text=True, timeout=120,
-            env={**os.environ, 'PATH': f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"},
+            env=build_subprocess_env(SETTINGS),
         )
         if result.returncode == 0:
             # Count tagged
@@ -580,6 +586,36 @@ def run_auto_tag():
         print("  Tag update timed out (2min)")
     except Exception as e:
         print(f"  Tag update error: {e}")
+
+
+def run_auto_dedupe(clean=False):
+    """Run duplicate analysis after tagging so _tags.json is up to date."""
+    dedupe_script = os.path.join(SCRIPTS_DIR, 'deduplicate_samples.py')
+    if not os.path.exists(dedupe_script):
+        print("  deduplicate_samples.py not found, skipping dedupe")
+        return
+
+    print("  Running duplicate analysis...")
+    command = [sys.executable, dedupe_script, '--report-json']
+    if clean:
+        command.append('--clean')
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            env=build_subprocess_env(SETTINGS),
+        )
+        if result.returncode == 0:
+            print("  Duplicate analysis complete")
+        else:
+            print(f"  Dedupe warning: {(result.stderr or result.stdout)[:200]}")
+    except subprocess.TimeoutExpired:
+        print("  Dedupe timed out (3min)")
+    except Exception as e:
+        print(f"  Dedupe error: {e}")
 
 
 def wait_for_stable(filepath, poll_interval=2.0, stable_count=3):
@@ -629,7 +665,7 @@ def should_ignore(filepath):
 
 # ── Watchdog Watcher ──
 
-def start_watcher():
+def start_watcher(dedupe=False):
     """Start the background file watcher daemon."""
     global _watcher_thread
     try:
@@ -725,6 +761,8 @@ def start_watcher():
             # Auto-tag after ingesting
             if ingested_any:
                 run_auto_tag()
+                if dedupe:
+                    run_auto_dedupe()
 
     handler = IngestHandler()
     observer = Observer()
@@ -766,7 +804,7 @@ def stop_watcher():
         _watcher_state['running'] = False
 
 
-def one_shot_ingest(dry_run=False):
+def one_shot_ingest(dry_run=False, dedupe=False):
     """Run a single ingest pass (original behavior)."""
     os.makedirs(LIBRARY, exist_ok=True)
     os.makedirs(RAW_ARCHIVE, exist_ok=True)
@@ -808,6 +846,8 @@ def one_shot_ingest(dry_run=False):
         # Auto-tag new files
         if total > 0 and not dry_run:
             run_auto_tag()
+            if dedupe:
+                run_auto_dedupe()
 
     return total
 
@@ -959,6 +999,7 @@ def main():
     parser.add_argument('--purge-archive', action='store_true', help='Delete _RAW-DOWNLOADS to free space')
     parser.add_argument('--disk-report', action='store_true', help='Show disk usage report')
     parser.add_argument('--downloads-path', type=str, help='Override downloads folder path')
+    parser.add_argument('--dedupe', action='store_true', help='Run duplicate analysis after tagging')
     args = parser.parse_args()
 
     if args.downloads_path:
@@ -987,13 +1028,13 @@ def main():
 
     if args.watch:
         print("Running initial ingest pass...")
-        one_shot_ingest(dry_run=args.dry_run)
+        one_shot_ingest(dry_run=args.dry_run, dedupe=args.dedupe)
 
         if args.dry_run:
             print("\nDry run — not starting watcher")
             return
 
-        if not start_watcher():
+        if not start_watcher(dedupe=args.dedupe):
             sys.exit(1)
 
         try:
@@ -1003,7 +1044,7 @@ def main():
             print("\nStopping watcher...")
             stop_watcher()
     else:
-        one_shot_ingest(dry_run=args.dry_run)
+        one_shot_ingest(dry_run=args.dry_run, dedupe=args.dedupe)
 
 
 if __name__ == '__main__':

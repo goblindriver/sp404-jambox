@@ -16,15 +16,17 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
+from jambox_config import load_settings_for_script
 from wav_utils import convert_and_tag, build_sp404_wav
 import freesound_client as fs
 
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-FREESOUND_DIR = os.path.join(LIBRARY, "Freesound")
-TAGS_FILE = os.path.join(LIBRARY, "_tags.json")
-CONFIG_PATH = os.path.join(REPO_DIR, "bank_config.yaml")
-STAGING = os.path.join(REPO_DIR, "_CARD_STAGING")
-SMPL_DIR = os.path.join(REPO_DIR, "sd-card-template", "ROLAND", "SP-404SX", "SMPL")
+SETTINGS = load_settings_for_script(__file__)
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+FREESOUND_DIR = SETTINGS["FREESOUND_DIR"]
+TAGS_FILE = SETTINGS["TAGS_FILE"]
+CONFIG_PATH = SETTINGS["CONFIG_PATH"]
+STAGING = SETTINGS["STAGING_DIR"]
+SMPL_DIR = SETTINGS["SMPL_DIR"]
 
 # ═══════════════════════════════════════════════════════════
 # Tag database scoring
@@ -263,9 +265,55 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8):
     return None, 0
 
 
+def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0):
+    """Return ranked library matches for a natural-language-derived query."""
+    parsed = parse_pad_query(query)
+    bank_config = bank_config or {}
+    tag_db = tag_db if tag_db is not None else load_tag_db()
+    used_files = used_files or set()
+    results = []
+
+    for rel_path, entry in tag_db.items():
+        full_path = os.path.join(LIBRARY, rel_path)
+        if full_path in used_files:
+            continue
+
+        score = score_from_tags(entry, parsed, bank_config)
+        if score < min_score:
+            continue
+
+        results.append({
+            "path": full_path,
+            "rel_path": rel_path,
+            "score": score,
+            "type_code": entry.get("type_code"),
+            "playability": entry.get("playability"),
+            "bpm": entry.get("bpm"),
+            "key": entry.get("key"),
+            "tags": entry.get("tags", []),
+            "vibe": entry.get("vibe", []),
+            "genre": entry.get("genre", []),
+            "texture": entry.get("texture", []),
+            "duration": entry.get("duration"),
+        })
+
+    results.sort(key=lambda item: item["score"], reverse=True)
+    return results[:limit]
+
+
 def load_config():
     with open(CONFIG_PATH) as f:
         return yaml.safe_load(f)
+
+
+def clear_staging_wavs():
+    """Remove only staged WAV outputs so a fetch run starts cleanly."""
+    if not os.path.isdir(STAGING):
+        return
+
+    for name in os.listdir(STAGING):
+        if name.upper().endswith('.WAV'):
+            os.remove(os.path.join(STAGING, name))
 
 
 def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_files):
@@ -383,6 +431,7 @@ def main():
     config = load_config()
     os.makedirs(STAGING, exist_ok=True)
     os.makedirs(FREESOUND_DIR, exist_ok=True)
+    clear_staging_wavs()
 
     # Load tag database once
     tag_db = load_tag_db()
@@ -395,6 +444,7 @@ def main():
 
     total_fetched = 0
     total_pads = 0
+    generated_files = []
 
     for key, bank_config in config.items():
         if not key.startswith('bank_') or not bank_config:
@@ -416,9 +466,24 @@ def main():
                 result = fetch_pad(bank_letter, args.pad, pad_query, bank_config, tag_db, used_files)
                 if result:
                     total_fetched += 1
+                    generated_files.append(result)
                 total_pads += 1
         else:
-            fetched = fetch_bank(bank_letter, bank_config, tag_db, used_files)
+            print(f"\n=== Bank {bank_letter.upper()}: {bank_config.get('name', bank_letter)} ===")
+            bpm = bank_config.get('bpm', '')
+            key = bank_config.get('key', '')
+            if bpm or key:
+                print(f"    Target: {bpm} BPM, Key: {key}")
+
+            fetched = 0
+            for pad_num, pad_query in pads.items():
+                pad_num = int(pad_num)
+                print(f"  Pad {pad_num}: {pad_query}")
+                result = fetch_pad(bank_letter, pad_num, pad_query, bank_config, tag_db, used_files)
+                if result:
+                    fetched += 1
+                    generated_files.append(result)
+            print(f"  → {fetched}/{len(pads)} pads filled")
             total_fetched += fetched
             total_pads += len(pads)
 
@@ -429,7 +494,7 @@ def main():
     if total_fetched > 0:
         os.makedirs(SMPL_DIR, exist_ok=True)
         import shutil
-        for f in glob.glob(os.path.join(STAGING, "*.WAV")):
+        for f in generated_files:
             shutil.copy2(f, SMPL_DIR)
         print(f"Copied to: {SMPL_DIR}")
 

@@ -29,12 +29,19 @@
         <span class="set-bar-label">Set:</span>
         <select id="set-selector" class="set-selector" onchange="switchSet(this.value)"></select>
         <button class="btn btn-sm" onclick="saveCurrentSet()" title="Save current config as a new set">Save Set</button>
+        <button id="btn-daily-bank" class="btn btn-sm" title="Generate a fresh auto preset for the current bank">Daily Bank</button>
     </div>
 
     <div class="bank-info" id="bank-info">
         <span id="bank-name" class="bank-name"></span>
         <span id="bank-meta" class="bank-meta"></span>
         <button id="btn-edit-bank" class="btn-edit-bank" title="Edit bank settings">&#9998;</button>
+    </div>
+
+    <div class="vibe-panel" id="vibe-panel">
+        <input type="text" id="vibe-prompt" class="vibe-prompt" placeholder="Describe a vibe, genre, or texture..." />
+        <button id="btn-vibe-generate" class="btn btn-sm btn-accent">Suggest</button>
+        <div id="vibe-results" class="vibe-results"></div>
     </div>
 
     <div id="bank-edit-modal" class="bank-edit-modal hidden">
@@ -236,6 +243,7 @@
             <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
         </div>
         <div class="actions-right">
+            <button id="btn-generate-pattern" class="btn">Generate Pattern</button>
             <button id="btn-build" class="btn">Build</button>
             <button id="btn-deploy" class="btn btn-deploy">Deploy to SD</button>
         </div>

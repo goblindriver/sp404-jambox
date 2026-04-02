@@ -20,10 +20,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-SD_CARD = "/Volumes/SP-404SX"
-SD_SMPL = os.path.join(SD_CARD, "ROLAND", "SP-404SX", "SMPL")
+from jambox_config import load_settings_for_script
 
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
+SETTINGS = load_settings_for_script(__file__)
+SD_CARD = SETTINGS["SD_CARD"]
+SD_SMPL = SETTINGS["SD_SMPL_DIR"]
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 GOLD_DIR = os.path.join(LIBRARY, "_GOLD")
 GOLD_BANK_A = os.path.join(GOLD_DIR, "Bank-A")
 
@@ -46,7 +48,7 @@ def get_bank_a_files():
 def pull_bank_a():
     """Save Bank A samples from SD card to gold library."""
     if not is_card_mounted():
-        print("SD card not mounted at /Volumes/SP-404SX")
+        print(f"SD card not mounted at {SD_CARD}")
         return 0
 
     files = get_bank_a_files()
@@ -96,7 +98,7 @@ def pull_bank_a():
 def push_to_bank_a(source_files):
     """Load samples onto Bank A on the SD card."""
     if not is_card_mounted():
-        print("SD card not mounted at /Volumes/SP-404SX")
+        print(f"SD card not mounted at {SD_CARD}")
         return 0
 
     from wav_utils import convert_and_tag

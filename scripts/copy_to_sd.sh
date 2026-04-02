@@ -3,7 +3,7 @@
 # Run this from Terminal on your Mac:
 #   bash ~/path-to/SP-404SX/copy_to_sd.sh
 
-SD_CARD="/Volumes/SP-404SX"
+SD_CARD="${SP404_SD_CARD:-/Volumes/SP-404SX}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/sd-card-template"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
