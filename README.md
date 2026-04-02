@@ -39,6 +39,15 @@ Bank configurations are now standalone YAML files in `presets/`, organized by ca
 
 The ingest pipeline now runs as a background daemon using `watchdog`. Monitors `~/Downloads` in real-time, waits for file sizes to stabilize, reads `_SOURCE.txt` context files from Cowork, auto-tags after ingest, and logs everything to `_ingest_log.json`. Toggle on/off from the web UI.
 
+## Smart Features
+
+JamBox now includes optional local-first creative tooling:
+
+- Natural-language vibe search via a self-hosted LLM endpoint
+- Pattern generation via a Magenta-compatible external generator
+- Duplicate analysis with `fpcalc` when available, plus a Python fallback
+- Daily auto-presets built from recent library history or `trending.json`
+
 ## Web UI
 
 Launch: `cd web && python app.py` → http://localhost:5404
@@ -51,7 +60,9 @@ Launch: `cd web && python app.py` → http://localhost:5404
 - Set selector: switch entire bank configurations instantly
 - My Music: browse personal library by artist, mood, style (Plex-powered)
 - Bank edit modal: name, BPM, key, notes, save as preset
-- Pipeline controls: Fetch All, Ingest Downloads, Watch, Build, Deploy
+- Vibe prompt bar: describe a mood/genre and get ranked suggestions
+- Pipeline controls: Fetch All, Ingest Downloads, Watch, Build, Generate Pattern, Deploy
+- Daily Bank button: generate a fresh auto preset for the current bank
 - SD card status indicator with auto-polling
 
 ## Pipeline
@@ -70,12 +81,16 @@ Sample Packs (MusicRadar / Freesound)
   tag_library.py ──► Tags every sample across 7 dimensions
         │
         ▼
+  deduplicate_samples.py ──► Duplicate report via fpcalc or Python fallback
+        │
+        ▼
   fetch_samples.py ──► Scores library against bank_config.yaml pad descriptions
         │                  Falls back to Freesound API if no local match
         │
         ▼
   gen_padinfo.py ──► PAD_INFO.BIN (loop/gate mode per pad)
   gen_patterns.py ──► Starter .PTN pattern files
+  generate_patterns.py ──► Local Magenta-backed pattern generation
         │
         ▼
   copy_to_sd.sh ──► /Volumes/SP-404SX/ROLAND/SP-404SX/SMPL/
@@ -90,14 +105,42 @@ python scripts/fetch_samples.py --bank d # Fetch single bank
 python scripts/fetch_samples.py --bank d --pad 1  # Fetch single pad
 python scripts/gen_padinfo.py            # Generate PAD_INFO.BIN
 python scripts/gen_patterns.py           # Generate starter patterns
+python scripts/generate_patterns.py      # Generate a pattern from a local Magenta-compatible tool
 bash scripts/copy_to_sd.sh              # Deploy to SD card
 
 # Library management
 python scripts/ingest_downloads.py       # Import new sample packs
+python scripts/ingest_downloads.py --dedupe  # Import, tag, then run duplicate analysis
 python scripts/ingest_downloads.py --watch  # Background watcher daemon
 python scripts/tag_library.py            # Tag entire library
 python scripts/tag_library.py --update   # Tag new files only
+python scripts/deduplicate_samples.py --report-json  # Write a duplicate report
+
+# Local creative helpers
+python scripts/daily_bank.py             # Generate a daily auto preset in presets/auto/
+# vibe_generate.py and generate_patterns.py read JSON on stdin
 ```
+
+## Local Integration Setup
+
+These features are optional and use the same env-backed runtime config as the rest of the app.
+
+```bash
+SP404_LLM_ENDPOINT=http://127.0.0.1:11434/v1/chat/completions
+SP404_LLM_MODEL=qwen3
+SP404_LLM_TIMEOUT=30
+SP404_MUSICVAE_CHECKPOINT_DIR="$PWD/models/musicvae"
+SP404_MAGENTA_COMMAND=music_vae_generate
+SP404_FINGERPRINT_TOOL=fpcalc
+SP404_DAILY_BANK_SOURCE=recent
+SP404_TRENDING_FILE="$PWD/trending.json"
+```
+
+Use `SP404_LLM_ENDPOINT` for a local chat-completions endpoint. A locally hosted Qwen-family model is a strong fit for prompt interpretation because it handles descriptive instruction-following well while staying practical on consumer hardware.
+
+Point `SP404_MUSICVAE_CHECKPOINT_DIR` at your MusicVAE/GrooVAE checkpoints. `generate_patterns.py` validates the checkpoint path before running, and `SP404_MAGENTA_COMMAND` can either be `music_vae_generate` or your own wrapper command.
+
+If `fpcalc` is installed, duplicate detection uses Chromaprint-style fingerprints first. If not, `deduplicate_samples.py` falls back to the repo's Python similarity implementation and still produces a reviewable report.
 
 ## How Fetching Works
 
@@ -159,6 +202,8 @@ sets/                                 Set configurations (10 presets per set)
   default.yaml                        Original v3 bank layout
 ```
 
+`trending.json` can be either a flat list of keywords or a small object of lists. The daily bank generator uses it when `SP404_DAILY_BANK_SOURCE=trending`.
+
 ## SD Card Structure
 
 ```
@@ -210,6 +255,13 @@ See `CLAUDE.md` for full coordination details.
 9. Insert card into SP-404, jam immediately
 
 Or: `cd web && python app.py` and do it all from http://localhost:5404
+
+Optional smart flows:
+
+1. Configure `SP404_LLM_ENDPOINT`, then use the vibe prompt bar or `scripts/vibe_generate.py`
+2. Install a Magenta-compatible generator plus checkpoints, then use `Generate Pattern` or `scripts/generate_patterns.py`
+3. Run `python scripts/ingest_downloads.py --dedupe` or `python scripts/deduplicate_samples.py --report-json`
+4. Use the Daily Bank button or `python scripts/daily_bank.py` to generate an auto preset under `presets/auto/`
 
 ## Related Projects
 

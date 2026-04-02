@@ -265,6 +265,42 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8):
     return None, 0
 
 
+def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0):
+    """Return ranked library matches for a natural-language-derived query."""
+    parsed = parse_pad_query(query)
+    bank_config = bank_config or {}
+    tag_db = tag_db if tag_db is not None else load_tag_db()
+    used_files = used_files or set()
+    results = []
+
+    for rel_path, entry in tag_db.items():
+        full_path = os.path.join(LIBRARY, rel_path)
+        if full_path in used_files:
+            continue
+
+        score = score_from_tags(entry, parsed, bank_config)
+        if score < min_score:
+            continue
+
+        results.append({
+            "path": full_path,
+            "rel_path": rel_path,
+            "score": score,
+            "type_code": entry.get("type_code"),
+            "playability": entry.get("playability"),
+            "bpm": entry.get("bpm"),
+            "key": entry.get("key"),
+            "tags": entry.get("tags", []),
+            "vibe": entry.get("vibe", []),
+            "genre": entry.get("genre", []),
+            "texture": entry.get("texture", []),
+            "duration": entry.get("duration"),
+        })
+
+    results.sort(key=lambda item: item["score"], reverse=True)
+    return results[:limit]
+
+
 def load_config():
     with open(CONFIG_PATH) as f:
         return yaml.safe_load(f)
