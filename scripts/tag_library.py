@@ -30,7 +30,7 @@ from pathlib import Path
 
 LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
 TAGS_FILE = os.path.join(LIBRARY, "_tags.json")
-AUDIO_EXTS = {".wav", ".aif", ".aiff"}
+AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
 FFPROBE = "/opt/homebrew/bin/ffprobe"
 SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD"}
 

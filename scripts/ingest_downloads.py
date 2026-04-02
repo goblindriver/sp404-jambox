@@ -19,6 +19,7 @@ LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
 RAW_ARCHIVE = os.path.join(LIBRARY, "_RAW-DOWNLOADS")
 INGEST_LOG = os.path.join(LIBRARY, "_ingest_log.json")
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+FFMPEG = "/opt/homebrew/bin/ffmpeg"
 
 # File extensions we care about
 AUDIO_EXTENSIONS = {'.wav', '.mp3', '.aiff', '.aif', '.flac', '.ogg'}
@@ -149,6 +150,30 @@ def extract_archive(filepath, dest):
         print(f"  Extract failed: {result.stderr[:200]}")
         return False
     return True
+
+
+def _copy_as_flac(src_path, dest_path):
+    """Copy an audio file to the library, converting to FLAC for storage.
+    Returns the actual destination path (with .flac extension)."""
+    # Change extension to .flac
+    flac_dest = os.path.splitext(dest_path)[0] + '.flac'
+    if os.path.exists(flac_dest):
+        return flac_dest  # already exists
+
+    try:
+        result = subprocess.run(
+            [FFMPEG, '-y', '-i', src_path, '-c:a', 'flac', '-compression_level', '5', flac_dest],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode == 0 and os.path.exists(flac_dest):
+            return flac_dest
+    except (subprocess.TimeoutExpired, Exception):
+        pass
+
+    # Fallback: just copy the original if FLAC conversion fails
+    if not os.path.exists(dest_path):
+        shutil.copy2(src_path, dest_path)
+    return dest_path
 
 
 def extract_rar(folder, dest):
@@ -292,7 +317,9 @@ def ingest_single_file(filepath, dry_run=False):
     dest_dir = os.path.join(LIBRARY, category)
     dest_path = os.path.join(dest_dir, fname)
 
-    if os.path.exists(dest_path):
+    # Check for both WAV and FLAC versions
+    flac_dest = os.path.splitext(dest_path)[0] + '.flac'
+    if os.path.exists(dest_path) or os.path.exists(flac_dest):
         print(f"  Already exists: {category}/{fname}")
         return 0
 
@@ -301,12 +328,12 @@ def ingest_single_file(filepath, dry_run=False):
         return 1
 
     os.makedirs(dest_dir, exist_ok=True)
-    shutil.copy2(filepath, dest_path)
-    print(f"  → {category}/{fname}")
+    actual_dest = _copy_as_flac(filepath, dest_path)
+    print(f"  → {category}/{os.path.basename(actual_dest)}")
 
     # Store source context if available
     if source_context:
-        _store_source_context(dest_path, source_context)
+        _store_source_context(actual_dest, source_context)
 
     # Move original out of Downloads
     archive_dest = os.path.join(RAW_ARCHIVE, fname)
@@ -398,18 +425,19 @@ def ingest_pack(pack_dir, dry_run=False):
         fname = os.path.basename(wav)
         dest_path = os.path.join(dest_dir, f"{prefix}_{fname}")
 
-        if os.path.exists(dest_path):
+        flac_check = os.path.splitext(dest_path)[0] + '.flac'
+        if os.path.exists(dest_path) or os.path.exists(flac_check):
             continue
 
         if dry_run:
             counts[category] = counts.get(category, 0) + 1
         else:
             os.makedirs(dest_dir, exist_ok=True)
-            shutil.copy2(wav, dest_path)
+            actual = _copy_as_flac(wav, dest_path)
             counts[category] = counts.get(category, 0) + 1
 
             if source_context:
-                _store_source_context(dest_path, source_context)
+                _store_source_context(actual, source_context)
 
     for cat in sorted(counts):
         print(f"  → {cat}: {counts[cat]} files")
@@ -479,17 +507,18 @@ def ingest_archive_file(filepath, dry_run=False):
         wav_fname = os.path.basename(wav)
         dest_path = os.path.join(dest_dir, f"{prefix}_{wav_fname}")
 
-        if os.path.exists(dest_path):
+        flac_check = os.path.splitext(dest_path)[0] + '.flac'
+        if os.path.exists(dest_path) or os.path.exists(flac_check):
             continue
 
         if dry_run:
             counts[category] = counts.get(category, 0) + 1
         else:
             os.makedirs(dest_dir, exist_ok=True)
-            shutil.copy2(wav, dest_path)
+            actual = _copy_as_flac(wav, dest_path)
             counts[category] = counts.get(category, 0) + 1
             if source_context:
-                _store_source_context(dest_path, source_context)
+                _store_source_context(actual, source_context)
 
     for cat in sorted(counts):
         print(f"  → {cat}: {counts[cat]} files")

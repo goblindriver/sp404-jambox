@@ -36,7 +36,8 @@ def preview_library(filepath):
     if not os.path.isfile(full):
         abort(404)
     ext = os.path.splitext(full)[1].lower()
-    mime = {'wav': 'audio/wav', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.mp3': 'audio/mpeg'}.get(ext, 'audio/wav')
+    mime = {'.wav': 'audio/wav', '.aif': 'audio/aiff', '.aiff': 'audio/aiff',
+            '.mp3': 'audio/mpeg', '.flac': 'audio/flac'}.get(ext, 'audio/wav')
     return send_file(full, mimetype=mime)
 
 
