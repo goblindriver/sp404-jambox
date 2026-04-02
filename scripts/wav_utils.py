@@ -9,9 +9,12 @@ Based on reverse engineering from @uttori/audio-wave, super-pads, and sp404loade
 """
 import struct, os, wave, subprocess
 
+from jambox_config import load_settings_for_script
+
 SR = 44100
 BANKS = 'ABCDEFGHIJ'
 RLND_DEVICE = b'roifspsx'
+SETTINGS = load_settings_for_script(__file__)
 
 # RLND payload is 460 bytes (not the standard 458) so that:
 # 12 (RIFF) + 24 (fmt) + 468 (RLND chunk) + 8 (data header) = 512
@@ -100,7 +103,7 @@ def convert_and_tag(src, dst, bank_letter, pad_number, trim_silence=True):
     tmp = dst + '.tmp.wav'
     try:
         subprocess.run([
-            '/opt/homebrew/bin/ffmpeg', '-y', '-i', src,
+            SETTINGS["FFMPEG_BIN"], '-y', '-i', src,
             '-ar', '44100', '-ac', '1', '-sample_fmt', 's16', '-c:a', 'pcm_s16le',
             tmp
         ], capture_output=True, timeout=30)

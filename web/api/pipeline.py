@@ -1,6 +1,7 @@
 """Pipeline control API — fetch, build, deploy, watcher."""
-import os, sys, threading, time, subprocess, uuid, json
-from flask import Blueprint, jsonify, request, current_app, Response
+import os, sys, threading, subprocess, uuid, json
+from flask import Blueprint, jsonify, request, current_app
+from jambox_config import build_subprocess_env
 
 pipeline_bp = Blueprint('pipeline', __name__)
 
@@ -9,7 +10,50 @@ _jobs = {}
 _job_lock = threading.Lock()
 
 
-def _run_fetch(job_id, repo_dir, bank=None, pad=None):
+def _settings():
+    return current_app.config
+
+
+def _clear_staging_wavs(staging_dir):
+    """Remove only generated pad WAVs so a run starts cleanly."""
+    if not os.path.isdir(staging_dir):
+        return
+
+    for name in os.listdir(staging_dir):
+        if name.upper().endswith('.WAV'):
+            os.remove(os.path.join(staging_dir, name))
+
+
+def _command_error_payload(result):
+    stderr = (result.stderr or '').strip()
+    stdout = (result.stdout or '').strip()
+    message = stderr or stdout or 'Command failed'
+    payload = {'ok': False, 'error': message}
+    if stdout:
+        payload['output'] = stdout
+    if stderr:
+        payload['stderr'] = stderr
+    return payload
+
+
+def _run_script(script_name, timeout=None):
+    repo_dir = _settings()['REPO_DIR']
+    result = subprocess.run(
+        [sys.executable, os.path.join(repo_dir, 'scripts', script_name)],
+        capture_output=True,
+        text=True,
+        cwd=repo_dir,
+        env=build_subprocess_env(_settings()),
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        return jsonify(_command_error_payload(result)), 500
+
+    payload = {'ok': True, 'output': result.stdout}
+    return jsonify(payload)
+
+
+def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
     """Run fetch_samples in a background thread."""
     try:
         sys.path.insert(0, os.path.join(repo_dir, 'scripts'))
@@ -19,10 +63,12 @@ def _run_fetch(job_id, repo_dir, bank=None, pad=None):
         config = fs.load_config()
         os.makedirs(fs.STAGING, exist_ok=True)
         os.makedirs(fs.FREESOUND_DIR, exist_ok=True)
+        _clear_staging_wavs(fs.STAGING)
 
         # Load tag database and init deduplication set
         tag_db = fs.load_tag_db()
         used_files = set()
+        generated_files = []
 
         total_fetched = 0
         total_pads = 0
@@ -45,6 +91,7 @@ def _run_fetch(job_id, repo_dir, bank=None, pad=None):
                     result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files)
                     if result:
                         total_fetched += 1
+                        generated_files.append(result)
                     total_pads += 1
             else:
                 for pad_num, pad_query in pads.items():
@@ -53,14 +100,15 @@ def _run_fetch(job_id, repo_dir, bank=None, pad=None):
                     result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files)
                     if result:
                         total_fetched += 1
+                        generated_files.append(result)
                     total_pads += 1
 
         # Copy to SMPL
-        smpl_dir = os.path.join(repo_dir, 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL')
+        smpl_dir = settings['SMPL_DIR']
         if total_fetched > 0:
             os.makedirs(smpl_dir, exist_ok=True)
-            import shutil, glob
-            for f in glob.glob(os.path.join(fs.STAGING, "*.WAV")):
+            import shutil
+            for f in generated_files:
                 shutil.copy2(f, smpl_dir)
 
         _jobs[job_id]['status'] = 'done'
@@ -92,7 +140,8 @@ def fetch():
         'result': '',
     }
     repo_dir = current_app.config['REPO_DIR']
-    t = threading.Thread(target=_run_fetch, args=(job_id, repo_dir, bank, pad))
+    settings = dict(current_app.config)
+    t = threading.Thread(target=_run_fetch, args=(job_id, repo_dir, settings, bank, pad))
     t.daemon = True
     t.start()
 
@@ -109,28 +158,16 @@ def job_status(job_id):
 
 @pipeline_bp.route('/pipeline/padinfo', methods=['POST'])
 def build_padinfo():
-    repo_dir = current_app.config['REPO_DIR']
     try:
-        result = subprocess.run(
-            [sys.executable, os.path.join(repo_dir, 'scripts', 'gen_padinfo.py')],
-            capture_output=True, text=True, cwd=repo_dir,
-            env={**os.environ, 'PATH': f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"},
-        )
-        return jsonify({'ok': True, 'output': result.stdout})
+        return _run_script('gen_padinfo.py')
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @pipeline_bp.route('/pipeline/patterns', methods=['POST'])
 def build_patterns():
-    repo_dir = current_app.config['REPO_DIR']
     try:
-        result = subprocess.run(
-            [sys.executable, os.path.join(repo_dir, 'scripts', 'gen_patterns.py')],
-            capture_output=True, text=True, cwd=repo_dir,
-            env={**os.environ, 'PATH': f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"},
-        )
-        return jsonify({'ok': True, 'output': result.stdout})
+        return _run_script('gen_patterns.py')
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -138,14 +175,15 @@ def build_patterns():
 @pipeline_bp.route('/pipeline/ingest', methods=['POST'])
 def ingest_downloads():
     """Run ingest_downloads.py to extract and organize new sample packs."""
-    repo_dir = current_app.config['REPO_DIR']
     try:
         result = subprocess.run(
-            [sys.executable, os.path.join(repo_dir, 'scripts', 'ingest_downloads.py')],
-            capture_output=True, text=True, cwd=repo_dir,
-            env={**os.environ, 'PATH': f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"},
+            [sys.executable, os.path.join(_settings()['REPO_DIR'], 'scripts', 'ingest_downloads.py')],
+            capture_output=True, text=True, cwd=_settings()['REPO_DIR'],
+            env=build_subprocess_env(_settings()),
             timeout=300,
         )
+        if result.returncode != 0:
+            return jsonify(_command_error_payload(result)), 500
         # Parse the output for summary
         lines = result.stdout.strip().split('\n')
         summary = lines[-1] if lines else 'Done'
@@ -204,7 +242,7 @@ def watcher_status():
         state = ingest.get_watcher_state()
 
         # Also read from ingest log for historical data
-        log_path = os.path.join(os.path.expanduser("~/Music/SP404-Sample-Library"), "_ingest_log.json")
+        log_path = _settings()['INGEST_LOG']
         log = []
         if os.path.exists(log_path):
             try:
@@ -292,15 +330,17 @@ def downloads_path():
 
 @pipeline_bp.route('/pipeline/deploy', methods=['POST'])
 def deploy():
-    repo_dir = current_app.config['REPO_DIR']
+    repo_dir = _settings()['REPO_DIR']
     script = os.path.join(repo_dir, 'scripts', 'copy_to_sd.sh')
-    if not os.path.isdir('/Volumes/SP-404SX'):
+    if not os.path.isdir(_settings()['SD_CARD']):
         return jsonify({'ok': False, 'error': 'SD card not mounted'}), 400
     try:
         result = subprocess.run(
             ['bash', script], capture_output=True, text=True, cwd=repo_dir,
-            env={**os.environ, 'PATH': f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"},
+            env=build_subprocess_env(_settings()),
         )
+        if result.returncode != 0:
+            return jsonify(_command_error_payload(result)), 500
         return jsonify({'ok': True, 'output': result.stdout})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500

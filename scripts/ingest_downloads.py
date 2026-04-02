@@ -14,12 +14,18 @@ them, auto-tags with tag_library.py --update, and logs everything.
 import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading, fcntl
 from datetime import datetime
 
-DOWNLOADS = os.path.expanduser("~/Downloads")
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-RAW_ARCHIVE = os.path.join(LIBRARY, "_RAW-DOWNLOADS")
-INGEST_LOG = os.path.join(LIBRARY, "_ingest_log.json")
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
+
+from jambox_config import build_subprocess_env, load_settings_for_script
+
+SETTINGS = load_settings_for_script(__file__)
+DOWNLOADS = SETTINGS["DOWNLOADS_PATH"]
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+RAW_ARCHIVE = SETTINGS["RAW_ARCHIVE"]
+INGEST_LOG = SETTINGS["INGEST_LOG"]
+FFMPEG = SETTINGS["FFMPEG_BIN"]
 
 # File extensions we care about
 AUDIO_EXTENSIONS = {'.wav', '.mp3', '.aiff', '.aif', '.flac', '.ogg'}
@@ -134,7 +140,7 @@ def extract_archive(filepath, dest):
     elif ext == '.rar':
         print(f"  Extracting RAR: {os.path.basename(filepath)}...")
         result = subprocess.run(
-            ['/opt/homebrew/bin/unar', '-o', dest, '-f', filepath],
+            [SETTINGS["UNAR_BIN"], '-o', dest, '-f', filepath],
             capture_output=True, text=True
         )
     elif ext == '.7z':
@@ -567,7 +573,7 @@ def run_auto_tag():
         result = subprocess.run(
             [sys.executable, tag_script, '--update'],
             capture_output=True, text=True, timeout=120,
-            env={**os.environ, 'PATH': f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"},
+            env=build_subprocess_env(SETTINGS),
         )
         if result.returncode == 0:
             # Count tagged

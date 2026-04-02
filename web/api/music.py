@@ -9,13 +9,9 @@ import os
 import sys
 import threading
 import uuid
-from flask import Blueprint, jsonify, request, send_file, abort, Response
+from flask import Blueprint, jsonify, request, send_file, abort, Response, current_app
 
 music_bp = Blueprint('music', __name__)
-
-SAMPLE_LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-INDEX_FILE = os.path.join(SAMPLE_LIBRARY, "_music_index.json")
-STEMS_DIR = os.path.join(SAMPLE_LIBRARY, "Stems")
 
 # Add scripts dir to path for plex_client
 _scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -26,6 +22,14 @@ if os.path.isdir(_scripts_dir):
 _plex = None
 _plex_last_check = 0
 _PLEX_RETRY_SECONDS = 60
+
+
+def _index_file():
+    return current_app.config['MUSIC_INDEX_FILE']
+
+
+def _stems_dir():
+    return current_app.config['STEMS_DIR']
 
 
 def _get_plex():
@@ -80,7 +84,7 @@ def music_status():
 
     # Fallback to old index
     try:
-        with open(INDEX_FILE) as f:
+        with open(_index_file()) as f:
             index = json.load(f)
         count = len(index.get('tracks', index))
         return jsonify({

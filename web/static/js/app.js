@@ -346,7 +346,8 @@ async function buildAll() {
     if (padinfo.ok && patterns.ok) {
         toast('Build complete', 'success');
     } else {
-        toast('Build had errors — check console', 'error');
+        const message = padinfo.error || patterns.error || 'Build had errors';
+        toast(message, 'error');
         console.log(padinfo, patterns);
     }
 }

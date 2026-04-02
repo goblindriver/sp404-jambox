@@ -28,10 +28,13 @@ import time
 from collections import Counter
 from pathlib import Path
 
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-TAGS_FILE = os.path.join(LIBRARY, "_tags.json")
+from jambox_config import load_settings_for_script
+
+SETTINGS = load_settings_for_script(__file__)
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+TAGS_FILE = SETTINGS["TAGS_FILE"]
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
-FFPROBE = "/opt/homebrew/bin/ffprobe"
+FFPROBE = SETTINGS["FFPROBE_BIN"]
 SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD"}
 
 # ═══════════════════════════════════════════════════════════

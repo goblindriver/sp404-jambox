@@ -7,12 +7,17 @@ SCRIPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scr
 sys.path.insert(0, os.path.abspath(SCRIPT_DIR))
 
 from flask import Flask, render_template
+from jambox_config import ConfigError, load_settings
 
 app = Flask(__name__,
     template_folder='templates',
     static_folder='static',
 )
-app.config['REPO_DIR'] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+repo_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+try:
+    app.config.update(load_settings(repo_dir))
+except ConfigError as exc:
+    raise RuntimeError(f"Configuration error: {exc}") from exc
 
 # Register API blueprints
 from api.banks import banks_bp
@@ -39,4 +44,4 @@ def index():
 
 if __name__ == '__main__':
     print("SP-404 Jambox UI: http://localhost:5404")
-    app.run(host='127.0.0.1', port=5404, debug=True)
+    app.run(host='127.0.0.1', port=5404, debug=app.config['WEB_DEBUG'])
