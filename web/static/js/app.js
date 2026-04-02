@@ -858,5 +858,174 @@ function makeDraggable(el, libraryPath) {
     });
 }
 
+// ═══════════════════════════════════════════════════════
+// My Music — Personal Music Library Browser
+// ═══════════════════════════════════════════════════════
+
+let musicBrowseData = null;
+let musicCurrentTab = 'artists';
+
+document.getElementById('btn-my-music')?.addEventListener('click', toggleMusicSidebar);
+
+function toggleMusicSidebar() {
+    const sidebar = document.getElementById('music-sidebar');
+    const isOpen = !sidebar.classList.contains('hidden');
+    if (isOpen) {
+        closeMusicSidebar();
+    } else {
+        // Close library sidebar if open
+        document.getElementById('sidebar')?.classList.add('hidden');
+        sidebar.classList.remove('hidden');
+        if (!musicBrowseData) loadMusicBrowse();
+    }
+}
+
+function closeMusicSidebar() {
+    document.getElementById('music-sidebar').classList.add('hidden');
+}
+
+async function loadMusicBrowse() {
+    try {
+        const data = await api('/api/music/browse');
+        musicBrowseData = data;
+        renderMusicArtists(data.artists);
+        renderMusicGenres(data.genres);
+    } catch (e) {
+        document.getElementById('music-artists-list').innerHTML =
+            '<div style="padding:16px;color:var(--text-dim)">Music library not indexed.<br>Run: <code>python scripts/index_music.py</code></div>';
+    }
+}
+
+function switchMusicTab(tab) {
+    musicCurrentTab = tab;
+    document.querySelectorAll('#music-sidebar .sidebar-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tab === tab));
+    document.getElementById('music-tab-artists').classList.toggle('hidden', tab !== 'artists');
+    document.getElementById('music-tab-genres').classList.toggle('hidden', tab !== 'genres');
+    document.getElementById('music-tab-search').classList.toggle('hidden', tab !== 'search');
+    document.getElementById('music-detail').classList.add('hidden');
+}
+
+function renderMusicArtists(artists) {
+    const el = document.getElementById('music-artists-list');
+    el.innerHTML = artists.map(a => `
+        <div class="music-item" onclick="loadArtist('${a.name.replace(/'/g, "\\'")}')">
+            <span class="music-item-name">${a.name}</span>
+            <span class="music-item-meta">${a.album_count} albums · ${a.track_count} tracks</span>
+        </div>
+    `).join('');
+}
+
+function renderMusicGenres(genres) {
+    const el = document.getElementById('music-genres-list');
+    el.innerHTML = Object.entries(genres).map(([g, count]) => `
+        <div class="music-item" onclick="searchMyMusic('${g}')">
+            <span class="music-item-name">${g}</span>
+            <span class="music-item-meta">${count} tracks</span>
+        </div>
+    `).join('');
+}
+
+async function loadArtist(name) {
+    const data = await api(`/api/music/artist/${encodeURIComponent(name)}`);
+
+    // Hide browse tabs, show detail
+    document.querySelectorAll('#music-sidebar .sidebar-tab-content').forEach(t => t.classList.add('hidden'));
+    const detail = document.getElementById('music-detail');
+    detail.classList.remove('hidden');
+    document.getElementById('music-detail-title').textContent = name;
+
+    const tracks = document.getElementById('music-detail-tracks');
+    let html = '';
+    for (const album of data.albums) {
+        html += `<div class="music-album-header">${album.name}${album.year ? ` (${album.year})` : ''}</div>`;
+        for (const t of album.tracks) {
+            const dur = t.duration ? `${Math.floor(t.duration / 60)}:${String(Math.floor(t.duration % 60)).padStart(2, '0')}` : '';
+            html += `
+                <div class="music-track">
+                    <span class="music-track-num">${t.track_num || ''}</span>
+                    <span class="music-track-title">${t.title}</span>
+                    <span class="music-track-dur">${dur}</span>
+                    <button class="btn btn-sm btn-accent music-split-btn" onclick="splitTrack('${t.path.replace(/'/g, "\\'")}', this)" title="Split into stems">✂ Split</button>
+                </div>
+            `;
+        }
+    }
+    tracks.innerHTML = html;
+}
+
+function backToMusicBrowse() {
+    document.getElementById('music-detail').classList.add('hidden');
+    document.getElementById(`music-tab-${musicCurrentTab}`).classList.remove('hidden');
+}
+
+let searchTimeout = null;
+async function searchMyMusic(query) {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    if (!query || query.length < 2) return;
+
+    // Switch to search tab
+    switchMusicTab('search');
+    document.getElementById('music-search').value = query;
+
+    searchTimeout = setTimeout(async () => {
+        const data = await api(`/api/music/search?q=${encodeURIComponent(query)}`);
+        const el = document.getElementById('music-search-results');
+        if (!data.results.length) {
+            el.innerHTML = '<div style="padding:16px;color:var(--text-dim)">No results</div>';
+            return;
+        }
+        el.innerHTML = data.results.map(r => `
+            <div class="music-track">
+                <div>
+                    <span class="music-track-title">${r.title || 'Unknown'}</span>
+                    <span class="music-item-meta">${r.artist || ''} · ${r.album || ''} · ${r.genre || ''}</span>
+                </div>
+                <button class="btn btn-sm btn-accent music-split-btn" onclick="splitTrack('${r.path.replace(/'/g, "\\'")}', this)" title="Split into stems">✂ Split</button>
+            </div>
+        `).join('');
+    }, 300);
+}
+
+async function splitTrack(path, btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Splitting...';
+    }
+
+    try {
+        const data = await api('/api/music/split', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path}),
+        });
+
+        if (data.error) {
+            showToast(`Split error: ${data.error}`, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = '✂ Split'; }
+            return;
+        }
+
+        // Poll for completion
+        const jobId = data.job_id;
+        const poll = setInterval(async () => {
+            const status = await api(`/api/music/split/status/${jobId}`);
+            if (status.status === 'done') {
+                clearInterval(poll);
+                const stems = status.result.stems;
+                showToast(`✓ Split into ${stems.length} stems (${status.result.source})`, 'success');
+                if (btn) { btn.disabled = false; btn.textContent = '✓ Done'; }
+            } else if (status.status === 'error') {
+                clearInterval(poll);
+                showToast(`Split error: ${status.result}`, 'error');
+                if (btn) { btn.disabled = false; btn.textContent = '✂ Split'; }
+            }
+        }, 2000);
+    } catch (e) {
+        showToast(`Split failed: ${e.message}`, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '✂ Split'; }
+    }
+}
+
 // ── Go ──
 init();

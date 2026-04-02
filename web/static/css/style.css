@@ -995,6 +995,93 @@ main {
     font-size: 14px;
 }
 
+/* ═══ My Music Browser ═══ */
+
+.music-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.music-item:hover {
+    background: var(--bg-hover);
+}
+
+.music-item-name {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+}
+
+.music-item-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.music-album-header {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    padding: 10px 10px 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+}
+
+.music-track {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+}
+
+.music-track:hover {
+    background: var(--bg-hover);
+}
+
+.music-track-num {
+    font-size: 11px;
+    color: var(--text-muted);
+    width: 20px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.music-track-title {
+    font-size: 13px;
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.music-track-dur {
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.music-split-btn {
+    flex-shrink: 0;
+    font-size: 11px !important;
+    padding: 3px 8px !important;
+}
+
+/* Personal source indicator on pads */
+.pad-personal-badge {
+    position: absolute;
+    top: 6px;
+    right: 22px;
+    font-size: 9px;
+    color: #f0a;
+    opacity: 0.7;
+}
+
 /* Hidden utility */
 .hidden { display: none !important; }
 

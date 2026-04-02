@@ -99,10 +99,43 @@
         </div>
     </aside>
 
+    <!-- My Music Sidebar -->
+    <aside id="music-sidebar" class="sidebar hidden">
+        <div class="sidebar-header">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="artists" onclick="switchMusicTab('artists')">Artists</button>
+                <button class="sidebar-tab" data-tab="genres" onclick="switchMusicTab('genres')">Genres</button>
+                <button class="sidebar-tab" data-tab="search" onclick="switchMusicTab('search')">Search</button>
+            </div>
+            <button id="music-sidebar-close" class="detail-close" onclick="closeMusicSidebar()">&times;</button>
+        </div>
+        <div id="music-sidebar-content" class="sidebar-content">
+            <div id="music-tab-artists" class="sidebar-tab-content">
+                <div id="music-artists-list" class="music-browse-list"></div>
+            </div>
+            <div id="music-tab-genres" class="sidebar-tab-content hidden">
+                <div id="music-genres-list" class="music-browse-list"></div>
+            </div>
+            <div id="music-tab-search" class="sidebar-tab-content hidden">
+                <div class="search-box">
+                    <input type="text" id="music-search" placeholder="Search your music..." oninput="searchMyMusic(this.value)" />
+                </div>
+                <div id="music-search-results" class="music-browse-list"></div>
+            </div>
+            <!-- Artist detail / track list -->
+            <div id="music-detail" class="sidebar-tab-content hidden">
+                <button class="btn btn-sm" onclick="backToMusicBrowse()" style="margin-bottom:8px">← Back</button>
+                <h4 id="music-detail-title" style="color:var(--accent);margin-bottom:8px"></h4>
+                <div id="music-detail-tracks" class="music-browse-list"></div>
+            </div>
+        </div>
+    </aside>
+
     <footer class="action-bar">
         <div class="actions-left">
             <button id="btn-help" class="btn btn-help" title="How it works">?</button>
             <button id="btn-library" class="btn">Library</button>
+            <button id="btn-my-music" class="btn">My Music</button>
             <button id="btn-ingest" class="btn">Ingest Downloads</button>
             <button id="btn-fetch-all" class="btn btn-accent">Fetch All</button>
         </div>

@@ -27,6 +27,8 @@ This project is worked on by multiple Claude agents coordinated by the user:
 - **Raw downloads archive**: `~/Music/SP404-Sample-Library/_RAW-DOWNLOADS/`
 - **Bank config**: `bank_config.yaml` (defines all banks, pads, BPM, key)
 - **Tagging spec**: `docs/TAGGING_SPEC.md` (type codes, tag dimensions, filename conventions)
+- **Personal music library**: `/Volumes/Temp QNAP/Music/` (~493GB, QNAP NAS)
+- **Music index**: `~/Music/SP404-Sample-Library/_music_index.json`
 - **Web UI**: `web/` (Flask app on http://localhost:5404)
 
 ## Audio Format (CRITICAL)
