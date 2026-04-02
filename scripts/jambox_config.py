@@ -7,6 +7,7 @@ DEFAULT_SAMPLE_LIBRARY = "~/Music/SP404-Sample-Library"
 DEFAULT_DOWNLOADS = "~/Downloads"
 DEFAULT_SD_CARD = "/Volumes/SP-404SX"
 DEFAULT_TOOL_PATH_PREFIX = "/opt/homebrew/bin"
+DEFAULT_LLM_TIMEOUT = 30
 
 
 class ConfigError(ValueError):
@@ -63,6 +64,39 @@ def _read_bool(name, default=False):
     raise ConfigError(f"{name} must be one of: 1, 0, true, false, yes, no, on, off")
 
 
+def _read_int(name, default, minimum=None):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+
+    value = value.strip()
+    if not value:
+        raise ConfigError(f"{name} cannot be empty")
+
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be an integer") from exc
+
+    if minimum is not None and parsed < minimum:
+        raise ConfigError(f"{name} must be >= {minimum}")
+    return parsed
+
+
+def _read_choice(name, default, choices):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ConfigError(f"{name} cannot be empty")
+    if normalized not in choices:
+        allowed = ", ".join(sorted(choices))
+        raise ConfigError(f"{name} must be one of: {allowed}")
+    return normalized
+
+
 def load_settings(repo_dir):
     """Load environment-backed settings with development-friendly defaults."""
     repo_dir = _normalize_path(repo_dir)
@@ -92,6 +126,16 @@ def load_settings(repo_dir):
         "UNAR_BIN": _read_command("SP404_UNAR", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "unar")),
         "TOOL_PATH_PREFIX": tool_path_prefix,
         "WEB_DEBUG": _read_bool("SP404_WEB_DEBUG", default=False),
+        "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
+        "LLM_MODEL": _read_command("SP404_LLM_MODEL", "qwen3"),
+        "LLM_TIMEOUT": _read_int("SP404_LLM_TIMEOUT", DEFAULT_LLM_TIMEOUT, minimum=1),
+        "MUSICVAE_CHECKPOINT_DIR": _read_optional_path(
+            "SP404_MUSICVAE_CHECKPOINT_DIR", os.path.join(repo_dir, "models", "musicvae")
+        ),
+        "MAGENTA_COMMAND": _read_command("SP404_MAGENTA_COMMAND", "music_vae_generate"),
+        "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", "fpcalc"),
+        "DAILY_BANK_SOURCE": _read_choice("SP404_DAILY_BANK_SOURCE", "recent", {"recent", "trending"}),
+        "TRENDING_FILE": _read_optional_path("SP404_TRENDING_FILE", os.path.join(repo_dir, "trending.json")),
     }
 
 

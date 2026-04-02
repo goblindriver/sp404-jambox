@@ -158,6 +158,50 @@ header .accent {
 
 .btn-edit-bank:hover { border-color: var(--accent); color: var(--accent); }
 
+.vibe-panel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 24px 12px;
+    flex-wrap: wrap;
+}
+
+.vibe-prompt {
+    min-width: 280px;
+    flex: 1;
+    background: var(--bg-raised);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+.vibe-prompt:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.vibe-results {
+    width: 100%;
+    display: grid;
+    gap: 6px;
+}
+
+.vibe-result-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.vibe-result-card strong {
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+}
+
 /* Bank Edit Modal */
 .bank-edit-modal {
     position: fixed;

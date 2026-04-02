@@ -22,6 +22,8 @@ class LoadSettingsTests(unittest.TestCase):
         self.assertTrue(settings["SAMPLE_LIBRARY"].endswith("SP404-Sample-Library"))
         self.assertTrue(settings["SMPL_DIR"].endswith("sd-card-template/ROLAND/SP-404SX/SMPL"))
         self.assertFalse(settings["WEB_DEBUG"])
+        self.assertEqual(settings["DAILY_BANK_SOURCE"], "recent")
+        self.assertEqual(settings["LLM_TIMEOUT"], 30)
 
     def test_invalid_boolean_raises_clear_error(self):
         with patch.dict(os.environ, {"SP404_WEB_DEBUG": "maybe"}, clear=True):
@@ -43,6 +45,20 @@ class LoadSettingsTests(unittest.TestCase):
 
         env = build_subprocess_env(settings, {"PATH": "/usr/bin"})
         self.assertEqual(env["PATH"], "/usr/bin")
+
+    def test_invalid_daily_bank_source_raises_clear_error(self):
+        with patch.dict(os.environ, {"SP404_DAILY_BANK_SOURCE": "weekly"}, clear=True):
+            with self.assertRaises(ConfigError) as ctx:
+                load_settings("/tmp/jambox-repo")
+
+        self.assertIn("SP404_DAILY_BANK_SOURCE", str(ctx.exception))
+
+    def test_invalid_llm_timeout_raises_clear_error(self):
+        with patch.dict(os.environ, {"SP404_LLM_TIMEOUT": "0"}, clear=True):
+            with self.assertRaises(ConfigError) as ctx:
+                load_settings("/tmp/jambox-repo")
+
+        self.assertIn("SP404_LLM_TIMEOUT", str(ctx.exception))
 
 
 if __name__ == "__main__":

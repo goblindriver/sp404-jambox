@@ -11,6 +11,7 @@ _scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.abspath(_scripts_dir))
 
 import preset_utils as pu
+import daily_bank as db
 
 
 # ── Presets ──
@@ -88,6 +89,24 @@ def load_preset_to_bank():
         return jsonify({'ok': True, 'bank': bank, 'name': result.get('name')})
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
+
+
+@presets_bp.route('/presets/daily', methods=['POST'])
+def generate_daily_preset():
+    """Generate a daily preset and optionally load it to a bank."""
+    data = request.get_json() or {}
+    source = data.get('source')
+    bank = data.get('bank', '').lower().strip()
+    try:
+        result = db.build_daily_preset(source=source)
+        if bank:
+            if bank not in pu.BANK_LETTERS:
+                return jsonify({'error': f'Invalid bank: {bank}'}), 400
+            pu.load_preset_to_bank(result['ref'], bank)
+            result['loaded_bank'] = bank
+        return jsonify({'ok': True, **result})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 # ── Sets ──
