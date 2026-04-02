@@ -1,0 +1,32 @@
+name: Utility & Fun
+slug: utility-fun
+author: jambox
+bpm: 120
+key: any
+vibe: Speeches, gunshots, cash registers, iconic sounds — performance triggers
+notes: Speeches, gunshots, cash registers, iconic sounds — performance triggers
+source: curated
+tags:
+- cash
+- fun
+- gunshots
+- iconic
+- performance
+- registers
+- sounds
+- speeches
+- triggers
+- utility
+pads:
+  1: VOX speech dramatic one-shot
+  2: VOX speech aggressive one-shot
+  3: VOX countdown one-shot
+  4: VOX crowd hype one-shot
+  5: SFX gunshot hard one-shot
+  6: SFX explosion hard one-shot
+  7: SFX cash-register one-shot
+  8: SFX siren hype one-shot
+  9: SFX glass impact one-shot
+  10: SFX air-horn bright one-shot
+  11: SFX whip bright one-shot
+  12: SFX boom dark one-shot

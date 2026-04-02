@@ -1,0 +1,30 @@
+name: Funk
+slug: funk
+author: jambox
+bpm: 112
+key: Em
+vibe: Live, groovy, !!! energy — guitar-driven dance-punk
+notes: Live, groovy, !!! energy — guitar-driven dance-punk
+source: curated
+tags:
+- dance
+- driven
+- energy
+- funk
+- groovy
+- guitar
+- live
+- punk
+pads:
+  1: KIK clean funk one-shot
+  2: SNR bright funk one-shot
+  3: HAT bright funk one-shot
+  4: CLP clean funk one-shot
+  5: BRK funk warm loop
+  6: BAS funk warm loop
+  7: GTR funk bright loop
+  8: KEY clavinet funk loop
+  9: KEY organ funk soulful loop
+  10: BRS funk bright one-shot
+  11: GTR funk raw loop
+  12: SMP funk soulful chop-ready

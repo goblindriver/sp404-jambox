@@ -1,0 +1,31 @@
+name: Electroclash
+slug: electroclash
+author: jambox
+bpm: 120
+key: Dm
+vibe: Dirty, minimal, Fischerspooner attitude — drum machines and analog synths
+notes: Dirty, minimal, Fischerspooner attitude — drum machines and analog synths
+source: curated
+tags:
+- analog
+- attitude
+- dirty
+- drum
+- electroclash
+- fischerspooner
+- machines
+- minimal
+- synths
+pads:
+  1: KIK 808 raw one-shot
+  2: SNR 808 raw one-shot
+  3: HAT closed raw one-shot
+  4: PRC cowbell electronic one-shot
+  5: BRK electronic raw loop
+  6: BAS gritty electronic loop
+  7: SYN lead aggressive loop
+  8: SYN pad dark loop
+  9: SYN arp electronic loop
+  10: VOX spoken dark one-shot
+  11: SFX industrial gritty one-shot
+  12: SYN stab aggressive one-shot

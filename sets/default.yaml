@@ -1,0 +1,16 @@
+name: Default Set
+slug: default
+author: jambox
+created: '2026-04-01'
+notes: Original v3 bank layout — funk/disco/electroclash/nu-rave/aggressive
+banks:
+  a: null
+  b: genre/sessions
+  c: genre/drum-loops
+  d: genre/funk
+  e: genre/disco
+  f: genre/electroclash
+  g: genre/nu-rave
+  h: genre/aggressive
+  i: utility/textures-transitions
+  j: utility/utility-fun

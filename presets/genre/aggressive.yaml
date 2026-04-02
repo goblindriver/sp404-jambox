@@ -1,0 +1,30 @@
+name: Aggressive
+slug: aggressive
+author: jambox
+bpm: 130
+key: Dm
+vibe: Hard, industrial-tinged, peak-time — maximum energy
+notes: Hard, industrial-tinged, peak-time — maximum energy
+source: curated
+tags:
+- aggressive
+- energy
+- hard
+- industrial
+- maximum
+- peak
+- time
+- tinged
+pads:
+  1: KIK hard aggressive one-shot
+  2: SNR hard aggressive one-shot
+  3: HAT metallic aggressive one-shot
+  4: PRC industrial dark one-shot
+  5: BRK electronic aggressive loop
+  6: BAS dark gritty loop
+  7: SYN lead dark loop
+  8: SYN stab aggressive one-shot
+  9: SYN pad dark tense loop
+  10: FX industrial dark one-shot
+  11: FX crunchy aggressive loop
+  12: VOX dark aggressive one-shot

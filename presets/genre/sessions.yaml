@@ -1,0 +1,31 @@
+name: Sessions
+slug: sessions
+author: jambox
+bpm: 120
+key: Am
+vibe: Long-form breaks and full tracks for live sampling and chopping
+notes: Long-form breaks and full tracks for live sampling and chopping
+source: curated
+tags:
+- breaks
+- chopping
+- form
+- full
+- live
+- long
+- sampling
+- sessions
+- tracks
+pads:
+  1: SMP funk soul chop-ready
+  2: SMP disco bright chop-ready
+  3: SMP electronic raw chop-ready
+  4: SMP electronic hype chop-ready
+  5: BRK funk warm loop
+  6: BRK disco bright loop
+  7: BRK electronic raw loop
+  8: BRK electronic hype loop
+  9: SMP funk nostalgic chop-ready
+  10: SMP disco soulful chop-ready
+  11: SMP electronic dark chop-ready
+  12: SMP electronic aggressive chop-ready

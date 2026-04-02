@@ -2,6 +2,7 @@ bank_a:
   name: Your Space
   notes: Bank A is yours — resample and chop on-device
 bank_b:
+  preset: genre/sessions
   name: Sessions
   bpm: 120
   key: Am
@@ -20,6 +21,7 @@ bank_b:
     11: SMP electronic dark chop-ready
     12: SMP electronic aggressive chop-ready
 bank_c:
+  preset: genre/drum-loops
   name: Drum Loops
   bpm: 120
   key: XX
@@ -38,6 +40,7 @@ bank_c:
     11: BRK house clean loop
     12: BRK house bright loop
 bank_d:
+  preset: genre/funk
   name: Funk
   bpm: 112
   key: Em
@@ -56,6 +59,7 @@ bank_d:
     11: GTR funk raw loop
     12: SMP funk soulful chop-ready
 bank_e:
+  preset: genre/disco
   name: Disco
   bpm: 120
   key: Am
@@ -74,6 +78,7 @@ bank_e:
     11: SYN stab disco one-shot
     12: VOX disco hype chop-ready
 bank_f:
+  preset: genre/electroclash
   name: Electroclash
   bpm: 120
   key: Dm
@@ -92,6 +97,7 @@ bank_f:
     11: SFX industrial gritty one-shot
     12: SYN stab aggressive one-shot
 bank_g:
+  preset: genre/nu-rave
   name: Nu-Rave
   bpm: 128
   key: F
@@ -110,6 +116,7 @@ bank_g:
     11: RSR bright transition
     12: SFX alarm hype loop
 bank_h:
+  preset: genre/aggressive
   name: Aggressive
   bpm: 130
   key: Dm
@@ -128,6 +135,7 @@ bank_h:
     11: FX crunchy aggressive loop
     12: VOX dark aggressive one-shot
 bank_i:
+  preset: utility/textures-transitions
   name: Textures & Transitions
   bpm: 120
   key: Am
@@ -146,6 +154,7 @@ bank_i:
     11: FX vinyl lo-fi layer
     12: SYN drone dark loop
 bank_j:
+  preset: utility/utility-fun
   name: Utility & Fun
   bpm: 120
   key: any
@@ -163,3 +172,4 @@ bank_j:
     10: SFX air-horn bright one-shot
     11: SFX whip bright one-shot
     12: SFX boom dark one-shot
+active_set: default

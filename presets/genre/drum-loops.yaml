@@ -1,0 +1,31 @@
+name: Drum Loops
+slug: drum-loops
+author: jambox
+bpm: 120
+key: XX
+vibe: Pure rhythm — no melody, all genres, mix and match
+notes: Pure rhythm — no melody, all genres, mix and match
+source: curated
+tags:
+- all
+- drum
+- genres
+- loops
+- match
+- melody
+- mix
+- pure
+- rhythm
+pads:
+  1: BRK funk warm loop
+  2: BRK funk raw loop
+  3: BRK disco bright loop
+  4: BRK disco soulful loop
+  5: BRK electronic raw loop
+  6: BRK electronic aggressive loop
+  7: BRK electronic hype loop
+  8: BRK electronic crunchy loop
+  9: BRK electronic aggressive loop
+  10: BRK electronic bitcrushed loop
+  11: BRK house clean loop
+  12: BRK house bright loop

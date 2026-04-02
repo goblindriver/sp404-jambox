@@ -1,0 +1,31 @@
+name: Textures & Transitions
+slug: textures-transitions
+author: jambox
+bpm: 120
+key: Am
+vibe: Pads, risers, ambient glue — connective tissue between banks
+notes: Pads, risers, ambient glue — connective tissue between banks
+source: curated
+tags:
+- ambient
+- banks
+- between
+- connective
+- glue
+- risers
+- textures
+- tissue
+- transitions
+pads:
+  1: PAD warm dreamy loop
+  2: PAD dark eerie loop
+  3: PAD dark tense loop
+  4: PAD bright airy loop
+  5: RSR bright transition
+  6: RSR dark transition
+  7: FX processed transition
+  8: TPE warm nostalgic layer
+  9: AMB airy layer
+  10: AMB dark lo-fi layer
+  11: FX vinyl lo-fi layer
+  12: SYN drone dark loop

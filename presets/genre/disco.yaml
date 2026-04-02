@@ -1,0 +1,29 @@
+name: Disco
+slug: disco
+author: jambox
+bpm: 120
+key: Am
+vibe: Four-on-the-floor, warm, danceable — classic disco energy
+notes: Four-on-the-floor, warm, danceable — classic disco energy
+source: curated
+tags:
+- classic
+- danceable
+- disco
+- energy
+- floor
+- four
+- warm
+pads:
+  1: KIK clean disco one-shot
+  2: SNR bright disco one-shot
+  3: HAT open bright one-shot
+  4: CLP disco one-shot
+  5: BRK disco warm loop
+  6: BAS disco warm loop
+  7: SYN pad warm bright loop
+  8: KEY piano disco soulful loop
+  9: GTR disco funk loop
+  10: BRS warm funk one-shot
+  11: SYN stab disco one-shot
+  12: VOX disco hype chop-ready

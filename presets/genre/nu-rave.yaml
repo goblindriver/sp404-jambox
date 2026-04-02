@@ -1,0 +1,29 @@
+name: Nu-Rave
+slug: nu-rave
+author: jambox
+bpm: 128
+key: F
+vibe: Neon, blog-house, 2007 energy — bright and relentless
+notes: Neon, blog-house, 2007 energy — bright and relentless
+source: curated
+tags:
+- blog
+- bright
+- energy
+- house
+- neon
+- rave
+- relentless
+pads:
+  1: KIK electro hard one-shot
+  2: CLP electro bright one-shot
+  3: HAT open bright one-shot
+  4: PRC bright electronic one-shot
+  5: BRK electronic hype loop
+  6: BAS acid gritty loop
+  7: SYN stab bright one-shot
+  8: SYN arp bright loop
+  9: SYN lead hype loop
+  10: VOX chant hype chop-ready
+  11: RSR bright transition
+  12: SFX alarm hype loop
