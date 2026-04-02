@@ -192,6 +192,91 @@ The ingest pipeline (`scripts/ingest_downloads.py`) can run as a persistent daem
 6. Logs every action to `_ingest_log.json`
 7. Web UI has a Watch toggle button and activity feed
 
+## Smart Features Layer
+
+An optional layer of local-first creative tools, gated by environment variables. When the relevant env var is unset or empty, the feature is silently disabled -- no errors, no dependencies required.
+
+### Vibe Prompts
+
+Natural-language sound descriptions translated into fetch parameters via a local LLM.
+
+```
+User prompt ("dark minimal techno kick")
+  -> vibe_generate.py (reads JSON on stdin)
+    -> LLM (SP404_LLM_ENDPOINT, chat-completions format)
+      -> Structured fetch parameters (type_code, vibe, texture, genre, energy)
+        -> rank_library_matches() scores _tags.json with Plex bonuses
+          -> Ranked results returned as JSON
+```
+
+The web API endpoint is `POST /api/vibe/generate` with `{"prompt": "..."}`. The subprocess timeout is `LLM_TIMEOUT + 5` seconds.
+
+### Pattern Generation
+
+Magenta-compatible external generator producing SP-404 .PTN binary pattern files.
+
+```
+JSON input (variant, bpm, bars, bank, pad)
+  -> generate_patterns.py (reads JSON on stdin)
+    -> Magenta subprocess (SP404_MAGENTA_COMMAND, 120s timeout)
+      -> MIDI output in tempfile
+        -> Parse MIDI -> spedit404 Note/Pattern objects
+          -> write_binary() -> .PTN file in sd-card-template/ROLAND/SP-404SX/PTN/
+```
+
+The web API endpoint is `POST /api/pattern/generate` with `{"variant": "drum", "bpm": 124, "bars": 2, "bank": "c", "pad": 1}`. Supported variants: `drum`, `melody`, `trio`. Output is a .PTN binary file via the vendored spEdit404 library, not an audio file.
+
+### Audio Deduplication
+
+Chromaprint fingerprint-based duplicate detection with a Python fallback.
+
+```
+deduplicate_samples.py
+  -> fpcalc (SP404_FINGERPRINT_TOOL) if available
+    -> Chromaprint fingerprints for each WAV
+  -> Python cosine similarity fallback if fpcalc not found
+  -> Report: JSON or human-readable duplicate groups
+```
+
+Runs on demand (`python scripts/deduplicate_samples.py --report-json`) or as a post-ingest hook via the `--dedupe` flag on `ingest_downloads.py`. There is no web API endpoint for deduplication -- it is CLI-only.
+
+### Daily Bank
+
+Auto-generates a fresh preset from recent library activity or trending tags.
+
+```
+daily_bank.py
+  -> Source: "recent" (ingest log) or "trending" (trending.json)
+    -> Weighted random pick of tags/types
+      -> preset_utils.save_preset() -> presets/auto/<date>.yaml
+```
+
+The web API endpoint is `POST /api/presets/daily`. The `trending.json` file can be a flat keyword list or a small object of lists.
+
+## Configuration System
+
+All runtime paths and service endpoints are managed through `scripts/jambox_config.py`.
+
+**How it works:**
+1. `load_settings(repo_dir)` or `load_settings_for_script(__file__)` returns a dict
+2. Each key has a sensible default (paths expand `~`, commands fall back to `/opt/homebrew/bin/`)
+3. Every default can be overridden via `SP404_*` environment variables
+4. Empty optional values (like `LLM_ENDPOINT`) mean the feature is disabled
+
+**Key pattern in scripts:**
+```python
+from jambox_config import load_settings_for_script
+SETTINGS = load_settings_for_script(__file__)
+
+SETTINGS["LLM_ENDPOINT"]     # Local LLM endpoint (empty string if disabled)
+SETTINGS["FFMPEG_BIN"]        # ffmpeg binary path
+SETTINGS["SAMPLE_LIBRARY"]    # Sample library root
+```
+
+**Key pattern in web app:** The Flask app loads settings into `app.config` at startup. API blueprints access them via `current_app.config["KEY"]`.
+
+**Tool path management:** `build_subprocess_env(settings)` prepends the configured tool path prefix to `PATH` for subprocess calls, ensuring `ffmpeg`, `fpcalc`, etc. are found.
+
 ## Future Ideas
 
 - **MK2 support**: Add 48kHz/stereo variant for SP-404 MK2 users

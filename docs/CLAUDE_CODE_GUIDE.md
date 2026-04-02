@@ -156,11 +156,110 @@ python scripts/ingest_downloads.py --watch
 
 Monitors `~/Downloads` for new audio files, waits for stable file size, ingests, auto-tags, logs to `_ingest_log.json`. Reads `_SOURCE.txt` sidecar files from Cowork. Toggle on/off from the web UI Watch button.
 
+## Configuration
+
+All runtime paths and service endpoints are managed through `scripts/jambox_config.py`. Scripts use `load_settings_for_script(__file__)` to get a settings dict.
+
+**Key names (use these exact strings):**
+```python
+from jambox_config import load_settings_for_script
+SETTINGS = load_settings_for_script(__file__)
+
+SETTINGS["SAMPLE_LIBRARY"]    # ~/Music/SP404-Sample-Library (expanded)
+SETTINGS["FFMPEG_BIN"]        # /opt/homebrew/bin/ffmpeg
+SETTINGS["LLM_ENDPOINT"]     # Empty string if disabled
+SETTINGS["TAGS_FILE"]        # ~/Music/SP404-Sample-Library/_tags.json
+SETTINGS["REPO_DIR"]         # Repo root
+```
+
+Every default can be overridden via `SP404_*` environment variables. In the Flask app, settings live in `current_app.config`.
+
+## Vibe Prompts
+
+Natural-language sound description translated into fetch parameters via a local LLM. Requires `SP404_LLM_ENDPOINT` to be set.
+
+**API:**
+```
+POST /api/vibe/generate
+{"prompt": "dark minimal techno kick with grit"}
+```
+
+**CLI:**
+```bash
+echo '{"prompt": "warm dusty funk bass"}' | python scripts/vibe_generate.py
+```
+
+Returns ranked library matches scored against `_tags.json` with Plex metadata bonuses.
+
+## Pattern Generation
+
+Generate SP-404 .PTN pattern files via a Magenta-compatible external generator. Requires `SP404_MUSICVAE_CHECKPOINT_DIR` and `SP404_MAGENTA_COMMAND`.
+
+**API:**
+```
+POST /api/pattern/generate
+{"variant": "drum", "bpm": 124, "bars": 2, "bank": "c", "pad": 1}
+```
+
+Supported variants: `drum`, `melody`, `trio`. The subprocess has a 120-second timeout. Output is a .PTN binary file written to `sd-card-template/ROLAND/SP-404SX/PTN/` via the vendored spEdit404 library -- not an audio file.
+
+**CLI:**
+```bash
+echo '{"variant":"drum","bpm":120,"bars":2,"bank":"c","pad":1}' | python scripts/generate_patterns.py
+```
+
+## Audio Deduplication
+
+Chromaprint fingerprint-based duplicate detection. CLI-only -- there is no web API endpoint for deduplication.
+
+**Commands:**
+```bash
+# Generate a JSON duplicate report
+python scripts/deduplicate_samples.py --report-json
+
+# Remove duplicates (interactive, with confirmation)
+python scripts/deduplicate_samples.py --clean
+
+# Run dedup as part of ingest
+python scripts/ingest_downloads.py --dedupe
+```
+
+Install `fpcalc` via `brew install chromaprint`. Falls back to Python cosine similarity if `fpcalc` is unavailable.
+
+## Daily Bank
+
+Auto-generates a fresh preset from recent library activity or trending tags.
+
+**API:**
+```
+POST /api/presets/daily
+```
+
+**CLI:**
+```bash
+python scripts/daily_bank.py
+```
+
+Presets land in `presets/auto/`. Source is controlled by `SP404_DAILY_BANK_SOURCE` (`recent` or `trending`).
+
+## Key Paths (Smart Features)
+
+| Path | Purpose |
+|------|---------|
+| `scripts/jambox_config.py` | Centralized configuration |
+| `scripts/vibe_generate.py` | NL vibe -> fetch parameters |
+| `scripts/generate_patterns.py` | Magenta pattern generation |
+| `scripts/deduplicate_samples.py` | Audio deduplication |
+| `scripts/daily_bank.py` | Daily preset generator |
+| `web/api/vibe.py` | POST /api/vibe/generate |
+| `web/api/pattern.py` | POST /api/pattern/generate |
+| `trending.json` | Tag trend data |
+
 ## Tips
 
 1. Always verify audio format after conversion: `ffprobe -v quiet -print_format json -show_streams file.wav`
 2. Test with `--bank` and `--pad` flags before fetching everything
-3. The library is the source of truth, not the SD card — the card is just a deployment target
+3. The library is the source of truth, not the SD card -- the card is just a deployment target
 4. Version bank layouts in git so you can roll back
 5. The web UI at localhost:5404 is often faster than terminal for browsing and previewing
-6. Presets are the new atomic unit — save banks as presets to make them reusable
+6. Presets are the new atomic unit -- save banks as presets to make them reusable

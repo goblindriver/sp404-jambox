@@ -31,58 +31,62 @@
 - [x] Background file watcher — `ingest_downloads.py --watch` with watchdog, stable file detection, _SOURCE.txt reading, auto-tagging, _ingest_log.json, web UI toggle + activity feed
 - [x] Plex integration — Read-only SQLite access, 298 mood tags + 412 style tags mapped to internal vibes/genres, artist detail with bios/art/country, Plex metadata carried through stem splitting, scoring boost in fetch_samples.py
 - [x] Bank preset library — Standalone YAML presets in `presets/<category>/`, sets in `sets/`, web UI preset browser with search/filter/preview/drag-to-slot, "Save as Preset" button, migrated all 9 existing banks
+- [x] Smart features integration — Vibe prompts (LLM), pattern generation (Magenta/.PTN), audio deduplication (fpcalc), daily bank presets
+- [x] Centralized config — `scripts/jambox_config.py` with `SETTINGS[key]` pattern and `SP404_*` env overrides
+- [x] FLAC conversion — Handled during ingest pipeline
+- [x] Storage overhaul — `_RAW-DOWNLOADS/` archive, ingest log, dedup pipeline
+- [x] Doc patches applied — README, ARCHITECTURE, CLAUDE_CODE_GUIDE, SAMPLE_SOURCES, TODO refreshed with smart features, config system, corrections
 
 ## In Progress
 
 - [ ] **Cowork**: Ongoing sample sourcing — downloading packs to ~/Downloads watchfolder
 - [ ] **Code**: Web UI refinements (ongoing)
 
-## Backlog — Preset System
+## Priority 1 — Active Creative Work
+
+- [ ] **Big Beat Blowout preset** — ~130 BPM, heavy breaks, acid bass, Chemical Brothers/Prodigy/Fatboy Slim energy
+- [ ] **Synth-Pop Dreams preset** — ~110 BPM, Fm/Am, airy pads, arps, Postal Service/MGMT/Empire Of The Sun
+- [ ] **Brat Mode preset** — ~128 BPM, buzzy detuned synths, hard pop drums, Charli XCX/M.I.A./Slayyyter
+
+## Priority 2 — Preset System Expansion
 
 - [ ] **"Build a Set" workflow modal** — Guided UI flow for assembling a new set of 10 presets from the library
+- [ ] **Playlist-to-bank feature** — Select a Plex playlist, auto-generate a bank preset from mood/style/BPM metadata
 - [ ] **Community preset import** — Import preset YAML files from external sources (shared files, URLs, community repos)
-- [ ] **Playlist-to-bank feature** — Select a Plex playlist → auto-generate a bank preset using tracks' mood/style/BPM metadata to define fetch rules
-
-## Backlog — New Bank Presets
-
-- [ ] **Big Beat Blowout** — ~130 BPM, heavy breaks, acid bass, Chemical Brothers/Prodigy/Fatboy Slim energy
-- [ ] **Synth-Pop Dreams** — ~110 BPM, Fm/Am, airy pads, arps, Postal Service/MGMT/Empire Of The Sun
-- [ ] **Brat Mode** — ~128 BPM, buzzy detuned synths, hard pop drums, Charli XCX/M.I.A./Slayyyter
 - [ ] Convert Cowork's genre templates (9 genres from producer workflow research) into preset format
 - [ ] Design curated sets for different session types (live DJ, songwriting, sound design exploration)
 
-## Backlog — Harmonic Engine
+## Priority 3 — Harmonic Engine
 
 - [ ] Map every key to diatonic family
 - [ ] Harmonize API endpoint
 - [ ] Harmonic filter in tag cloud
 - [ ] Chemistry view showing cross-bank compatibility
 
-## Backlog — Stem Splitting Priority Queue
+## Priority 4 — Stem Splitting Priority Queue
 
 - [ ] Block Rockin' Beats — legendary break
 - [ ] Deceptacon — bass line + drum machine
 - [ ] Feel It Still — Motown drum loop + bass
 - [ ] I Feel Love — vocal + Moroder sequencer
 - [ ] Firestarter — breaks + bass
-- [ ] Teardrop — everything → Textures bank
+- [ ] Teardrop — everything for Textures bank
 - [ ] D.A.N.C.E. — vocal chops as performance triggers
 
-## Backlog — Cowork Pipeline
-
-- [ ] Source hunting: Big Beat Blowout samples
-- [ ] Source hunting: Synth-Pop Dreams samples
-- [ ] Source hunting: Brat Mode samples
-- [ ] Sample pack curation survey (broad landscape scan)
-- [ ] Sound design reference mood boards (5 banks)
-- [ ] Playlist mining and extraction (all music playlists)
-
-## Backlog — Infrastructure
+## Priority 5 — Infrastructure
 
 - [ ] Bank export/import as portable packages
 - [ ] CI/CD for tag database updates
 - [ ] Backup strategy for _tags.json and bank_config.yaml
 - [ ] Explore MK2 support (48kHz/stereo variant)
+
+## Waiting On
+
+- [ ] **Cowork**: Ongoing sample sourcing — downloading packs to ~/Downloads watchfolder
+- [ ] **Cowork**: Source hunting for Big Beat Blowout, Synth-Pop Dreams, Brat Mode
+- [ ] **Cowork**: Sample pack curation survey (broad landscape scan)
+- [ ] **Cowork**: Sound design reference mood boards (5 banks)
+- [ ] **Cowork**: Playlist mining and extraction (all music playlists)
 
 ---
 

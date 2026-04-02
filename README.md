@@ -48,6 +48,21 @@ JamBox now includes optional local-first creative tooling:
 - Duplicate analysis with `fpcalc` when available, plus a Python fallback
 - Daily auto-presets built from recent library history or `trending.json`
 
+### Natural Language Vibe Prompts
+Describe the sound you're hearing -- the system translates it into fetch parameters via a local LLM. Results scored against the full library including Plex metadata. Requires `SP404_LLM_ENDPOINT`.
+
+### Pattern Generation (Magenta)
+Generate drum patterns and melodic sequences with human-feel swing using MusicVAE/GrooVAE. Outputs SP-404 .PTN pattern files. Requires Magenta checkpoints.
+
+### Audio Deduplication
+Chromaprint fingerprint-based duplicate detection. Runs on demand or during ingest via `--dedupe` flag. Install `fpcalc` via `brew install chromaprint`.
+
+### Daily Bank
+Auto-generates a fresh preset each day from recent/trending library activity. Presets land in `presets/auto/`.
+
+### Centralized Configuration
+All paths and service endpoints managed through `scripts/jambox_config.py` with environment variable overrides.
+
 ## Web UI
 
 Launch: `cd web && python app.py` → http://localhost:5404
@@ -141,6 +156,34 @@ Use `SP404_LLM_ENDPOINT` for a local chat-completions endpoint. A locally hosted
 Point `SP404_MUSICVAE_CHECKPOINT_DIR` at your MusicVAE/GrooVAE checkpoints. `generate_patterns.py` validates the checkpoint path before running, and `SP404_MAGENTA_COMMAND` can either be `music_vae_generate` or your own wrapper command.
 
 If `fpcalc` is installed, duplicate detection uses Chromaprint-style fingerprints first. If not, `deduplicate_samples.py` falls back to the repo's Python similarity implementation and still produces a reviewable report.
+
+## Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SP404_LLM_ENDPOINT` | Local LLM endpoint for vibe prompts | (disabled) |
+| `SP404_MUSICVAE_CHECKPOINT_DIR` | MusicVAE model checkpoints | (disabled) |
+| `SP404_MAGENTA_COMMAND` | Magenta pattern generation command | `music_vae_generate` |
+| `SP404_FINGERPRINT_TOOL` | Audio fingerprint tool | `fpcalc` |
+| `SP404_LLM_MODEL` | LLM model name | `qwen3` |
+| `SP404_LLM_TIMEOUT` | LLM request timeout (seconds) | `30` |
+| `SP404_DAILY_BANK_SOURCE` | Daily bank source (`recent` or `trending`) | `recent` |
+| `SP404_TRENDING_FILE` | Path to trending.json | `$REPO/trending.json` |
+| `SP404_SAMPLE_LIBRARY` | Sample library root | `~/Music/SP404-Sample-Library` |
+| `SP404_FFMPEG` | ffmpeg binary path | `/opt/homebrew/bin/ffmpeg` |
+
+## Key Paths (Smart Features)
+
+```
+scripts/jambox_config.py        # Centralized configuration
+scripts/vibe_generate.py        # NL vibe -> fetch parameters
+scripts/generate_patterns.py    # Magenta pattern generation
+scripts/deduplicate_samples.py  # Audio deduplication
+scripts/daily_bank.py           # Daily preset generator
+web/api/vibe.py                 # POST /api/vibe/generate
+web/api/pattern.py              # POST /api/pattern/generate
+trending.json                   # Tag trend data
+```
 
 ## How Fetching Works
 

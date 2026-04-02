@@ -70,6 +70,36 @@ Plex is not a sample source — it's a **metadata enrichment layer** that enhanc
 
 ~9,600+ WAVs across all categories, tagged in `_tags.json`.
 
+## AI-Generated Content
+
+### Pattern Generation (Magenta)
+
+`scripts/generate_patterns.py` uses a Magenta-compatible external generator (MusicVAE/GrooVAE) to create drum patterns and melodic sequences. These are **not audio samples** -- they are SP-404 .PTN pattern files written via the vendored spEdit404 library. Pattern files live in `sd-card-template/ROLAND/SP-404SX/PTN/` and do not go through the sample ingest pipeline.
+
+Requires `SP404_MUSICVAE_CHECKPOINT_DIR` and `SP404_MAGENTA_COMMAND` environment variables.
+
+### Vibe-Prompted Fetching
+
+`scripts/vibe_generate.py` translates natural-language sound descriptions into structured fetch parameters via a local LLM. This does not create new samples -- it scores and ranks existing library entries. Results include Plex metadata bonuses when available.
+
+Requires `SP404_LLM_ENDPOINT` environment variable.
+
+## Deduplication
+
+The sample library can accumulate duplicates across packs and sources. `scripts/deduplicate_samples.py` detects them using:
+
+1. **Chromaprint fingerprints** (via `fpcalc`) -- acoustic fingerprint comparison, preferred method
+2. **Python cosine similarity fallback** -- used when `fpcalc` is not installed
+
+**Usage:**
+```bash
+python scripts/deduplicate_samples.py --report-json   # Generate duplicate report
+python scripts/deduplicate_samples.py --clean          # Remove duplicates interactively
+python scripts/ingest_downloads.py --dedupe            # Run dedup after ingest
+```
+
+Install `fpcalc` via `brew install chromaprint` for best results.
+
 ## Pack Contents Detail
 
 ### 80s-synths (932 WAVs)
