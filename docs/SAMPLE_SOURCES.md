@@ -42,6 +42,23 @@ When `fetch_samples.py` can't find a good local match for a pad description, it 
 
 Freesound downloads are stored separately from the MusicRadar library so attribution requirements stay clear.
 
+## Plex Metadata Enrichment
+
+Plex is not a sample source — it's a **metadata enrichment layer** that enhances everything else in the pipeline.
+
+**What it provides:**
+- **298 mood tags** mapped to our 15 internal vibes via `MOOD_TO_VIBE` in `plex_client.py`
+- **412 style tags** mapped to our genre categories via `STYLE_TO_GENRE` in `plex_client.py`
+- BPM, key, play count, artist bios, album art, playlist membership
+- Country/origin data for artists
+
+**How it affects sample scoring:**
+- Stems split from Plex-sourced tracks inherit all Plex metadata in `_tags.json`
+- `fetch_samples.py` gives a small scoring boost to Plex-tagged samples (richer metadata = higher confidence)
+- Play count acts as a relevance signal — frequently played tracks score higher
+
+**Library stats:** 33,408 tracks, 1,005 artists at `/Volumes/Jansen's FL Drobo/Multimedia/Music`
+
 ## Adding New Packs
 
 1. Download ZIPs to `~/Downloads/`

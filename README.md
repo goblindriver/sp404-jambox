@@ -27,6 +27,18 @@ Every bank key is diatonic to C major (Am, Dm, Em, F) so everything harmonizes. 
 
 **Pad convention:** Pads 1–4 = drum hits (one-shots), Pads 5–12 = loops & melodic content
 
+## Plex Integration
+
+Reads directly from the local Plex SQLite database (read-only) to pull rich metadata for your personal music library. 33,408 tracks across 1,005 artists with 298 mood tags and 412 style tags — far richer than ID3 scanning alone. Plex metadata flows through to stem splitting and sample scoring.
+
+## Bank Preset Library
+
+Bank configurations are now standalone YAML files in `presets/`, organized by category. Presets can be browsed, searched, previewed, and dragged onto bank tabs in the web UI. Sets group 10 presets into saved configurations for different session types. The existing `bank_config.yaml` remains fully expanded for backward compatibility.
+
+## Background File Watcher
+
+The ingest pipeline now runs as a background daemon using `watchdog`. Monitors `~/Downloads` in real-time, waits for file sizes to stabilize, reads `_SOURCE.txt` context files from Cowork, auto-tags after ingest, and logs everything to `_ingest_log.json`. Toggle on/off from the web UI.
+
 ## Web UI
 
 Launch: `cd web && python app.py` → http://localhost:5404
@@ -35,8 +47,11 @@ Launch: `cd web && python app.py` → http://localhost:5404
 - Click pads to edit descriptions, preview audio, fetch samples
 - Drag-and-drop from library sidebar onto pads
 - Library browser with dimension-aware tag cloud filtering
-- Bank edit modal: name, BPM, key, notes
-- Pipeline controls: Fetch All, Ingest Downloads, Build, Deploy
+- Preset browser: browse, search, filter, preview, drag presets onto bank tabs
+- Set selector: switch entire bank configurations instantly
+- My Music: browse personal library by artist, mood, style (Plex-powered)
+- Bank edit modal: name, BPM, key, notes, save as preset
+- Pipeline controls: Fetch All, Ingest Downloads, Watch, Build, Deploy
 - SD card status indicator with auto-polling
 
 ## Pipeline
@@ -79,6 +94,7 @@ bash scripts/copy_to_sd.sh              # Deploy to SD card
 
 # Library management
 python scripts/ingest_downloads.py       # Import new sample packs
+python scripts/ingest_downloads.py --watch  # Background watcher daemon
 python scripts/tag_library.py            # Tag entire library
 python scripts/tag_library.py --update   # Tag new files only
 ```
@@ -124,7 +140,23 @@ Every sample is auto-tagged across 7 dimensions (see `docs/TAGGING_SPEC.md`):
 ├── Freesound/{bank-name}/           (API downloads with attribution)
 ├── _RAW-DOWNLOADS/                  (original packs, archived after ingest)
 ├── _GOLD/Bank-A/                    (saved Bank A sessions)
-└── _tags.json                       (tag database)
+├── _tags.json                       (tag database)
+└── _ingest_log.json                 (watcher activity log)
+```
+
+## Presets & Sets
+
+```
+presets/                              Bank preset YAML files
+  genre/                              Genre-specific (funk, disco, electroclash, etc.)
+  utility/                            Utility banks (textures, SFX, voices)
+  song-kits/                          Complete production kits
+  palette/                            Single sound type across all pads
+  community/                          Shared/imported presets
+  auto/                               Auto-generated presets
+
+sets/                                 Set configurations (10 presets per set)
+  default.yaml                        Original v3 bank layout
 ```
 
 ## SD Card Structure

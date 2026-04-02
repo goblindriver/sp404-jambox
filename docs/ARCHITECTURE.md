@@ -133,10 +133,69 @@ Proprietary binary format in `ROLAND/SP-404SX/PTN/`. Generated via `scripts/gen_
 
 Chat owns all documentation. Code doesn't create or update docs unless asked. See `CLAUDE.md` for full coordination protocol.
 
+## Plex Integration
+
+The system reads metadata from the local Plex Media Server SQLite database in **read-only** mode. No API calls, no network dependency — just direct DB reads.
+
+**Database location:**
+```
+~/Library/Application Support/Plex Media Server/Plug-in Support/Databases/com.plexapp.plugins.library.db
+```
+
+**Music library root:** `/Volumes/Jansen's FL Drobo/Multimedia/Music`
+
+**What we pull from Plex:**
+- Artist name, album, track title, genre, duration
+- 298 mood tags mapped to our 15 vibes via `MOOD_TO_VIBE` in `plex_client.py`
+- 412 style tags mapped to our genre categories via `STYLE_TO_GENRE` in `plex_client.py`
+- Play count (used as relevance signal in fetch scoring)
+- Album art paths, artist bios, country
+
+**Data flow:**
+```
+Plex SQLite DB (read-only)
+  → plex_client.py (query + map tags)
+    → Web UI "My Music" sidebar (Moods tab, Styles tab, Artist detail)
+    → stem_split.py (metadata carried through to _tags.json on child stems)
+    → fetch_samples.py (Plex-tagged stems get scoring boost)
+```
+
+**Key constraint:** Read-only access only. Never writes to the Plex database.
+
+## Bank Preset Library
+
+The bank configuration system has two layers: **presets** (individual bank definitions) and **sets** (curated groups of 10 presets mapped to slots A–J).
+
+**Presets** (`presets/<category>/<name>.yaml`):
+- Each preset is a standalone YAML file defining a single bank configuration
+- Contains: name, BPM, key, vibe, notes, tags, and 12 pad descriptions
+- Categories: `genre/`, `utility/`, `song-kits/`, `palette/`, `community/`, `auto/`
+
+**Sets** (`sets/<name>.yaml`):
+- Maps 10 slots (A–J) to preset references (relative paths without `.yaml`)
+- Switching sets swaps all 10 banks at once
+
+**Backward compatibility:**
+- `bank_config.yaml` remains the fully expanded runtime config
+- `preset_utils.py` resolves set → presets → expanded bank_config.yaml
+- Existing scripts that read `bank_config.yaml` work unchanged
+
+## Background File Watcher
+
+The ingest pipeline (`scripts/ingest_downloads.py`) can run as a persistent daemon using `watchdog`.
+
+1. Monitors `~/Downloads` for new files via filesystem events
+2. Waits for file size to stabilize (handles in-progress downloads)
+3. Ingests: normalize, categorize, move to library
+4. Reads `_SOURCE.txt` sidecar files (from Cowork) and stores context in `_tags.json`
+5. Auto-runs `tag_library.py --update` to refresh the tag index
+6. Logs every action to `_ingest_log.json`
+7. Web UI has a Watch toggle button and activity feed
+
 ## Future Ideas
 
-- **NAS integration**: Move library to QNAP NAS at `/Volumes/Temp QNAP/Audio Production`
 - **MK2 support**: Add 48kHz/stereo variant for SP-404 MK2 users
-- **Auto-BPM detection**: Use librosa to detect BPM on untagged samples and auto-match to bank tempos
-- **Sample deduplication**: Detect near-duplicate WAVs across the library
-- **Bank export/import**: Share bank configs as portable packages with embedded samples
+- **Harmonic engine**: Map keys to diatonic families, chemistry view for cross-bank compatibility
+- **"Build a Set" workflow**: Guided modal for assembling 10 presets into a new set
+- **Community preset import**: Import preset files from external sources
+- **Playlist-to-bank**: Generate bank presets from Plex playlist metadata
