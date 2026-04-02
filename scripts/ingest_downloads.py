@@ -11,8 +11,9 @@ The watcher uses watchdog to monitor ~/Downloads for new audio files and
 sample packs. It waits for downloads to finish (stable file size), ingests
 them, auto-tags with tag_library.py --update, and logs everything.
 """
-import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading, fcntl
+import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading, fcntl, zipfile
 from datetime import datetime
+import yaml
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
@@ -124,6 +125,148 @@ def is_sample_pack(dirname):
 def has_rar_files(folder):
     """Check if folder contains RAR archives."""
     return any(f.endswith('.rar') for f in os.listdir(folder))
+
+
+def archive_has_audio(filepath):
+    """Quick check if a zip archive contains audio files (without extracting)."""
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.zip':
+        try:
+            with zipfile.ZipFile(filepath, 'r') as zf:
+                for name in zf.namelist():
+                    if os.path.splitext(name)[1].lower() in AUDIO_EXTENSIONS:
+                        return True
+            return False
+        except Exception:
+            return True  # If we can't peek, let the full extract path handle it
+    # For .rar/.7z we can't easily peek — let them through
+    return True
+
+
+def check_chat_delivery(filepath):
+    """Check if a zip contains a _DELIVERY.yaml manifest from Chat.
+
+    Chat drops zips into ~/Downloads with a _DELIVERY.yaml inside that tells
+    the watcher what to do with the contents (install presets, update tags, etc.)
+
+    Returns the delivery manifest dict, or None if not a Chat delivery.
+    """
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext != '.zip':
+        return None
+    try:
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            names = zf.namelist()
+            # Look for _DELIVERY.yaml at any level
+            manifest_name = None
+            for name in names:
+                if os.path.basename(name) == '_DELIVERY.yaml':
+                    manifest_name = name
+                    break
+            if not manifest_name:
+                return None
+            with zf.open(manifest_name) as mf:
+                manifest = yaml.safe_load(mf)
+            if isinstance(manifest, dict) and manifest.get('from') == 'chat':
+                return manifest
+    except Exception:
+        return None
+    return None
+
+
+def handle_chat_delivery(filepath, manifest):
+    """Process a Chat delivery zip based on its manifest.
+
+    Supported delivery types:
+      - presets: Install preset YAML files into presets/<category>/
+      - tags: (future) Update tag mappings
+      - config: (future) Update bank_config or other settings
+
+    Returns number of items installed, or 0 on failure.
+    """
+    # Import preset_utils here to avoid circular imports at module level
+    sys.path.insert(0, SCRIPTS_DIR) if SCRIPTS_DIR not in sys.path else None
+    from preset_utils import save_preset, CATEGORIES
+
+    delivery_type = manifest.get('type', '')
+    message = manifest.get('message', '')
+    category = manifest.get('category', 'community')
+
+    print(f"\n{'='*60}")
+    print(f"[DELIVERY] 📬 Message in a bottle from Chat!")
+    if message:
+        print(f"[DELIVERY] \"{message}\"")
+    print(f"[DELIVERY] Type: {delivery_type}")
+
+    if delivery_type == 'presets':
+        return _install_preset_delivery(filepath, category)
+    else:
+        print(f"[DELIVERY] Unknown delivery type: {delivery_type} — skipping")
+        return 0
+
+
+def _install_preset_delivery(filepath, default_category='community'):
+    """Extract and install preset YAML files from a Chat delivery zip."""
+    from preset_utils import save_preset, CATEGORIES
+
+    count = 0
+    installed = []
+
+    try:
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            for name in zf.namelist():
+                # Only process .yaml files, skip the manifest itself
+                if not name.endswith('.yaml') or os.path.basename(name) == '_DELIVERY.yaml':
+                    continue
+
+                try:
+                    with zf.open(name) as yf:
+                        preset = yaml.safe_load(yf)
+                except Exception as e:
+                    print(f"[DELIVERY] Failed to parse {name}: {e}")
+                    continue
+
+                if not isinstance(preset, dict) or 'name' not in preset:
+                    print(f"[DELIVERY] Skipping {name} — not a valid preset (missing 'name')")
+                    continue
+
+                # Determine category: from the preset file, from path, or from manifest default
+                cat = preset.get('category', None)
+                if not cat:
+                    # Try to infer from zip path (e.g., genre/big-beat-blowout.yaml)
+                    parts = name.replace('\\', '/').split('/')
+                    if len(parts) >= 2 and parts[-2] in CATEGORIES:
+                        cat = parts[-2]
+                    else:
+                        cat = default_category
+
+                ref = save_preset(preset, category=cat)
+                preset_name = preset.get('name', name)
+                installed.append(f"{cat}/{preset.get('slug', name)}")
+                count += 1
+                print(f"[DELIVERY] ✅ Installed preset: {preset_name} → presets/{cat}/")
+
+    except Exception as e:
+        print(f"[DELIVERY] Error processing delivery: {e}")
+        return 0
+
+    if count > 0:
+        print(f"[DELIVERY] 📦 {count} preset(s) installed: {', '.join(installed)}")
+
+        # Log the delivery
+        _log_delivery(filepath, 'presets', installed)
+
+    return count
+
+
+def _log_delivery(filepath, delivery_type, items):
+    """Log a Chat delivery using the standard ingest log + watcher feed."""
+    _log_ingest(
+        source_name=f"📬 Chat delivery: {os.path.basename(filepath)}",
+        num_samples=len(items),
+        categories={delivery_type: len(items)},
+        source_type='chat-delivery',
+    )
 
 
 def extract_archive(filepath, dest):
@@ -498,7 +641,9 @@ def ingest_archive_file(filepath, dry_run=False):
                 wav_files.append(os.path.join(root, f))
 
     if not wav_files:
-        print(f"  No audio files in archive")
+        print(f"  No audio files in archive — skipping (not a sample pack)")
+        # Clean up the extracted non-audio content
+        shutil.rmtree(extract_dest, ignore_errors=True)
         return 0
 
     print(f"  Found {len(wav_files)} audio files")
@@ -742,7 +887,17 @@ def start_watcher(dedupe=False):
                 print(f"\n[WATCHER] New file ready: {fname}")
 
                 if ext in ARCHIVE_EXTENSIONS:
-                    count = ingest_archive_file(filepath)
+                    # Check for Chat delivery first
+                    delivery = check_chat_delivery(filepath)
+                    if delivery:
+                        count = handle_chat_delivery(filepath, delivery)
+                    elif not archive_has_audio(filepath):
+                        print(f"[WATCHER] Skipping {fname} — no audio files inside")
+                        self._processed.add(filepath)
+                        to_remove.append(filepath)
+                        continue
+                    else:
+                        count = ingest_archive_file(filepath)
                 elif ext in AUDIO_EXTENSIONS:
                     count = ingest_single_file(filepath)
                 else:
@@ -831,7 +986,12 @@ def one_shot_ingest(dry_run=False, dedupe=False):
 
         ext = os.path.splitext(item)[1].lower()
         if ext in ARCHIVE_EXTENSIONS:
-            total += ingest_archive_file(filepath, dry_run=dry_run)
+            # Check for Chat delivery first
+            delivery = check_chat_delivery(filepath)
+            if delivery:
+                total += handle_chat_delivery(filepath, delivery)
+            else:
+                total += ingest_archive_file(filepath, dry_run=dry_run)
             pack_count += 1
         elif ext in AUDIO_EXTENSIONS:
             total += ingest_single_file(filepath, dry_run=dry_run)

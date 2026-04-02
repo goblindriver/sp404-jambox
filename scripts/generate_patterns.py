@@ -256,7 +256,7 @@ def generate_pattern(payload):
 
     with tempfile.TemporaryDirectory(prefix="jambox_magenta_") as tmpdir:
         command, preferred_output = _build_magenta_command(payload, checkpoint_path, tmpdir)
-        result = subprocess.run(command, capture_output=True, text=True, cwd=REPO_DIR)
+        result = subprocess.run(command, capture_output=True, text=True, cwd=REPO_DIR, timeout=120)
         if result.returncode != 0:
             stderr = (result.stderr or result.stdout or "Magenta command failed").strip()
             raise RuntimeError(stderr)
