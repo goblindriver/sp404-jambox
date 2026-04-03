@@ -101,11 +101,27 @@ def run_checks():
     if not llm_ready:
         warnings += 1
 
+    parser_mode = settings.get("VIBE_PARSER_MODE", "base")
+    mode_detail = f"mode={parser_mode}; model={settings.get('LLM_MODEL', 'qwen3')}"
+    if parser_mode == "fine_tuned":
+        tuned_endpoint = settings.get("FINE_TUNED_LLM_ENDPOINT", "").strip()
+        tuned_model = settings.get("FINE_TUNED_LLM_MODEL", "").strip() or "(unset)"
+        tuned_ready = bool(tuned_endpoint)
+        messages.append(
+            f"  {_integration_status(tuned_ready, 'Fine-tuned vibe parser', f'{tuned_endpoint or 'SP404_FINE_TUNED_LLM_ENDPOINT not set'}; model={tuned_model}')}"
+        )
+        if not tuned_ready:
+            warnings += 1
+    else:
+        messages.append(f"  {_integration_status(True, 'Vibe parser mode', mode_detail)}")
+
     messages.append("")
     messages.append("Configured paths:")
     for label, value, should_exist in (
         ("Repository", repo_dir, True),
         ("bank_config.yaml", settings["CONFIG_PATH"], True),
+        ("Vibe sessions DB", settings.get("VIBE_SESSIONS_DB", os.path.join(repo_dir, "data", "vibe_sessions.sqlite")), False),
+        ("Vibe eval dir", settings.get("VIBE_EVAL_DIR", os.path.join(repo_dir, "data", "evals")), False),
         ("Sample library", settings["SAMPLE_LIBRARY"], False),
         ("Downloads path", settings["DOWNLOADS_PATH"], False),
         ("SD card mount", settings["SD_CARD"], False),
@@ -122,6 +138,7 @@ def run_checks():
     messages.append("  - Install Python deps with: .venv/bin/pip install -r requirements.txt")
     messages.append("  - On macOS/Homebrew: brew install ffmpeg unar chromaprint")
     messages.append("  - Set SP404_LLM_ENDPOINT to enable natural-language prompts.")
+    messages.append("  - Set SP404_VIBE_PARSER_MODE=rag or fine_tuned to evaluate grounded/tuned parsing.")
     messages.append("  - Set SP404_MAGENTA_COMMAND and SP404_MUSICVAE_CHECKPOINT_DIR to enable Magenta patterns.")
     messages.append("")
     messages.append(f"Summary: {failures} blocking issue(s), {warnings} optional integration warning(s)")

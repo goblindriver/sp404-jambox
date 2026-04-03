@@ -1,0 +1,23 @@
+base_model: Qwen/Qwen2.5-7B-Instruct
+dataset_path: data/training/vibe/parse_train.jsonl
+output_dir: artifacts/models/qwen2.5-7b-jambox-parse
+task_name: prompt_to_parse
+max_seq_length: 2048
+learning_rate: 0.0002
+num_train_epochs: 3
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+logging_steps: 10
+save_steps: 100
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+quantization:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: float16

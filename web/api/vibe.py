@@ -10,6 +10,7 @@ import uuid
 from flask import Blueprint, current_app, jsonify, request
 
 from jambox_config import build_subprocess_env
+import vibe_training_store as vts
 
 
 vibe_bp = Blueprint("vibe", __name__)
@@ -77,6 +78,36 @@ def _normalize_preset_payload(payload):
     }
 
 
+def _normalize_reviewed_parsed(payload):
+    reviewed = payload.get("reviewed_parsed")
+    if reviewed is None:
+        return None
+    if not isinstance(reviewed, dict):
+        raise ValueError("reviewed_parsed must be an object")
+
+    normalized = {}
+    for key in ("keywords", "vibe", "genre", "texture", "energy"):
+        value = reviewed.get(key, [])
+        if value is None:
+            normalized[key] = []
+            continue
+        if isinstance(value, str):
+            normalized[key] = [item.strip().lower() for item in value.split(",") if item.strip()]
+            continue
+        if isinstance(value, list):
+            normalized[key] = [str(item).strip().lower() for item in value if str(item).strip()]
+            continue
+        raise ValueError(f"reviewed_parsed.{key} must be a list or comma-separated string")
+
+    for key in ("type_code", "playability"):
+        value = reviewed.get(key)
+        normalized[key] = str(value).strip() if value not in (None, "") else None
+
+    rationale = reviewed.get("rationale", "")
+    normalized["rationale"] = str(rationale).strip() if rationale is not None else ""
+    return normalized
+
+
 def _parse_script_json(stdout):
     payload = json.loads((stdout or "").strip())
     if not isinstance(payload, dict):
@@ -126,7 +157,9 @@ def generate_vibe():
         )
         if result.returncode != 0:
             return jsonify(_script_error_payload(result, "Vibe generation failed")), 500
-        return jsonify({"ok": True, "result": _parse_script_json(result.stdout)})
+        result_payload = _parse_script_json(result.stdout)
+        session_id = vts.create_session(payload, result_payload, current_app.config)
+        return jsonify({"ok": True, "session_id": session_id, "result": result_payload})
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Vibe generation timed out"}), 500
     except (json.JSONDecodeError, ValueError) as exc:
@@ -135,7 +168,7 @@ def generate_vibe():
         return jsonify({"ok": False, "error": f"Vibe generation failed to start: {exc}"}), 500
 
 
-def _run_populate_bank(job_id, repo_dir, settings, prompt_data, preset_override=None):
+def _run_populate_bank(job_id, repo_dir, settings, prompt_data, preset_override=None, session_id=None):
     """Background worker: generate preset from vibe, load into bank, fetch samples."""
     try:
         scripts_dir = os.path.join(repo_dir, "scripts")
@@ -196,10 +229,20 @@ def _run_populate_bank(job_id, repo_dir, settings, prompt_data, preset_override=
 
         _vibe_jobs[job_id]["status"] = "done"
         _vibe_jobs[job_id]["progress"] = "Bank populated!"
+        if session_id:
+            vts.complete_apply(
+                session_id,
+                preset,
+                ref,
+                {"fetched": _vibe_jobs[job_id].get("fetched")},
+                _vibe_jobs[job_id]["progress"],
+            )
 
     except Exception as e:
         _vibe_jobs[job_id]["status"] = "error"
         _vibe_jobs[job_id]["progress"] = str(e)
+        if session_id:
+            vts.fail_apply(session_id, str(e))
 
 
 def _create_vibe_job(bank, prompt):
@@ -261,6 +304,7 @@ def apply_bank():
         payload = _json_object_body()
         bank = _normalize_bank(payload.get("bank", "a"))
         preset = _normalize_preset_payload(payload)
+        reviewed_parsed = _normalize_reviewed_parsed(payload)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -279,7 +323,10 @@ def apply_bank():
         "bank": bank,
         "fetch": payload.get("fetch", True),
     }
-    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, settings, prompt_data, preset))
+    session_id = payload.get("session_id")
+    if session_id:
+        vts.update_review(session_id, preset, reviewed_parsed, payload.get("fetch", True), bank)
+    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, settings, prompt_data, preset, session_id))
     thread.daemon = True
     thread.start()
 

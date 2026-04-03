@@ -1,0 +1,74 @@
+{
+  "Loops/funk_break.wav": {
+    "type_code": "BRK",
+    "playability": "loop",
+    "bpm": 110,
+    "key": "Am",
+    "tags": ["dusty", "break"],
+    "vibe": ["dusty"],
+    "genre": ["funk"],
+    "texture": ["warm"],
+    "duration": 4.2,
+    "path": "Loops/funk_break.wav"
+  },
+  "Melodic/disco_bass.wav": {
+    "type_code": "BAS",
+    "playability": "loop",
+    "bpm": 120,
+    "key": "F",
+    "tags": ["warm", "bass"],
+    "vibe": ["soulful"],
+    "genre": ["disco"],
+    "texture": ["warm"],
+    "duration": 3.8,
+    "path": "Melodic/disco_bass.wav"
+  },
+  "Drums/industrial_kick.wav": {
+    "type_code": "KIK",
+    "playability": "one-shot",
+    "bpm": 130,
+    "key": "Dm",
+    "tags": ["aggressive", "kick"],
+    "vibe": ["aggressive"],
+    "genre": ["industrial"],
+    "texture": ["raw"],
+    "duration": 0.5,
+    "path": "Drums/industrial_kick.wav"
+  },
+  "Ambient/dreamy_pad.wav": {
+    "type_code": "PAD",
+    "playability": "loop",
+    "bpm": 100,
+    "key": "C",
+    "tags": ["dreamy", "ambient"],
+    "vibe": ["dreamy"],
+    "genre": ["ambient"],
+    "texture": ["airy"],
+    "duration": 6.0,
+    "path": "Ambient/dreamy_pad.wav"
+  },
+  "Drums/techno_hat.wav": {
+    "type_code": "HAT",
+    "playability": "one-shot",
+    "bpm": 132,
+    "key": "Dm",
+    "tags": ["dark", "techno"],
+    "vibe": ["dark"],
+    "genre": ["techno"],
+    "texture": ["clean"],
+    "duration": 0.2,
+    "path": "Drums/techno_hat.wav"
+  },
+  "Melodic/lofi_guitar.wav": {
+    "type_code": "GTR",
+    "playability": "loop",
+    "bpm": 88,
+    "key": "Em",
+    "tags": ["nostalgic", "lo-fi"],
+    "vibe": ["nostalgic"],
+    "genre": ["lo-fi"],
+    "texture": ["dusty"],
+    "duration": 5.1,
+    "path": "Melodic/lofi_guitar.wav"
+  }
+}

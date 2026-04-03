@@ -1,0 +1,12 @@
+{"id":"parse-001","prompt":"dusty funk drum break","bpm":110,"key":"Am","expected":{"type_code":"BRK","playability":null,"genre":["funk"],"vibe":["dusty"],"keywords":["dusty","funk","break"]}}
+{"id":"parse-002","prompt":"warm disco bass loop","bpm":120,"key":"Am","expected":{"type_code":"BAS","playability":"loop","genre":["disco"],"texture":["warm"],"keywords":["warm","disco","bass"]}}
+{"id":"parse-003","prompt":"aggressive industrial kick one-shot","bpm":130,"key":"Dm","expected":{"type_code":"KIK","playability":"one-shot","genre":["industrial"],"vibe":["aggressive"],"keywords":["aggressive","industrial","kick"]}}
+{"id":"parse-004","prompt":"dreamy ambient pad loop","bpm":100,"key":"C","expected":{"type_code":"PAD","playability":"loop","genre":["ambient"],"vibe":["dreamy"],"keywords":["dreamy","ambient","pad"]}}
+{"id":"parse-005","prompt":"neon blog-house synth stab","bpm":128,"key":"F","expected":{"type_code":"SYN","playability":null,"genre":["house"],"keywords":["neon","blog-house","synth","stab"]}}
+{"id":"parse-006","prompt":"raw soul vocal chop-ready","bpm":95,"key":"G","expected":{"type_code":"VOX","playability":"chop-ready","genre":["soul"],"texture":["raw"],"keywords":["raw","soul","vocal"]}}
+{"id":"parse-007","prompt":"metallic electroclash snare one-shot","bpm":120,"key":"Dm","expected":{"type_code":"SNR","playability":"one-shot","keywords":["metallic","electroclash","snare"]}}
+{"id":"parse-008","prompt":"nostalgic lo-fi guitar loop","bpm":88,"key":"Em","expected":{"type_code":"GTR","playability":"loop","genre":["lo-fi"],"vibe":["nostalgic"],"keywords":["nostalgic","lo-fi","guitar"]}}
+{"id":"parse-009","prompt":"airy transition riser","bpm":120,"key":"Am","expected":{"type_code":null,"playability":"transition","texture":["airy"],"keywords":["airy","transition","riser"]}}
+{"id":"parse-010","prompt":"dark techno hat one-shot","bpm":132,"key":"Dm","expected":{"type_code":"HAT","playability":"one-shot","genre":["techno"],"vibe":["dark"],"keywords":["dark","techno","hat"]}}
+{"id":"parse-011","prompt":"warm piano loop for house","bpm":122,"key":"F","expected":{"type_code":"KEY","playability":"loop","genre":["house"],"texture":["warm"],"keywords":["warm","piano","house"]}}
+{"id":"parse-012","prompt":"crunchy rave clap one-shot","bpm":128,"key":"F","expected":{"type_code":"CLP","playability":"one-shot","texture":["crunchy"],"keywords":["crunchy","rave","clap"]}}

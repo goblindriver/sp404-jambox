@@ -62,6 +62,13 @@ class LoadSettingsTests(unittest.TestCase):
 
         self.assertIn("SP404_LLM_TIMEOUT", str(ctx.exception))
 
+    def test_invalid_vibe_parser_mode_raises_clear_error(self):
+        with patch.dict(os.environ, {"SP404_VIBE_PARSER_MODE": "custom"}, clear=True):
+            with self.assertRaises(ConfigError) as ctx:
+                load_settings("/tmp/jambox-repo")
+
+        self.assertIn("SP404_VIBE_PARSER_MODE", str(ctx.exception))
+
     def test_resolve_command_accepts_executable_absolute_path(self):
         with patch("jambox_config.os.path.isfile", return_value=True), patch("jambox_config.os.access", return_value=True):
             resolved = resolve_command("/tmp/tool")

@@ -1,0 +1,6 @@
+{"id":"rank-001","prompt":"dusty funk drum break","bpm":110,"key":"Am","expected_top":"Loops/funk_break.wav"}
+{"id":"rank-002","prompt":"warm disco bass loop","bpm":120,"key":"F","expected_top":"Melodic/disco_bass.wav"}
+{"id":"rank-003","prompt":"aggressive industrial kick one-shot","bpm":130,"key":"Dm","expected_top":"Drums/industrial_kick.wav"}
+{"id":"rank-004","prompt":"dreamy ambient pad loop","bpm":100,"key":"C","expected_top":"Ambient/dreamy_pad.wav"}
+{"id":"rank-005","prompt":"dark techno hat one-shot","bpm":132,"key":"Dm","expected_top":"Drums/techno_hat.wav"}
+{"id":"rank-006","prompt":"nostalgic lo-fi guitar loop","bpm":88,"key":"Em","expected_top":"Melodic/lofi_guitar.wav"}

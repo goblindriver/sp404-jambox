@@ -139,6 +139,13 @@ def load_settings(repo_dir):
         "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", "fpcalc"),
         "DAILY_BANK_SOURCE": _read_choice("SP404_DAILY_BANK_SOURCE", "recent", {"recent", "trending"}),
         "TRENDING_FILE": _read_optional_path("SP404_TRENDING_FILE", os.path.join(repo_dir, "trending.json")),
+        "VIBE_DATA_DIR": os.path.join(repo_dir, "data"),
+        "VIBE_SESSIONS_DB": os.path.join(repo_dir, "data", "vibe_sessions.sqlite"),
+        "VIBE_EVAL_DIR": os.path.join(repo_dir, "data", "evals"),
+        "VIBE_PARSER_MODE": _read_choice("SP404_VIBE_PARSER_MODE", "base", {"base", "rag", "fine_tuned"}),
+        "FINE_TUNED_LLM_ENDPOINT": _read_command("SP404_FINE_TUNED_LLM_ENDPOINT", ""),
+        "FINE_TUNED_LLM_MODEL": _read_command("SP404_FINE_TUNED_LLM_MODEL", ""),
+        "VIBE_RETRIEVAL_LIMIT": _read_int("SP404_VIBE_RETRIEVAL_LIMIT", 4, minimum=0),
     }
 
 

@@ -15,6 +15,7 @@ import yaml
 from jambox_config import ConfigError, load_settings_for_script
 from integration_runtime import IntegrationFailure, call_json_endpoint
 from jambox_tuning import load_vibe_mappings
+from vibe_retrieval import build_retrieval_context
 import fetch_samples
 
 
@@ -78,8 +79,24 @@ def _load_bank_config():
     return config if isinstance(config, dict) else {}
 
 
-def _call_llm(prompt, bpm=None, key=None):
+def _parser_runtime():
+    mode = SETTINGS.get("VIBE_PARSER_MODE", "base")
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
+    model = SETTINGS.get("LLM_MODEL", "qwen3")
+    if mode == "fine_tuned":
+        endpoint = SETTINGS.get("FINE_TUNED_LLM_ENDPOINT", "").strip() or endpoint
+        model = SETTINGS.get("FINE_TUNED_LLM_MODEL", "").strip() or model
+    return {
+        "mode": mode,
+        "endpoint": endpoint,
+        "model": model,
+        "retrieval_enabled": mode in {"rag", "fine_tuned"},
+    }
+
+
+def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
+    runtime = _parser_runtime()
+    endpoint = runtime["endpoint"]
     if not endpoint:
         raise IntegrationFailure("llm_not_configured", "SP404_LLM_ENDPOINT is required for vibe generation")
 
@@ -87,7 +104,8 @@ def _call_llm(prompt, bpm=None, key=None):
         "You convert creative music prompts into SP-404 sample search tags. "
         "Return JSON only with keys: keywords, type_code, playability, vibe, genre, texture, energy, rationale. "
         "keywords should be a short list of lower-case search terms. "
-        "type_code and playability should be strings or null."
+        "type_code and playability should be strings or null. "
+        "Use any retrieval context as examples, not hard rules."
     )
     user_prompt = {
         "prompt": prompt,
@@ -96,11 +114,13 @@ def _call_llm(prompt, bpm=None, key=None):
         "valid_type_codes": sorted(fetch_samples.TYPE_CODES),
         "valid_playability": sorted(fetch_samples.PLAYABILITY_KEYWORDS),
     }
+    if retrieval_context:
+        user_prompt["retrieval_context"] = retrieval_context
     timeout = SETTINGS.get("LLM_TIMEOUT", 30)
     payload = call_json_endpoint(
         endpoint,
         {
-            "model": SETTINGS.get("LLM_MODEL", "qwen3"),
+            "model": runtime["model"],
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_prompt)},
@@ -171,15 +191,26 @@ def _fallback_tags(prompt, failure=None):
 
 
 def parse_vibe_prompt(prompt, bpm=None, key=None):
+    runtime = _parser_runtime()
+    retrieval_context = None
+    if runtime["retrieval_enabled"]:
+        retrieval_context = build_retrieval_context(prompt, limit=SETTINGS.get("VIBE_RETRIEVAL_LIMIT", 4))
     try:
         return {
-            "tags": _call_llm(prompt, bpm=bpm, key=key),
+            "tags": _call_llm(prompt, bpm=bpm, key=key, retrieval_context=retrieval_context),
             "fallback_used": False,
             "fallback_reason": "",
             "fallback_code": "",
+            "model_mode": runtime["mode"],
+            "model_label": runtime["model"],
+            "retrieval_context": retrieval_context,
         }
     except IntegrationFailure as exc:
-        return _fallback_tags(prompt, failure=exc)
+        fallback = _fallback_tags(prompt, failure=exc)
+        fallback["model_mode"] = runtime["mode"]
+        fallback["model_label"] = runtime["model"]
+        fallback["retrieval_context"] = retrieval_context
+        return fallback
 
 
 def _build_query(prompt_data, llm_tags):
@@ -354,6 +385,9 @@ def build_bank_from_vibe(prompt_data):
         "fallback_used": llm_result["fallback_used"],
         "fallback_reason": llm_result["fallback_reason"],
         "fallback_code": llm_result["fallback_code"],
+        "model_mode": llm_result.get("model_mode", SETTINGS.get("VIBE_PARSER_MODE", "base")),
+        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3")),
+        "retrieval_context": llm_result.get("retrieval_context"),
     }
 
 
@@ -392,6 +426,9 @@ def generate_vibe_suggestions(prompt_data):
         "fallback_used": llm_result["fallback_used"],
         "fallback_reason": llm_result["fallback_reason"],
         "fallback_code": llm_result["fallback_code"],
+        "model_mode": llm_result.get("model_mode", SETTINGS.get("VIBE_PARSER_MODE", "base")),
+        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3")),
+        "retrieval_context": llm_result.get("retrieval_context"),
     }
 
 

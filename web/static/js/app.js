@@ -9,6 +9,8 @@ const state = {
     sidebarOpen: false,
     libraryPath: '',
     vibeDraft: null,
+    vibeParsed: null,
+    vibeSessionId: null,
 };
 
 const audio = document.getElementById('audio-player');
@@ -474,7 +476,9 @@ async function generateVibeSuggestions() {
             toast(response.error || 'Vibe generation failed', 'error');
             return;
         }
+        state.vibeSessionId = response.session_id || null;
         state.vibeDraft = response.result.draft_preset || null;
+        state.vibeParsed = response.result.parsed || null;
         renderVibeResults(response.result);
         document.getElementById('btn-vibe-populate').style.display = '';
         document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
@@ -518,6 +522,21 @@ function renderVibeResults(result) {
                 <button class="btn btn-sm" onclick="clearVibeDraftPad(${padNum})">Clear</button>
             </div>
         `).join('');
+    const parsedRows = [
+        ["type_code", "Type Code", parsed.type_code || ""],
+        ["playability", "Playability", parsed.playability || ""],
+        ["keywords", "Keywords", (parsed.keywords || []).join(", ")],
+        ["genre", "Genre", (parsed.genre || []).join(", ")],
+        ["vibe", "Vibe", (parsed.vibe || []).join(", ")],
+        ["texture", "Texture", (parsed.texture || []).join(", ")],
+        ["energy", "Energy", (parsed.energy || []).join(", ")],
+        ["rationale", "Rationale", parsed.rationale || ""],
+    ].map(([field, label, value]) => `
+        <label class="vibe-parse-row">
+            <span>${label}</span>
+            <input class="vibe-parse-input" data-field="${field}" value="${escapeHtml(value)}" />
+        </label>
+    `).join('');
     container.innerHTML = `
         <div class="vibe-result-card">
             <strong>Parsed Tags</strong><br>${tagPills || 'No tags parsed'}${fallbackNote}
@@ -527,6 +546,10 @@ function renderVibeResults(result) {
         </div>
         <div class="vibe-result-card vibe-result-wide">
             <strong>Top Samples</strong><br>${samples.join('<br>') || 'No sample matches'}
+        </div>
+        <div class="vibe-result-card vibe-result-wide">
+            <strong>Editable Parse</strong>
+            <div class="vibe-parse-grid">${parsedRows}</div>
         </div>
         <div class="vibe-result-card vibe-result-wide">
             <strong>Draft Pads</strong>
@@ -545,7 +568,9 @@ async function populateBankFromVibe() {
     const autoFetch = document.getElementById('vibe-auto-fetch')?.checked !== false;
     const draftPreset = collectVibeDraftPreset();
     const payload = {
+        session_id: state.vibeSessionId,
         preset: draftPreset,
+        reviewed_parsed: collectReviewedParsed(),
         bank: bank,
         fetch: autoFetch,
     };
@@ -942,6 +967,24 @@ function collectVibeDraftPreset() {
 
 function getVibeDraftInput(padNum) {
     return document.querySelector(`.vibe-draft-input[data-pad="${padNum}"]`);
+}
+
+function collectReviewedParsed() {
+    const reviewed = JSON.parse(JSON.stringify(state.vibeParsed || {}));
+    document.querySelectorAll('.vibe-parse-input').forEach((input) => {
+        const field = input.dataset.field;
+        const value = input.value.trim();
+        if (["keywords", "genre", "vibe", "texture", "energy"].includes(field)) {
+            reviewed[field] = value
+                ? value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean)
+                : [];
+        } else if (field === "rationale") {
+            reviewed[field] = value;
+        } else {
+            reviewed[field] = value || null;
+        }
+    });
+    return reviewed;
 }
 
 function swapVibeDraftPads(padNum, direction) {

@@ -1,0 +1,27 @@
+required_paths:
+  - path: data/midi
+    type: dir
+    minimum_files: 50
+    description: Curated MIDI corpus for training and evaluation
+  - path: data/pattern_labels.jsonl
+    type: file
+    description: Style labels aligned to banks/genres
+  - path: data/pattern_evals.jsonl
+    type: file
+    description: Evaluation prompts and expected rhythmic qualities
+
+required_fields:
+  - style
+  - bpm
+  - bars
+  - source
+
+gates:
+  - id: corpus-size
+    description: Enough MIDI files exist to support non-trivial training
+  - id: labels-aligned
+    description: Every training MIDI has a normalized style/bank label
+  - id: eval-suite
+    description: At least one offline eval set exists before checkpoint training
+  - id: checkpoint-output
+    description: A dedicated checkpoint destination is configured for trained pattern models
