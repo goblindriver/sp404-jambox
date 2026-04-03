@@ -255,15 +255,17 @@ def _stem_split_task(library_path, rel_path, parent_tags):
 
     # Check for demucs
     try:
-        subprocess.run(['demucs', '--help'], capture_output=True, timeout=10)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+        import demucs as _demucs_check  # noqa: F811
+    except ImportError:
         print("[STEMS] Demucs not installed — skipping stem split")
         return
+
+    demucs_cmd = [sys.executable, '-m', 'demucs']
 
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
             result = subprocess.run(
-                ['demucs', '--two-stems=drums', '-n', 'htdemucs',
+                demucs_cmd + ['--two-stems=drums', '-n', 'htdemucs',
                  '-o', tmpdir, library_path],
                 capture_output=True, text=True, timeout=600,
             )
@@ -271,7 +273,7 @@ def _stem_split_task(library_path, rel_path, parent_tags):
                 print(f"[STEMS] Demucs failed: {result.stderr[:200]}")
                 # Try simpler 4-stem
                 result = subprocess.run(
-                    ['demucs', '-n', 'htdemucs', '-o', tmpdir, library_path],
+                    demucs_cmd + ['-n', 'htdemucs', '-o', tmpdir, library_path],
                     capture_output=True, text=True, timeout=600,
                 )
                 if result.returncode != 0:
@@ -921,12 +923,16 @@ def ingest_pack(pack_dir, dry_run=False):
 
     # Mark as processed and move out of Downloads
     if not dry_run and total > 0:
-        with open(marker_path, 'w') as f:
-            f.write(f"Ingested {total} files at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        try:
+            if os.path.isdir(pack_dir):
+                with open(marker_path, 'w') as f:
+                    f.write(f"Ingested {total} files at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        except OSError as e:
+            print(f"  Could not write marker: {e}")
 
         # Move the processed pack folder to _RAW-DOWNLOADS
         archive_dest = os.path.join(RAW_ARCHIVE, pack_name)
-        if pack_dir.startswith(DOWNLOADS) and not os.path.exists(archive_dest):
+        if os.path.isdir(pack_dir) and pack_dir.startswith(DOWNLOADS) and not os.path.exists(archive_dest):
             try:
                 shutil.move(pack_dir, archive_dest)
                 print(f"  Moved to: {archive_dest}")
