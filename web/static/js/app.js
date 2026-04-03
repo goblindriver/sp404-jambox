@@ -32,19 +32,19 @@ async function init() {
         checkSDCard();
         setInterval(checkSDCard, 10000);
 
-        // Wire up footer buttons
+        // Wire up header buttons
         document.getElementById('btn-help').onclick = showTutorial;
-        document.getElementById('btn-library').onclick = toggleLibrary;
-        document.getElementById('btn-ingest').onclick = ingestDownloads;
-        document.getElementById('btn-fetch-all').onclick = () => fetchSamples();
-        document.getElementById('btn-build').onclick = buildAll;
-        document.getElementById('btn-deploy').onclick = deploy;
-        document.getElementById('btn-generate-pattern').onclick = generatePattern;
+        document.getElementById('btn-settings').onclick = toggleSettingsMenu;
         document.getElementById('btn-watcher').onclick = toggleWatcher;
-        document.getElementById('btn-presets').onclick = togglePresetSidebar;
+
+        // Wire up footer buttons (streamlined: Browse, Fetch All, Export to SD)
+        document.getElementById('btn-browse').onclick = toggleBrowseSidebar;
+        document.getElementById('btn-fetch-all').onclick = () => fetchSamples();
+        document.getElementById('btn-export').onclick = exportToSD;
+
+        // Vibe panel
         document.getElementById('btn-vibe-generate').onclick = generateVibeSuggestions;
         document.getElementById('btn-vibe-populate').onclick = populateBankFromVibe;
-        document.getElementById('btn-daily-bank').onclick = generateDailyBank;
 
         // Load sets and check watcher on startup
         loadSets();
@@ -58,6 +58,11 @@ async function init() {
         // Tutorial
         document.getElementById('tutorial-close').onclick = hideTutorial;
         document.getElementById('tutorial-go').onclick = hideTutorial;
+
+        // Show tutorial on first visit
+        if (!localStorage.getItem('jambox-tutorial-seen')) {
+            showTutorial();
+        }
 
         // Sidebar close
         document.getElementById('sidebar-close').onclick = () => toggleLibrary(false);
@@ -447,6 +452,92 @@ async function deploy() {
         toast(result.error || 'Deploy failed', 'error');
     }
 }
+
+// ── Streamlined UI: unified Browse, Export, Settings ──
+
+let _browseSidebarState = 'library'; // tracks which tab: library, presets, music
+
+function toggleBrowseSidebar() {
+    // Unified Browse button — cycles through: Library → Presets → My Music → close
+    const libSidebar = document.getElementById('sidebar');
+    const presetSidebar = document.getElementById('preset-sidebar');
+    const musicSidebar = document.getElementById('music-sidebar');
+
+    const libOpen = !libSidebar.classList.contains('hidden');
+    const presetOpen = !presetSidebar.classList.contains('hidden');
+    const musicOpen = !musicSidebar.classList.contains('hidden');
+
+    if (!libOpen && !presetOpen && !musicOpen) {
+        // Nothing open — show library
+        toggleLibrary(true);
+        _browseSidebarState = 'library';
+    } else if (libOpen) {
+        // Library open → switch to presets
+        libSidebar.classList.add('hidden');
+        togglePresetSidebar();
+        _browseSidebarState = 'presets';
+    } else if (presetOpen) {
+        // Presets open → switch to my music
+        closePresetSidebar();
+        toggleMusicSidebar();
+        _browseSidebarState = 'music';
+    } else {
+        // Music open → close all
+        closeMusicSidebar();
+        _browseSidebarState = 'library';
+    }
+}
+
+async function exportToSD() {
+    const btn = document.getElementById('btn-export');
+    const origText = btn.textContent;
+
+    btn.textContent = 'Building...';
+    btn.disabled = true;
+    const [padinfo, patterns] = await Promise.all([
+        api('/api/pipeline/padinfo', {method: 'POST'}),
+        api('/api/pipeline/patterns', {method: 'POST'}),
+    ]);
+
+    if (!padinfo.ok || !patterns.ok) {
+        toast(padinfo.error || patterns.error || 'Build failed', 'error');
+        btn.textContent = origText;
+        btn.disabled = false;
+        return;
+    }
+
+    btn.textContent = 'Deploying...';
+    const result = await api('/api/pipeline/deploy', {method: 'POST'});
+    if (result.ok) {
+        btn.textContent = 'Done!';
+        toast('Exported to SD card', 'success');
+        checkSDCard();
+        setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+    } else {
+        toast(result.error || 'Deploy failed', 'error');
+        btn.textContent = origText;
+        btn.disabled = false;
+    }
+}
+
+function toggleSettingsMenu() {
+    const menu = document.getElementById('settings-menu');
+    menu.classList.toggle('hidden');
+    // Close on outside click
+    if (!menu.classList.contains('hidden')) {
+        setTimeout(() => {
+            const handler = (e) => {
+                if (!menu.contains(e.target) && e.target.id !== 'btn-settings') {
+                    menu.classList.add('hidden');
+                    document.removeEventListener('click', handler);
+                }
+            };
+            document.addEventListener('click', handler);
+        }, 0);
+    }
+}
+
+// toggleMusicSidebar and closeMusicSidebar defined in My Music section below
 
 async function generateVibeSuggestions() {
     const promptValue = document.getElementById('vibe-prompt').value.trim();
@@ -1726,7 +1817,7 @@ async function refreshBanks() {
 let musicBrowseData = null;
 let musicCurrentTab = 'artists';
 
-document.getElementById('btn-my-music')?.addEventListener('click', toggleMusicSidebar);
+// btn-my-music removed — now accessed via unified Browse button
 
 function toggleMusicSidebar() {
     const sidebar = document.getElementById('music-sidebar');

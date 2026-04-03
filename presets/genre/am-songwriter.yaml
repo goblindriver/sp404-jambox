@@ -1,0 +1,79 @@
+name: Am Songwriter
+slug: am-songwriter
+author: jambox
+bpm: 100
+key: Am
+vibe: Warm reflective songwriting palette in A minor
+notes: Scale-mapped pads for melodic expression. Pads 1-8 are A natural minor ascending,
+  9-10 are bass notes, 11-12 are chord stabs. Classic singer-songwriter key.
+source: curated
+tags:
+- songwriting
+- melodic
+- a-minor
+- arpeggiation
+- chords
+- warm
+scale_mapping:
+  root: A3
+  scale: minor
+  pads:
+    1: A3
+    2: B3
+    3: C4
+    4: D4
+    5: E4
+    6: F4
+    7: G4
+    8: A4
+    9: A2
+    10: E3
+    11: Am_chord
+    12: Dm_chord
+patterns:
+- name: Rising Arp
+  type: arpeggio
+  direction: up
+  pads:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  rate: 1/8
+  swing: 0.55
+- name: Pendulum Arp
+  type: arpeggio
+  direction: updown
+  pads:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  rate: 1/16
+  swing: 0.6
+- name: Root-Fifth Bass
+  type: sequence
+  pads:
+  - 9
+  - 9
+  - 10
+  - 10
+  rate: 1/4
+  swing: 0.5
+- name: i-iv Progression
+  type: progression
+  pads:
+  - 11
+  - 11
+  - 12
+  - 11
+  rate: 1bar
+  swing: 0.5

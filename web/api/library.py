@@ -2,8 +2,13 @@
 import json
 import os
 import re
+import subprocess
+import sys
+import threading
 
 from flask import Blueprint, jsonify, request, abort, current_app
+
+from jambox_config import build_subprocess_env
 
 library_bp = Blueprint('library', __name__)
 AUDIO_EXTS = {'.wav', '.aif', '.aiff', '.mp3', '.flac'}
@@ -301,3 +306,105 @@ def by_tag():
         'total': len(results),
         'results': results,
     })
+
+
+# ═══════════════════════════════════════════════════════════
+# Smart Retag (LLM-powered tag enrichment)
+# ═══════════════════════════════════════════════════════════
+
+_retag_jobs = {}
+_retag_lock = threading.Lock()
+
+
+def _run_smart_retag(job_id, repo_dir, settings, args_list):
+    """Background worker for smart retagging."""
+    try:
+        _retag_jobs[job_id]["status"] = "running"
+        script = os.path.join(repo_dir, "scripts", "smart_retag.py")
+        cmd = [sys.executable, script] + args_list
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=repo_dir,
+            env=build_subprocess_env(settings),
+            timeout=600,
+        )
+        _retag_jobs[job_id]["stdout"] = result.stdout
+        _retag_jobs[job_id]["stderr"] = result.stderr
+        _retag_jobs[job_id]["status"] = "done" if result.returncode == 0 else "error"
+
+        # Invalidate tag cache
+        global _tag_db_cache, _tag_db_mtime
+        _tag_db_cache = None
+        _tag_db_mtime = 0
+
+    except subprocess.TimeoutExpired:
+        _retag_jobs[job_id]["status"] = "error"
+        _retag_jobs[job_id]["stderr"] = "Smart retag timed out after 10 minutes"
+    except Exception as e:
+        _retag_jobs[job_id]["status"] = "error"
+        _retag_jobs[job_id]["stderr"] = str(e)
+
+
+@library_bp.route('/library/smart-retag', methods=['POST'])
+def smart_retag():
+    """Trigger LLM-powered smart retagging.
+
+    POST body:
+        type_code: filter by type code (e.g., "FX")
+        path: filter by path prefix (e.g., "SFX/")
+        file: retag a single file
+        limit: max samples (default 50)
+        force: re-process already enriched (default false)
+        dry_run: preview only (default false)
+    """
+    # Only one retag at a time
+    with _retag_lock:
+        for j in _retag_jobs.values():
+            if j.get("status") == "running":
+                return jsonify({"ok": False, "error": "A smart retag is already running"}), 409
+
+    payload = request.get_json() or {}
+
+    # Build CLI args
+    args_list = []
+    if payload.get("type_code"):
+        args_list += ["--type", payload["type_code"]]
+    if payload.get("path"):
+        args_list += ["--path", payload["path"]]
+    if payload.get("file"):
+        args_list += ["--file", payload["file"]]
+    if payload.get("force"):
+        args_list.append("--force")
+    if payload.get("dry_run"):
+        args_list.append("--dry-run")
+    limit = payload.get("limit", 50)
+    args_list += ["--limit", str(limit)]
+
+    import uuid
+    job_id = str(uuid.uuid4())[:8]
+    _retag_jobs[job_id] = {
+        "id": job_id,
+        "status": "starting",
+        "stdout": "",
+        "stderr": "",
+    }
+
+    repo_dir = current_app.config["REPO_DIR"]
+    settings = dict(current_app.config)
+    t = threading.Thread(target=_run_smart_retag, args=(job_id, repo_dir, settings, args_list))
+    t.daemon = True
+    t.start()
+
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+@library_bp.route('/library/smart-retag/<job_id>')
+def smart_retag_status(job_id):
+    """Poll smart retag job progress."""
+    job = _retag_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)

@@ -58,6 +58,73 @@ header .accent {
     color: var(--accent);
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-icon-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+.header-icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+.header-icon-btn svg { pointer-events: none; }
+
+.header-status-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.header-status-btn:hover { border-color: var(--text-dim); color: var(--text); }
+.header-status-btn.watching { border-color: #4caf50; color: #4caf50; }
+
+.settings-menu {
+    position: fixed;
+    top: 48px;
+    right: 60px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px 0;
+    z-index: 250;
+    min-width: 180px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.settings-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.settings-menu button:hover { background: var(--bg-hover); color: var(--accent); }
+
 .sd-indicator {
     display: flex;
     align-items: center;
@@ -177,12 +244,7 @@ header .accent {
     align-items: center;
 }
 
-.vibe-btn-row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    flex-wrap: wrap;
-}
+/* .vibe-btn-row removed — buttons now inline in .vibe-input-row */
 
 .vibe-prompt {
     min-width: 280px;
@@ -958,19 +1020,13 @@ main {
 /* Footer / Action Bar */
 .action-bar {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     padding: 10px 24px;
     background: var(--bg-raised);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     gap: 16px;
-}
-
-.actions-left, .actions-right {
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
 }
 
 .progress-bar {

@@ -14,6 +14,14 @@
             <h1>SP-404 <span class="accent">JAMBOX</span></h1>
         </div>
         <div class="header-right">
+            <button id="btn-help" class="header-icon-btn" title="How it works">?</button>
+            <button id="btn-settings" class="header-icon-btn" title="Settings &amp; admin">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            </button>
+            <button id="btn-watcher" class="header-status-btn" title="File watcher">
+                <span id="watcher-dot" class="watcher-dot"></span>
+                <span id="watcher-label">Watch</span>
+            </button>
             <div id="sd-status" class="sd-indicator">
                 <span class="sd-dot"></span>
                 <span class="sd-text">Checking...</span>
@@ -26,10 +34,8 @@
     </nav>
 
     <div class="set-bar" id="set-bar">
-        <span class="set-bar-label">Set:</span>
+        <span class="set-bar-label">SET:</span>
         <select id="set-selector" class="set-selector" onchange="switchSet(this.value)"></select>
-        <button class="btn btn-sm" onclick="saveCurrentSet()" title="Save current config as a new set">Save Set</button>
-        <button id="btn-daily-bank" class="btn btn-sm" title="Generate a fresh auto preset for the current bank">Daily Bank</button>
     </div>
 
     <div class="bank-info" id="bank-info">
@@ -40,11 +46,7 @@
 
     <div class="vibe-panel" id="vibe-panel">
         <div class="vibe-input-row">
-            <input type="text" id="vibe-prompt" class="vibe-prompt" placeholder="Describe a vibe... e.g. dusty disco drums with neon synth stabs" />
-            <input type="number" id="vibe-bpm" class="vibe-field" placeholder="BPM" min="50" max="250" />
-            <input type="text" id="vibe-key" class="vibe-field" placeholder="Key" maxlength="3" />
-        </div>
-        <div class="vibe-btn-row">
+            <input type="text" id="vibe-prompt" class="vibe-prompt" placeholder="Describe a vibe..." />
             <button id="btn-vibe-generate" class="btn btn-sm btn-accent">Suggest</button>
             <button id="btn-vibe-populate" class="btn btn-sm btn-primary" style="display:none">Apply Draft</button>
             <select id="vibe-bank-select" class="vibe-field" style="display:none">
@@ -58,6 +60,8 @@
                 Auto-fetch
             </label>
         </div>
+        <input type="hidden" id="vibe-bpm" />
+        <input type="hidden" id="vibe-key" />
         <div id="vibe-results" class="vibe-results"></div>
     </div>
 
@@ -243,28 +247,21 @@
     </div>
 
     <footer class="action-bar">
-        <div class="actions-left">
-            <button id="btn-help" class="btn btn-help" title="How it works">?</button>
-            <button id="btn-library" class="btn">Library</button>
-            <button id="btn-presets" class="btn">Presets</button>
-            <button id="btn-my-music" class="btn">My Music</button>
-            <button id="btn-ingest" class="btn">Ingest Downloads</button>
-            <button id="btn-watcher" class="btn btn-watcher" title="File watcher — auto-ingest from Downloads">
-                <span id="watcher-dot" class="watcher-dot"></span> Watch
-            </button>
-            <button id="btn-disk" class="btn" onclick="toggleDiskPanel()" title="Disk usage &amp; cleanup">Disk</button>
-            <button id="btn-fetch-all" class="btn btn-accent">Fetch All</button>
-        </div>
+        <button id="btn-browse" class="btn">Browse</button>
         <div id="progress-bar" class="progress-bar hidden">
             <div class="progress-text" id="progress-text"></div>
             <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
         </div>
-        <div class="actions-right">
-            <button id="btn-generate-pattern" class="btn">Generate Pattern</button>
-            <button id="btn-build" class="btn">Build</button>
-            <button id="btn-deploy" class="btn btn-deploy">Deploy to SD</button>
-        </div>
+        <button id="btn-fetch-all" class="btn btn-accent">Fetch All</button>
+        <button id="btn-export" class="btn btn-deploy">Export to SD</button>
     </footer>
+
+    <!-- Settings dropdown (gear menu) -->
+    <div id="settings-menu" class="settings-menu hidden">
+        <button onclick="ingestDownloads()">Ingest Downloads</button>
+        <button onclick="toggleDiskPanel()">Disk &amp; Cleanup</button>
+        <button onclick="generatePattern()">Generate Pattern</button>
+    </div>
 
     <!-- Tutorial Overlay -->
     <div id="tutorial-overlay" class="tutorial-overlay hidden">
