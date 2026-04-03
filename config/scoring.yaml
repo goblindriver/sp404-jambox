@@ -1,0 +1,20 @@
+score_version: 1
+
+weights:
+  type_exact: 10
+  type_related: 3
+  type_mismatch: -8
+  playability_exact: 5
+  playability_mismatch: -4
+  bpm_close: 4
+  bpm_near: 2
+  bpm_far: -2
+  key_exact: 3
+  key_compatible: 1
+  keyword_dimension: 3
+  keyword_tag: 2
+  keyword_filename: 1
+  oneshot_long_penalty: -3
+  loop_short_penalty: -3
+  plex_moods_bonus: 1
+  plex_play_count_bonus: 2

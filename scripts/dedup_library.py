@@ -28,6 +28,7 @@ import sys
 import tempfile
 import time
 import numpy as np
+from jambox_cache import file_marker, get_cached_fingerprint, load_fingerprint_cache, put_cached_fingerprint, save_fingerprint_cache
 from jambox_config import load_settings_for_script
 
 SETTINGS = load_settings_for_script(__file__)
@@ -117,6 +118,28 @@ def load_tag_db():
     return payload if isinstance(payload, dict) else {}
 
 
+def cached_fingerprint(rel_path, cache_entries):
+    full_path = os.path.join(LIBRARY, rel_path)
+    marker = file_marker(full_path)
+    if not marker:
+        return None
+    cached = get_cached_fingerprint(cache_entries, rel_path, marker, "python")
+    if cached is not None and isinstance(cached.get("value"), list):
+        return np.array(cached["value"], dtype=np.float32)
+
+    fingerprint = compute_fingerprint(full_path)
+    if fingerprint is None:
+        return None
+    put_cached_fingerprint(
+        cache_entries,
+        rel_path,
+        marker,
+        "python",
+        {"kind": "python", "value": fingerprint.tolist()},
+    )
+    return fingerprint
+
+
 def main():
     parser = argparse.ArgumentParser(description='Detect duplicate samples')
     parser.add_argument('--clean', action='store_true', help='Move duplicates to _DUPES/')
@@ -143,12 +166,13 @@ def main():
     t0 = time.time()
 
     fingerprints = {}  # rel_path -> fingerprint
+    cache_entries = load_fingerprint_cache(LIBRARY)
     for i, (rel_path, entry) in enumerate(entries):
         full_path = os.path.join(LIBRARY, rel_path)
         if not os.path.exists(full_path):
             continue
 
-        fp = compute_fingerprint(full_path)
+        fp = cached_fingerprint(rel_path, cache_entries)
         if fp is not None:
             fingerprints[rel_path] = fp
 
@@ -158,6 +182,7 @@ def main():
             print(f"  [{i+1}/{len(entries)}] {rate:.0f} files/sec — {len(fingerprints)} fingerprinted")
 
     elapsed = time.time() - t0
+    save_fingerprint_cache(LIBRARY, cache_entries)
     print(f"\nFingerprinted {len(fingerprints)} files in {elapsed:.1f}s")
 
     # Find duplicate groups using greedy clustering

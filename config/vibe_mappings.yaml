@@ -1,0 +1,65 @@
+genre_instruments:
+  funk:
+    - [GTR, guitar]
+    - [KEY, clavinet]
+  disco:
+    - [KEY, piano]
+    - [STR, strings]
+  soul:
+    - [KEY, organ]
+    - [BRS, brass]
+  rock:
+    - [GTR, guitar]
+    - [GTR, guitar]
+  electronic:
+    - [SYN, synth]
+    - [SYN, synth]
+  ambient:
+    - [PAD, pad]
+    - [SYN, synth]
+  house:
+    - [SYN, synth]
+    - [KEY, piano]
+  techno:
+    - [SYN, synth]
+    - [SYN, lead]
+  hip-hop:
+    - [KEY, piano]
+    - [SYN, synth]
+  lo-fi:
+    - [KEY, piano]
+    - [GTR, guitar]
+  industrial:
+    - [SYN, synth]
+    - [SYN, lead]
+  pop:
+    - [SYN, synth]
+    - [KEY, piano]
+
+default_instruments:
+  - [SYN, synth]
+  - [KEY, keys]
+
+fallback_dimensions:
+  genre: [funk, disco, soul, rock, electronic, ambient, house, techno, hip-hop, lo-fi, industrial, pop]
+  vibe: [dark, mellow, hype, dreamy, nostalgic, aggressive, soulful, warm, bright, tense, raw, dusty]
+  texture: [dusty, lo-fi, raw, clean, warm, bitcrushed, airy, gritty, crunchy, metallic]
+  energy: [low, mid, high]
+
+type_keyword_aliases:
+  kick: KIK
+  snare: SNR
+  hat: HAT
+  hihat: HAT
+  clap: CLP
+  break: BRK
+  bass: BAS
+  synth: SYN
+  guitar: GTR
+  keys: KEY
+  piano: KEY
+  pad: PAD
+  vocal: VOX
+  vox: VOX
+  fx: FX
+  effect: FX

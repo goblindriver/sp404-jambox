@@ -10,15 +10,16 @@ import json
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 import yaml
 
 from jambox_config import ConfigError, load_settings_for_script
+from integration_runtime import IntegrationFailure, call_json_endpoint
+from jambox_tuning import load_vibe_mappings
 import fetch_samples
 
 
 SETTINGS = load_settings_for_script(__file__)
+VIBE_MAPPINGS = load_vibe_mappings()
 
 
 def _read_input():
@@ -80,7 +81,7 @@ def _load_bank_config():
 def _call_llm(prompt, bpm=None, key=None):
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
     if not endpoint:
-        raise ConfigError("SP404_LLM_ENDPOINT is required for vibe generation")
+        raise IntegrationFailure("llm_not_configured", "SP404_LLM_ENDPOINT is required for vibe generation")
 
     system_prompt = (
         "You convert creative music prompts into SP-404 sample search tags. "
@@ -95,39 +96,28 @@ def _call_llm(prompt, bpm=None, key=None):
         "valid_type_codes": sorted(fetch_samples.TYPE_CODES),
         "valid_playability": sorted(fetch_samples.PLAYABILITY_KEYWORDS),
     }
-    body = json.dumps({
-        "model": SETTINGS.get("LLM_MODEL", "qwen3"),
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_prompt)},
-        ],
-        "temperature": 0.3,
-    }).encode("utf-8")
-
-    request = urllib.request.Request(
-        endpoint,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     timeout = SETTINGS.get("LLM_TIMEOUT", 30)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"LLM request failed: {exc.code} {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"LLM request failed: {exc.reason}") from exc
+    payload = call_json_endpoint(
+        endpoint,
+        {
+            "model": SETTINGS.get("LLM_MODEL", "qwen3"),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_prompt)},
+            ],
+            "temperature": 0.3,
+        },
+        timeout=timeout,
+    )
 
     content = _strip_code_fences(_extract_content(payload))
     if not content:
-        raise RuntimeError("LLM response did not include usable content")
+        raise IntegrationFailure("empty_response", "LLM response did not include usable content")
 
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"LLM response was not valid JSON: {content[:200]}") from exc
+        raise IntegrationFailure("invalid_json", f"LLM response was not valid JSON: {content[:200]}") from exc
 
     def _to_list(val):
         """Normalize LLM output to a list of strings.
@@ -150,6 +140,46 @@ def _call_llm(prompt, bpm=None, key=None):
         "energy": _to_list(parsed.get("energy", [])),
         "rationale": parsed.get("rationale", ""),
     }
+
+
+def _fallback_tags(prompt, failure=None):
+    parsed = fetch_samples.parse_pad_query(prompt)
+    keywords = sorted(parsed["keywords"])
+    type_code = parsed["type_code"]
+    if not type_code:
+        for word in keywords:
+            mapped = _TYPE_KEYWORD_ALIASES.get(word)
+            if mapped:
+                type_code = mapped
+                break
+    fallback = {
+        "keywords": keywords,
+        "type_code": type_code,
+        "playability": parsed["playability"],
+        "vibe": [word for word in keywords if word in _FALLBACK_DIMENSIONS["vibe"]],
+        "genre": [word for word in keywords if word in _FALLBACK_DIMENSIONS["genre"]],
+        "texture": [word for word in keywords if word in _FALLBACK_DIMENSIONS["texture"]],
+        "energy": [word for word in keywords if word in _FALLBACK_DIMENSIONS["energy"]],
+        "rationale": "Keyword fallback parser used because the configured LLM integration was unavailable.",
+    }
+    return {
+        "tags": fallback,
+        "fallback_used": True,
+        "fallback_reason": failure.message if failure else "LLM integration unavailable",
+        "fallback_code": failure.code if failure else "llm_unavailable",
+    }
+
+
+def parse_vibe_prompt(prompt, bpm=None, key=None):
+    try:
+        return {
+            "tags": _call_llm(prompt, bpm=bpm, key=key),
+            "fallback_used": False,
+            "fallback_reason": "",
+            "fallback_code": "",
+        }
+    except IntegrationFailure as exc:
+        return _fallback_tags(prompt, failure=exc)
 
 
 def _build_query(prompt_data, llm_tags):
@@ -222,22 +252,10 @@ _PAD_TEMPLATES = [
     (12, "VOX", "vocal",      "chop-ready"),
 ]
 
-# Genre → melodic instrument mapping for pads 7-8
-_GENRE_INSTRUMENTS = {
-    "funk":        [("GTR", "guitar"),   ("KEY", "clavinet")],
-    "disco":       [("KEY", "piano"),    ("STR", "strings")],
-    "soul":        [("KEY", "organ"),    ("BRS", "brass")],
-    "rock":        [("GTR", "guitar"),   ("GTR", "guitar")],
-    "electronic":  [("SYN", "synth"),    ("SYN", "synth")],
-    "ambient":     [("PAD", "pad"),      ("SYN", "synth")],
-    "house":       [("SYN", "synth"),    ("KEY", "piano")],
-    "techno":      [("SYN", "synth"),    ("SYN", "lead")],
-    "hip-hop":     [("KEY", "piano"),    ("SYN", "synth")],
-    "lo-fi":       [("KEY", "piano"),    ("GTR", "guitar")],
-    "industrial":  [("SYN", "synth"),    ("SYN", "lead")],
-    "pop":         [("SYN", "synth"),    ("KEY", "piano")],
-}
-_DEFAULT_INSTRUMENTS = [("SYN", "synth"), ("KEY", "keys")]
+_GENRE_INSTRUMENTS = VIBE_MAPPINGS["genre_instruments"]
+_DEFAULT_INSTRUMENTS = VIBE_MAPPINGS["default_instruments"]
+_FALLBACK_DIMENSIONS = VIBE_MAPPINGS["fallback_dimensions"]
+_TYPE_KEYWORD_ALIASES = VIBE_MAPPINGS["type_keyword_aliases"]
 
 
 def _generate_pad_descriptions(llm_tags, bpm=None, key=None):
@@ -293,41 +311,18 @@ def _generate_pad_descriptions(llm_tags, bpm=None, key=None):
     return pads
 
 
-def build_bank_from_vibe(prompt_data):
-    """Turn a vibe prompt into a full 12-pad bank preset.
-
-    Args:
-        prompt_data: dict with 'prompt', optional 'bpm', 'key'
-
-    Returns:
-        dict with 'preset' (ready for save_preset), 'llm_tags', 'query'
-    """
-    prompt = prompt_data["prompt"]
-    bpm = prompt_data.get("bpm") or 120
-    key = prompt_data.get("key") or "Am"
-
-    # 1. Parse vibe via LLM
-    llm_tags = _call_llm(prompt, bpm=bpm, key=key)
-
-    # 2. Generate 12 pad descriptions from templates + LLM tags
+def _build_preset_from_tags(prompt, llm_tags, bpm, key):
     pads = _generate_pad_descriptions(llm_tags, bpm=bpm, key=key)
-
-    # 3. Build the query for display
-    query = _build_query(prompt_data, llm_tags)
-
-    # 4. Build slug from prompt
+    query = _build_query({"prompt": prompt, "bpm": bpm, "key": key}, llm_tags)
     slug = re.sub(r"[^a-z0-9]+", "-", prompt.lower().strip())[:40].strip("-")
     if not slug:
         slug = "vibe-bank"
-
-    # 5. Assemble tags list
     all_tags = list(dict.fromkeys(  # dedupe preserving order
         llm_tags.get("keywords", [])
         + llm_tags.get("genre", [])
         + llm_tags.get("vibe", [])
     ))[:12]
-
-    preset = {
+    return {
         "name": f"Vibe: {prompt[:50]}",
         "slug": slug,
         "author": "jambox-vibe",
@@ -340,25 +335,43 @@ def build_bank_from_vibe(prompt_data):
         "pads": pads,
     }
 
+
+def build_bank_from_vibe(prompt_data):
+    """Turn a vibe prompt into a full 12-pad bank preset."""
+    prompt = prompt_data["prompt"]
+    bpm = prompt_data.get("bpm") or 120
+    key = prompt_data.get("key") or "Am"
+
+    llm_result = parse_vibe_prompt(prompt, bpm=bpm, key=key)
+    llm_tags = llm_result["tags"]
+    preset = _build_preset_from_tags(prompt, llm_tags, bpm, key)
+    query = _build_query(prompt_data, llm_tags)
+
     return {
         "preset": preset,
         "llm_tags": llm_tags,
         "query": query,
+        "fallback_used": llm_result["fallback_used"],
+        "fallback_reason": llm_result["fallback_reason"],
+        "fallback_code": llm_result["fallback_code"],
     }
 
 
 def generate_vibe_suggestions(prompt_data):
     limit = _coerce_int(prompt_data.get("limit"), 12, minimum=1)
     min_score = _coerce_int(prompt_data.get("min_score"), 4, minimum=0)
-    llm_tags = _call_llm(
+    bpm = prompt_data.get("bpm")
+    key = prompt_data.get("key")
+    llm_result = parse_vibe_prompt(
         prompt_data["prompt"],
-        bpm=prompt_data.get("bpm"),
-        key=prompt_data.get("key"),
+        bpm=bpm,
+        key=key,
     )
+    llm_tags = llm_result["tags"]
     query = _build_query(prompt_data, llm_tags)
     matches = fetch_samples.rank_library_matches(
         query,
-        bank_config={"bpm": prompt_data.get("bpm"), "key": prompt_data.get("key")},
+        bank_config={"bpm": bpm, "key": key},
         limit=limit,
         min_score=min_score,
     )
@@ -375,13 +388,27 @@ def generate_vibe_suggestions(prompt_data):
         "parsed": llm_tags,
         "bank_suggestions": _score_banks(bank_query_terms, config),
         "sample_suggestions": matches,
+        "draft_preset": _build_preset_from_tags(prompt_data["prompt"], llm_tags, bpm or 120, key or "Am"),
+        "fallback_used": llm_result["fallback_used"],
+        "fallback_reason": llm_result["fallback_reason"],
+        "fallback_code": llm_result["fallback_code"],
     }
 
 
 def main():
-    prompt_data = _read_input()
-    result = generate_vibe_suggestions(prompt_data)
-    print(json.dumps(result, indent=2))
+    try:
+        prompt_data = _read_input()
+        result = generate_vibe_suggestions(prompt_data)
+        print(json.dumps(result, indent=2))
+    except (ConfigError, ValueError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc), "error_code": "invalid_input"}))
+        raise SystemExit(1)
+    except IntegrationFailure as exc:
+        print(json.dumps({"ok": False, "error": exc.message, "error_code": exc.code}))
+        raise SystemExit(1)
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc), "error_code": "unexpected_error"}))
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

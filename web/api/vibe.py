@@ -35,11 +35,74 @@ def _normalize_prompt(payload):
     return payload
 
 
+def _normalize_bank(bank):
+    bank = str(bank or "a").lower().strip()
+    if bank not in "abcdefghij":
+        raise ValueError(f"Invalid bank: {bank}")
+    return bank
+
+
+def _normalize_preset_payload(payload):
+    preset = payload.get("preset")
+    if not isinstance(preset, dict):
+        raise ValueError("preset is required")
+
+    pads = preset.get("pads")
+    if not isinstance(pads, dict) or not pads:
+        raise ValueError("preset.pads must be an object")
+
+    normalized_pads = {}
+    for key, value in pads.items():
+        try:
+            pad_num = int(key)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("preset.pads keys must be pad numbers") from exc
+        if pad_num < 1 or pad_num > 12:
+            raise ValueError("preset.pads keys must be between 1 and 12")
+        if not isinstance(value, str):
+            raise ValueError("preset.pads values must be strings")
+        normalized_pads[pad_num] = value.strip()
+
+    return {
+        "name": str(preset.get("name") or "Vibe Draft").strip() or "Vibe Draft",
+        "slug": str(preset.get("slug") or "vibe-draft").strip() or "vibe-draft",
+        "author": str(preset.get("author") or "jambox-vibe").strip() or "jambox-vibe",
+        "bpm": preset.get("bpm"),
+        "key": preset.get("key"),
+        "vibe": str(preset.get("vibe") or "").strip(),
+        "notes": str(preset.get("notes") or "").strip(),
+        "source": str(preset.get("source") or "vibe-generated").strip() or "vibe-generated",
+        "tags": preset.get("tags") if isinstance(preset.get("tags"), list) else [],
+        "pads": normalized_pads,
+    }
+
+
 def _parse_script_json(stdout):
     payload = json.loads((stdout or "").strip())
     if not isinstance(payload, dict):
         raise ValueError("Script output must be a JSON object")
     return payload
+
+
+def _script_error_payload(result, default_message):
+    try:
+        payload = _parse_script_json(result.stdout)
+    except (json.JSONDecodeError, ValueError):
+        payload = {}
+
+    error_message = payload.get("error")
+    if not isinstance(error_message, str) or not error_message.strip():
+        error_message = (result.stderr or result.stdout or default_message).strip()
+
+    response = {
+        "ok": False,
+        "error": error_message,
+    }
+    if payload.get("error_code"):
+        response["error_code"] = payload["error_code"]
+    if payload.get("detail"):
+        response["detail"] = payload["detail"]
+    return response
 
 
 @vibe_bp.route("/vibe/generate", methods=["POST"])
@@ -62,8 +125,7 @@ def generate_vibe():
             timeout=current_app.config.get("LLM_TIMEOUT", 30) + 5,
         )
         if result.returncode != 0:
-            error_message = (result.stderr or result.stdout or "Vibe generation failed").strip()
-            return jsonify({"ok": False, "error": error_message}), 500
+            return jsonify(_script_error_payload(result, "Vibe generation failed")), 500
         return jsonify({"ok": True, "result": _parse_script_json(result.stdout)})
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Vibe generation timed out"}), 500
@@ -73,7 +135,7 @@ def generate_vibe():
         return jsonify({"ok": False, "error": f"Vibe generation failed to start: {exc}"}), 500
 
 
-def _run_populate_bank(job_id, repo_dir, settings, prompt_data):
+def _run_populate_bank(job_id, repo_dir, settings, prompt_data, preset_override=None):
     """Background worker: generate preset from vibe, load into bank, fetch samples."""
     try:
         scripts_dir = os.path.join(repo_dir, "scripts")
@@ -83,13 +145,18 @@ def _run_populate_bank(job_id, repo_dir, settings, prompt_data):
         import preset_utils as pu
         import fetch_samples as fs
 
-        _vibe_jobs[job_id]["status"] = "generating"
-        _vibe_jobs[job_id]["progress"] = "Asking LLM to parse your vibe..."
-
-        # Step 1: Generate preset from vibe prompt
-        result = vibe_generate.build_bank_from_vibe(prompt_data)
-        preset = result["preset"]
-        _vibe_jobs[job_id]["progress"] = f"Generated {len(preset['pads'])} pad descriptions"
+        if preset_override is None:
+            _vibe_jobs[job_id]["status"] = "generating"
+            _vibe_jobs[job_id]["progress"] = "Asking LLM to parse your vibe..."
+            result = vibe_generate.build_bank_from_vibe(prompt_data)
+            preset = result["preset"]
+            _vibe_jobs[job_id]["fallback_used"] = result.get("fallback_used", False)
+            _vibe_jobs[job_id]["fallback_reason"] = result.get("fallback_reason")
+            _vibe_jobs[job_id]["progress"] = f"Generated {len(preset['pads'])} pad descriptions"
+        else:
+            preset = preset_override
+            _vibe_jobs[job_id]["status"] = "reviewed"
+            _vibe_jobs[job_id]["progress"] = f"Applying reviewed draft with {len(preset['pads'])} pads"
 
         # Step 2: Save as preset
         _vibe_jobs[job_id]["status"] = "saving"
@@ -135,6 +202,22 @@ def _run_populate_bank(job_id, repo_dir, settings, prompt_data):
         _vibe_jobs[job_id]["progress"] = str(e)
 
 
+def _create_vibe_job(bank, prompt):
+    job_id = str(uuid.uuid4())[:8]
+    _vibe_jobs[job_id] = {
+        "id": job_id,
+        "status": "starting",
+        "progress": "",
+        "prompt": prompt,
+        "bank": bank,
+        "preset_ref": None,
+        "fetched": None,
+        "fallback_used": False,
+        "fallback_reason": "",
+    }
+    return job_id
+
+
 @vibe_bp.route("/vibe/populate-bank", methods=["POST"])
 def populate_bank():
     """Generate a full bank from a vibe prompt: LLM parse → preset → load → fetch."""
@@ -142,9 +225,10 @@ def populate_bank():
     if not payload.get("prompt"):
         return jsonify({"ok": False, "error": "prompt is required"}), 400
 
-    bank = payload.get("bank", "a").lower().strip()
-    if bank not in "abcdefghij":
-        return jsonify({"ok": False, "error": f"Invalid bank: {bank}"}), 400
+    try:
+        bank = _normalize_bank(payload.get("bank", "a"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     # Only one populate at a time
     with _vibe_lock:
@@ -152,16 +236,7 @@ def populate_bank():
             if j.get("status") in ("generating", "saving", "loading", "fetching"):
                 return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
 
-    job_id = str(uuid.uuid4())[:8]
-    _vibe_jobs[job_id] = {
-        "id": job_id,
-        "status": "starting",
-        "progress": "",
-        "prompt": payload["prompt"],
-        "bank": bank,
-        "preset_ref": None,
-        "fetched": None,
-    }
+    job_id = _create_vibe_job(bank, payload["prompt"])
 
     prompt_data = {
         "prompt": payload["prompt"],
@@ -176,6 +251,37 @@ def populate_bank():
     t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, settings, prompt_data))
     t.daemon = True
     t.start()
+
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+@vibe_bp.route("/vibe/apply-bank", methods=["POST"])
+def apply_bank():
+    try:
+        payload = _json_object_body()
+        bank = _normalize_bank(payload.get("bank", "a"))
+        preset = _normalize_preset_payload(payload)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    with _vibe_lock:
+        for j in _vibe_jobs.values():
+            if j.get("status") in ("generating", "reviewed", "saving", "loading", "fetching"):
+                return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
+
+    job_id = _create_vibe_job(bank, preset.get("vibe", ""))
+    repo_dir = current_app.config["REPO_DIR"]
+    settings = dict(current_app.config)
+    prompt_data = {
+        "prompt": preset.get("vibe", ""),
+        "bpm": preset.get("bpm"),
+        "key": preset.get("key"),
+        "bank": bank,
+        "fetch": payload.get("fetch", True),
+    }
+    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, settings, prompt_data, preset))
+    thread.daemon = True
+    thread.start()
 
     return jsonify({"ok": True, "job_id": job_id})
 

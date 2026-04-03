@@ -16,6 +16,7 @@ import sys
 from datetime import datetime
 from urllib import error, request
 
+from jambox_cache import file_marker, get_cached_fingerprint, load_fingerprint_cache, put_cached_fingerprint, save_fingerprint_cache
 from jambox_config import build_subprocess_env, load_settings_for_script
 import dedup_library
 
@@ -76,6 +77,33 @@ def compute_fingerprint(filepath):
     return _fingerprint_with_fpcalc(filepath) or _fingerprint_with_python(filepath)
 
 
+def _cached_fingerprint(rel_path, cache_entries, python_fingerprints):
+    full_path = os.path.join(LIBRARY, rel_path)
+    marker = file_marker(full_path)
+    if not marker:
+        return None
+
+    cached = get_cached_fingerprint(cache_entries, rel_path, marker, "fpcalc")
+    if cached is not None:
+        return cached
+
+    fingerprint = _fingerprint_with_fpcalc(full_path)
+    if fingerprint is not None:
+        put_cached_fingerprint(cache_entries, rel_path, marker, "fpcalc", fingerprint)
+        return fingerprint
+
+    cached_python = get_cached_fingerprint(cache_entries, rel_path, marker, "python")
+    if cached_python is not None:
+        python_fingerprints[rel_path] = cached_python
+        return cached_python
+
+    fingerprint = _fingerprint_with_python(full_path)
+    if fingerprint is not None:
+        put_cached_fingerprint(cache_entries, rel_path, marker, "python", fingerprint)
+        python_fingerprints[rel_path] = fingerprint
+    return fingerprint
+
+
 def similarity(a, b):
     if a["kind"] == "fpcalc" and b["kind"] == "fpcalc":
         return difflib.SequenceMatcher(a=a["value"], b=b["value"]).ratio()
@@ -84,7 +112,7 @@ def similarity(a, b):
     return None
 
 
-def _ensure_python_fingerprint(rel_path, fingerprints, python_fingerprints):
+def _ensure_python_fingerprint(rel_path, fingerprints, python_fingerprints, cache_entries):
     if rel_path in python_fingerprints:
         return python_fingerprints[rel_path]
 
@@ -94,19 +122,24 @@ def _ensure_python_fingerprint(rel_path, fingerprints, python_fingerprints):
         return fingerprint
 
     full_path = os.path.join(LIBRARY, rel_path)
-    python_fp = _fingerprint_with_python(full_path)
+    marker = file_marker(full_path)
+    python_fp = get_cached_fingerprint(cache_entries, rel_path, marker, "python") if marker else None
+    if python_fp is None:
+        python_fp = _fingerprint_with_python(full_path)
+        if python_fp is not None and marker:
+            put_cached_fingerprint(cache_entries, rel_path, marker, "python", python_fp)
     if python_fp is not None:
         python_fingerprints[rel_path] = python_fp
     return python_fp
 
 
-def _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints):
+def _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints, cache_entries):
     primary_score = similarity(fingerprints[rel_path], fingerprints[compare_path])
     if primary_score is not None:
         return primary_score
 
-    rel_python = _ensure_python_fingerprint(rel_path, fingerprints, python_fingerprints)
-    compare_python = _ensure_python_fingerprint(compare_path, fingerprints, python_fingerprints)
+    rel_python = _ensure_python_fingerprint(rel_path, fingerprints, python_fingerprints, cache_entries)
+    compare_python = _ensure_python_fingerprint(compare_path, fingerprints, python_fingerprints, cache_entries)
     if rel_python is None or compare_python is None:
         return 0.0
     return similarity(rel_python, compare_python) or 0.0
@@ -155,11 +188,12 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None):
         entries = entries[:limit]
 
     fingerprints = {}
+    cache_entries = load_fingerprint_cache(LIBRARY)
     for rel_path, _entry in entries:
         full_path = os.path.join(LIBRARY, rel_path)
         if not os.path.exists(full_path):
             continue
-        fp = compute_fingerprint(full_path)
+        fp = _cached_fingerprint(rel_path, cache_entries, {})
         if fp is not None:
             fingerprints[rel_path] = fp
 
@@ -169,10 +203,11 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None):
     for idx, rel_path in enumerate(paths):
         for compare_idx in range(idx + 1, len(paths)):
             compare_path = paths[compare_idx]
-            sim = _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints)
+            sim = _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints, cache_entries)
             if sim >= threshold:
                 adjacency[rel_path].add(compare_path)
                 adjacency[compare_path].add(rel_path)
+    save_fingerprint_cache(LIBRARY, cache_entries)
 
     groups = []
     visited = set()

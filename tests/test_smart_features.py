@@ -24,6 +24,8 @@ from api.presets import presets_bp
 import deduplicate_samples
 import daily_bank
 import generate_patterns
+from integration_runtime import IntegrationFailure
+import jambox_tuning
 import vibe_generate
 
 
@@ -47,6 +49,7 @@ class SmartFeatureApiTests(unittest.TestCase):
             "parsed": {"keywords": ["dusty", "funk"]},
             "bank_suggestions": [],
             "sample_suggestions": [],
+            "fallback_used": False,
         }
         with patch("api.vibe.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(script_output), stderr="")):
             response = self.client.post("/api/vibe/generate", json={"prompt": "dusty funk drums"})
@@ -56,13 +59,31 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["result"]["query"], "BRK dusty funk loop")
 
+    def test_vibe_route_surfaces_structured_script_error(self):
+        failed = SimpleNamespace(
+            returncode=1,
+            stdout=json.dumps({"ok": False, "error": "LLM unavailable", "error_code": "connection_error"}),
+            stderr="",
+        )
+        with patch("api.vibe.subprocess.run", return_value=failed):
+            response = self.client.post("/api/vibe/generate", json={"prompt": "dusty funk drums"})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.get_json()["error"], "LLM unavailable")
+        self.assertEqual(response.get_json()["error_code"], "connection_error")
+
     def test_pattern_route_surfaces_generator_error(self):
-        failed = SimpleNamespace(returncode=1, stdout="", stderr="checkpoint missing")
+        failed = SimpleNamespace(
+            returncode=1,
+            stdout=json.dumps({"ok": False, "error": "checkpoint missing", "error_code": "invalid_input"}),
+            stderr="",
+        )
         with patch("api.pattern.subprocess.run", return_value=failed):
             response = self.client.post("/api/pattern/generate", json={"variant": "drum"})
 
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.get_json()["error"], "checkpoint missing")
+        self.assertEqual(response.get_json()["error_code"], "invalid_input")
 
     def test_pattern_route_rejects_non_object_json_body(self):
         response = self.client.post("/api/pattern/generate", json=["drum"])
@@ -125,6 +146,39 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertIn("Script output must be a JSON object", response.get_json()["error"])
 
+    def test_vibe_apply_bank_rejects_invalid_preset_payload(self):
+        response = self.client.post("/api/vibe/apply-bank", json={"bank": "b", "preset": {"pads": []}})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "preset.pads must be an object")
+
+    def test_vibe_apply_bank_starts_background_job(self):
+        thread_calls = {}
+
+        class FakeThread:
+            daemon = False
+
+            def __init__(self, target=None, args=None):
+                thread_calls["target"] = target
+                thread_calls["args"] = args
+
+            def start(self):
+                thread_calls["started"] = True
+
+        preset = {
+            "name": "Draft",
+            "pads": {1: "KIK dusty one-shot", 2: "SNR dusty one-shot"},
+            "bpm": 120,
+            "key": "Am",
+            "vibe": "dusty funk",
+        }
+        with patch("api.vibe.threading.Thread", FakeThread):
+            response = self.client.post("/api/vibe/apply-bank", json={"bank": "b", "preset": preset, "fetch": False})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["ok"])
+        self.assertTrue(thread_calls["started"])
+
 
 class DailyBankTests(unittest.TestCase):
     def test_build_daily_preset_uses_existing_preset_schema(self):
@@ -178,6 +232,16 @@ class DailyBankTests(unittest.TestCase):
 
 
 class VibeGenerateTests(unittest.TestCase):
+    def test_load_vibe_mappings_falls_back_on_invalid_yaml(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            mappings_path = os.path.join(tempdir, "vibe_mappings.yaml")
+            with open(mappings_path, "w", encoding="utf-8") as handle:
+                handle.write("genre_instruments:\n  funk: nope\n")
+
+            mappings = jambox_tuning.load_vibe_mappings(mappings_path)
+
+        self.assertEqual(mappings["genre_instruments"]["funk"][0][0], "GTR")
+
     def test_generate_vibe_suggestions_uses_defaults_for_bad_numeric_inputs(self):
         llm_tags = {
             "keywords": ["dusty"],
@@ -214,6 +278,66 @@ class VibeGenerateTests(unittest.TestCase):
 
         self.assertEqual(result["sample_suggestions"], [{"path": "Loops/foo.wav"}])
         self.assertEqual(result["bank_suggestions"], [])
+
+    def test_generate_vibe_suggestions_falls_back_when_llm_unavailable(self):
+        with patch("vibe_generate._call_llm", side_effect=IntegrationFailure("connection_error", "LLM unavailable")), patch("vibe_generate.fetch_samples.rank_library_matches", return_value=[]), patch("vibe_generate._load_bank_config", return_value={}):
+            result = vibe_generate.generate_vibe_suggestions({"prompt": "dusty funk loop"})
+
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual(result["fallback_code"], "connection_error")
+        self.assertIn("dusty", result["parsed"]["keywords"])
+
+    def test_generate_vibe_suggestions_uses_type_alias_in_keyword_fallback(self):
+        with patch("vibe_generate._call_llm", side_effect=IntegrationFailure("connection_error", "LLM unavailable")), patch("vibe_generate.fetch_samples.rank_library_matches", return_value=[]), patch("vibe_generate._load_bank_config", return_value={}), patch.object(vibe_generate, "_TYPE_KEYWORD_ALIASES", {"kick": "KIK"}):
+            result = vibe_generate.generate_vibe_suggestions({"prompt": "dusty kick loop"})
+
+        self.assertEqual(result["parsed"]["type_code"], "KIK")
+
+    def test_build_bank_from_vibe_preserves_fallback_metadata(self):
+        fallback_result = {
+            "tags": {
+                "keywords": ["dusty"],
+                "type_code": "BRK",
+                "playability": "loop",
+                "vibe": [],
+                "genre": ["funk"],
+                "texture": [],
+                "energy": [],
+                "rationale": "Fallback",
+            },
+            "fallback_used": True,
+            "fallback_reason": "LLM unavailable",
+            "fallback_code": "connection_error",
+        }
+        with patch("vibe_generate.parse_vibe_prompt", return_value=fallback_result):
+            result = vibe_generate.build_bank_from_vibe({"prompt": "dusty funk", "bpm": 95, "key": "Am"})
+
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual(result["fallback_code"], "connection_error")
+        self.assertEqual(result["preset"]["bpm"], 95)
+
+    def test_generate_vibe_suggestions_includes_draft_preset(self):
+        llm_result = {
+            "tags": {
+                "keywords": ["dusty"],
+                "type_code": "BRK",
+                "playability": "loop",
+                "vibe": ["warm"],
+                "genre": ["funk"],
+                "texture": [],
+                "energy": [],
+                "rationale": "test",
+            },
+            "fallback_used": False,
+            "fallback_reason": "",
+            "fallback_code": "",
+        }
+        with patch("vibe_generate.parse_vibe_prompt", return_value=llm_result), patch("vibe_generate.fetch_samples.rank_library_matches", return_value=[]), patch("vibe_generate._load_bank_config", return_value={}):
+            result = vibe_generate.generate_vibe_suggestions({"prompt": "dusty funk", "bpm": 110, "key": "Am"})
+
+        self.assertIn("draft_preset", result)
+        self.assertEqual(result["draft_preset"]["bpm"], 110)
+        self.assertIn(1, result["draft_preset"]["pads"])
 
 
 class PatternGeneratorTests(unittest.TestCase):
@@ -254,9 +378,12 @@ class PatternGeneratorTests(unittest.TestCase):
                 )
 
     def test_generate_pattern_times_out_magenta_command(self):
-        with patch("generate_patterns._resolve_checkpoint", return_value=("drum", "/tmp/drum.mag")), patch("generate_patterns._build_magenta_command", return_value=(["magenta"], "/tmp/generated.mid")), patch("generate_patterns.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="magenta", timeout=1)):
-            with self.assertRaisesRegex(RuntimeError, "Pattern generation timed out"):
-                generate_patterns.generate_pattern({"variant": "drum"})
+        with patch("generate_patterns._resolve_checkpoint", return_value=("drum", "/tmp/drum.mag")), patch("generate_patterns._build_magenta_command", return_value=(["magenta"], "/tmp/generated.mid")), patch("generate_patterns.run_command", side_effect=IntegrationFailure("timeout", "Integration timed out")), patch("generate_patterns._write_starter_fallback", return_value="/tmp/fallback.PTN"):
+            result = generate_patterns.generate_pattern({"variant": "drum"})
+
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual(result["fallback_code"], "magenta_timeout")
+        self.assertEqual(result["path"], "/tmp/fallback.PTN")
 
 
 class DedupeTests(unittest.TestCase):
@@ -271,7 +398,7 @@ class DedupeTests(unittest.TestCase):
                 with open(os.path.join(tempdir, name), "wb") as handle:
                     handle.write(b"data")
 
-            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples.compute_fingerprint", side_effect=[
+            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=[
                 {"kind": "fpcalc", "value": "1,2,3"},
                 {"kind": "fpcalc", "value": "1,2,3"},
                 {"kind": "fpcalc", "value": "9,9,9"},
@@ -299,15 +426,34 @@ class DedupeTests(unittest.TestCase):
                 ("b.wav", "c.wav"): 0.99,
             }
 
-            def fake_pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints):
+            def fake_pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints, cache_entries):
                 return scores[(rel_path, compare_path)]
 
-            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples.compute_fingerprint", return_value={"kind": "fpcalc", "value": "stub"}), patch("deduplicate_samples._pair_similarity", side_effect=fake_pair_similarity):
+            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", return_value={"kind": "fpcalc", "value": "stub"}), patch("deduplicate_samples._pair_similarity", side_effect=fake_pair_similarity):
                 groups = deduplicate_samples.find_duplicate_groups(db, threshold=0.95)
 
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["keep"], "a.wav")
         self.assertEqual(groups[0]["duplicates"], ["c.wav", "b.wav"])
+
+    def test_find_duplicate_groups_reuses_fingerprint_cache(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            db = {
+                "a.wav": {"tags": ["one"]},
+                "b.wav": {"tags": []},
+            }
+            for name in db:
+                with open(os.path.join(tempdir, name), "wb") as handle:
+                    handle.write(b"data")
+
+            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=[
+                {"kind": "fpcalc", "value": "1,2,3"},
+                {"kind": "fpcalc", "value": "1,2,3"},
+            ]) as fpcalc_mock:
+                deduplicate_samples.find_duplicate_groups(db, threshold=0.99)
+                deduplicate_samples.find_duplicate_groups(db, threshold=0.99)
+
+        self.assertEqual(fpcalc_mock.call_count, 2)
 
     def test_find_duplicate_groups_uses_python_fallback_for_mixed_kinds(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -319,7 +465,7 @@ class DedupeTests(unittest.TestCase):
                 with open(os.path.join(tempdir, name), "wb") as handle:
                     handle.write(b"data")
 
-            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples.compute_fingerprint", side_effect=[
+            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=[
                 {"kind": "fpcalc", "value": "1,2,3"},
                 {"kind": "python", "value": [1.0, 2.0, 3.0]},
             ]), patch("deduplicate_samples._fingerprint_with_python", return_value={"kind": "python", "value": [1.0, 2.0, 3.0]}), patch("deduplicate_samples.dedup_library.cosine_similarity", return_value=0.999):

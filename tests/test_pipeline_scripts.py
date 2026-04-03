@@ -16,6 +16,7 @@ if SCRIPTS_DIR not in sys.path:
 
 import fetch_samples
 import ingest_downloads
+import jambox_tuning
 
 
 class FetchSamplesScriptTests(unittest.TestCase):
@@ -46,6 +47,66 @@ class FetchSamplesScriptTests(unittest.TestCase):
         self.assertEqual(parsed["type_code"], None)
         self.assertEqual(parsed["playability"], None)
         self.assertEqual(parsed["keywords"], set())
+
+    def test_load_scoring_config_falls_back_on_invalid_weight(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            scoring_path = os.path.join(tempdir, "scoring.yaml")
+            with open(scoring_path, "w", encoding="utf-8") as handle:
+                handle.write("score_version: nope\nweights:\n  type_exact: loud\n")
+
+            config = jambox_tuning.load_scoring_config(scoring_path)
+
+        self.assertEqual(config["score_version"], 1)
+        self.assertEqual(config["weights"]["type_exact"], 10)
+
+    def test_score_from_tags_uses_configurable_weights(self):
+        parsed = {
+            "type_code": "KIK",
+            "playability": "one-shot",
+            "bpm": 120,
+            "key": "Am",
+            "keywords": {"dusty"},
+        }
+        entry = {
+            "type_code": "KIK",
+            "playability": "one-shot",
+            "bpm": 120,
+            "key": "Am",
+            "vibe": ["dusty"],
+            "texture": [],
+            "genre": [],
+            "tags": [],
+            "path": "Hits/kick.wav",
+            "duration": 1,
+            "plex_moods": [],
+            "plex_play_count": 0,
+        }
+        custom_weights = dict(fetch_samples.SCORING_WEIGHTS)
+        custom_weights["type_exact"] = 99
+        with patch.object(fetch_samples, "SCORING_WEIGHTS", custom_weights):
+            score = fetch_samples.score_from_tags(entry, parsed, {"bpm": 120, "key": "Am"})
+
+        self.assertGreaterEqual(score, 99)
+
+    def test_rank_library_matches_reuses_score_cache_for_same_query(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            tags_path = os.path.join(tempdir, "_tags.json")
+            with open(tags_path, "w", encoding="utf-8") as handle:
+                handle.write("{}")
+
+            tag_db = {
+                "Loops/a.wav": {"type_code": "BRK", "tags": ["dusty"], "vibe": ["dusty"], "genre": [], "texture": [], "duration": 2},
+                "Loops/b.wav": {"type_code": "BRK", "tags": ["clean"], "vibe": ["clean"], "genre": [], "texture": [], "duration": 2},
+            }
+            score_mock = lambda entry, parsed, bank: 10 if "dusty" in entry.get("tags", []) else 1
+
+            with patch.object(fetch_samples, "LIBRARY", tempdir), patch.object(fetch_samples, "TAGS_FILE", tags_path), patch("fetch_samples.score_from_tags", side_effect=score_mock) as score_spy:
+                first = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120}, tag_db=tag_db)
+                second = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120}, tag_db=tag_db)
+
+        self.assertEqual(len(first), 2)
+        self.assertEqual(len(second), 2)
+        self.assertEqual(score_spy.call_count, 2)
 
 
 class IngestDownloadsScriptTests(unittest.TestCase):

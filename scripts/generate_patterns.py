@@ -8,14 +8,15 @@ Usage:
 import json
 import os
 import struct
-import subprocess
 import sys
 import tempfile
 
 from jambox_config import ConfigError, load_settings_for_script
+from integration_runtime import IntegrationFailure, run_command
 from spedit404.binary import get_ptn_filename, write_binary
 from spedit404.note import Note
 from spedit404.pattern import Pattern
+import gen_patterns
 
 
 SETTINGS = load_settings_for_script(__file__)
@@ -306,6 +307,15 @@ def _find_generated_midi(output_dir, preferred_output):
     raise FileNotFoundError("Pattern generator did not produce a MIDI file")
 
 
+def _write_starter_fallback(bank, pad, bars, output_dir):
+    generator = gen_patterns.GENERATORS.get(bank.upper(), ("Utility", gen_patterns.gen_utility))[1]
+    pattern = generator(bank)
+    filename = get_ptn_filename(bank, pad)
+    output_path = os.path.join(output_dir, filename)
+    write_binary(pattern, bank, pad, output_path)
+    return output_path
+
+
 def generate_pattern(payload):
     bank = _normalize_bank(payload.get("bank", "c"))
     pad = _coerce_int(payload.get("pad"), 1, minimum=1, maximum=12, field_name="pad")
@@ -313,26 +323,36 @@ def generate_pattern(payload):
     output_dir = payload.get("output_dir") or DEFAULT_PTN_DIR
     output_dir = os.path.abspath(output_dir)
 
-    variant, checkpoint_path = _resolve_checkpoint(payload)
     os.makedirs(output_dir, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="jambox_magenta_") as tmpdir:
-        command, preferred_output = _build_magenta_command(payload, checkpoint_path, tmpdir)
         try:
-            result = subprocess.run(command, capture_output=True, text=True, cwd=REPO_DIR, timeout=MAGENTA_TIMEOUT)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("Pattern generation timed out") from exc
-        if result.returncode != 0:
-            stderr = (result.stderr or result.stdout or "Magenta command failed").strip()
-            raise RuntimeError(stderr)
+            variant, checkpoint_path = _resolve_checkpoint(payload)
+            command, preferred_output = _build_magenta_command(payload, checkpoint_path, tmpdir)
+            result = run_command(command, cwd=REPO_DIR, timeout=MAGENTA_TIMEOUT)
+            midi_path = _find_generated_midi(tmpdir, preferred_output)
+            note_events, midi_ticks_per_quarter = _parse_midi_file(midi_path)
+            pattern = _pattern_from_midi(note_events, midi_ticks_per_quarter, bars, bank, variant)
 
-        midi_path = _find_generated_midi(tmpdir, preferred_output)
-        note_events, midi_ticks_per_quarter = _parse_midi_file(midi_path)
-        pattern = _pattern_from_midi(note_events, midi_ticks_per_quarter, bars, bank, variant)
-
-        filename = get_ptn_filename(bank, pad)
-        output_path = os.path.join(output_dir, filename)
-        write_binary(pattern, bank, pad, output_path)
+            filename = get_ptn_filename(bank, pad)
+            output_path = os.path.join(output_dir, filename)
+            write_binary(pattern, bank, pad, output_path)
+            fallback_used = False
+            fallback_reason = ""
+            fallback_code = ""
+        except (IntegrationFailure, ConfigError, FileNotFoundError) as exc:
+            output_path = _write_starter_fallback(bank, pad, bars, output_dir)
+            variant = payload.get("variant", "drum").lower()
+            checkpoint_path = ""
+            fallback_used = True
+            if isinstance(exc, IntegrationFailure):
+                fallback_reason = exc.message if not exc.detail else f"{exc.message}: {exc.detail}"
+                fallback_code = f"magenta_{exc.code}"
+            else:
+                fallback_reason = str(exc)
+                fallback_code = "magenta_unavailable"
+        except ValueError:
+            raise
 
     return {
         "ok": True,
@@ -342,13 +362,26 @@ def generate_pattern(payload):
         "bank": bank,
         "pad": pad,
         "bars": bars,
+        "fallback_used": fallback_used,
+        "fallback_reason": fallback_reason,
+        "fallback_code": fallback_code,
     }
 
 
 def main():
-    payload = _read_input()
-    result = generate_pattern(payload)
-    print(json.dumps(result, indent=2))
+    try:
+        payload = _read_input()
+        result = generate_pattern(payload)
+        print(json.dumps(result, indent=2))
+    except (ConfigError, ValueError, FileNotFoundError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc), "error_code": "invalid_input"}))
+        raise SystemExit(1)
+    except IntegrationFailure as exc:
+        print(json.dumps({"ok": False, "error": exc.message, "error_code": exc.code, "detail": exc.detail}))
+        raise SystemExit(1)
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc), "error_code": "unexpected_error"}))
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

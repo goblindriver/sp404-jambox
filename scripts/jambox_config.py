@@ -1,6 +1,7 @@
 """Shared runtime settings for the SP-404 Jambox app and scripts."""
 
 import os
+import shutil
 
 
 DEFAULT_SAMPLE_LIBRARY = "~/Music/SP404-Sample-Library"
@@ -121,6 +122,8 @@ def load_settings(repo_dir):
         "STAGING_DIR": os.path.join(repo_dir, "_CARD_STAGING"),
         "SMPL_DIR": os.path.join(repo_dir, "sd-card-template", "ROLAND", "SP-404SX", "SMPL"),
         "CONFIG_PATH": os.path.join(repo_dir, "bank_config.yaml"),
+        "VIBE_MAPPINGS_PATH": os.path.join(repo_dir, "config", "vibe_mappings.yaml"),
+        "SCORING_CONFIG_PATH": os.path.join(repo_dir, "config", "scoring.yaml"),
         "FFMPEG_BIN": _read_command("SP404_FFMPEG", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "ffmpeg")),
         "FFPROBE_BIN": _read_command("SP404_FFPROBE", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "ffprobe")),
         "UNAR_BIN": _read_command("SP404_UNAR", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "unar")),
@@ -156,3 +159,16 @@ def build_subprocess_env(settings, base_env=None):
     current_path = env.get("PATH", "")
     env["PATH"] = f"{path_prefix}:{current_path}" if current_path else path_prefix
     return env
+
+
+def resolve_command(command, env=None):
+    """Resolve a configured command to an executable path if possible."""
+    command = (command or "").strip()
+    if not command:
+        return None
+
+    env = dict(env or os.environ)
+    executable = command.split()[0]
+    if os.path.isabs(executable):
+        return executable if os.path.isfile(executable) and os.access(executable, os.X_OK) else None
+    return shutil.which(executable, path=env.get("PATH"))

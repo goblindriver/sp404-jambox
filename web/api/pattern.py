@@ -27,6 +27,27 @@ def _parse_script_json(stdout):
     return payload
 
 
+def _script_error_payload(result, default_message):
+    try:
+        payload = _parse_script_json(result.stdout)
+    except (json.JSONDecodeError, ValueError):
+        payload = {}
+
+    error_message = payload.get("error")
+    if not isinstance(error_message, str) or not error_message.strip():
+        error_message = (result.stderr or result.stdout or default_message).strip()
+
+    response = {
+        "ok": False,
+        "error": error_message,
+    }
+    if payload.get("error_code"):
+        response["error_code"] = payload["error_code"]
+    if payload.get("detail"):
+        response["detail"] = payload["detail"]
+    return response
+
+
 @pattern_bp.route("/pattern/generate", methods=["POST"])
 def generate_pattern():
     try:
@@ -46,8 +67,7 @@ def generate_pattern():
             timeout=90,
         )
         if result.returncode != 0:
-            error_message = (result.stderr or result.stdout or "Pattern generation failed").strip()
-            return jsonify({"ok": False, "error": error_message}), 500
+            return jsonify(_script_error_payload(result, "Pattern generation failed")), 500
         return jsonify(_parse_script_json(result.stdout))
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Pattern generation timed out"}), 500

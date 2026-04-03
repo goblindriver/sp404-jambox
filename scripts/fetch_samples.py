@@ -17,10 +17,15 @@ REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 from jambox_config import load_settings_for_script
+from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
+from jambox_tuning import SCORE_VERSION, load_scoring_config
 from wav_utils import convert_and_tag, build_sp404_wav
 import freesound_client as fs
 
 SETTINGS = load_settings_for_script(__file__)
+SCORING_CONFIG = load_scoring_config()
+SCORING_WEIGHTS = SCORING_CONFIG["weights"]
+SCORING_VERSION = SCORE_VERSION
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 FREESOUND_DIR = SETTINGS["FREESOUND_DIR"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
@@ -119,13 +124,14 @@ def score_from_tags(entry, parsed_query, bank_config):
       Duration mismatch:   -3  (one-shot pad but file > 10s)
     """
     score = 0
+    weights = SCORING_WEIGHTS
     q = parsed_query
 
     # --- Type code (most important) ---
     entry_tc = entry.get("type_code", "")
     if q["type_code"]:
         if entry_tc == q["type_code"]:
-            score += 10
+            score += weights["type_exact"]
         else:
             # Partial credit for related types
             related = {
@@ -137,19 +143,19 @@ def score_from_tags(entry, parsed_query, bank_config):
                 "AMB": {"PAD", "TPE"}, "TPE": {"AMB"},
             }
             if entry_tc in related.get(q["type_code"], set()):
-                score += 3  # related but not exact
+                score += weights["type_related"]  # related but not exact
             else:
-                score -= 8  # wrong category entirely
+                score += weights["type_mismatch"]  # wrong category entirely
 
     # --- Playability ---
     entry_play = entry.get("playability", "")
     if q["playability"]:
         if entry_play == q["playability"]:
-            score += 5
+            score += weights["playability_exact"]
         elif q["playability"] == "one-shot" and entry_play == "loop":
-            score -= 4  # definitely wrong
+            score += weights["playability_mismatch"]  # definitely wrong
         elif q["playability"] == "loop" and entry_play == "one-shot":
-            score -= 4
+            score += weights["playability_mismatch"]
 
     # --- BPM ---
     entry_bpm = entry.get("bpm")
@@ -157,20 +163,20 @@ def score_from_tags(entry, parsed_query, bank_config):
     if target_bpm and entry_bpm:
         diff = abs(entry_bpm - target_bpm)
         if diff <= 5:
-            score += 4
+            score += weights["bpm_close"]
         elif diff <= 15:
-            score += 2
+            score += weights["bpm_near"]
         elif diff > 30:
-            score -= 2
+            score += weights["bpm_far"]
 
     # --- Key ---
     entry_key = entry.get("key")
     if q["key"] and entry_key:
         if entry_key.lower() == q["key"].lower():
-            score += 3
+            score += weights["key_exact"]
         # Relative major/minor get partial credit
         elif _keys_compatible(q["key"], entry_key):
-            score += 1
+            score += weights["key_compatible"]
 
     # --- Keywords vs tag dimensions ---
     entry_tags = set(t.lower() for t in entry.get("tags", []))
@@ -180,27 +186,27 @@ def score_from_tags(entry, parsed_query, bank_config):
 
     for kw in q["keywords"]:
         if kw in entry_vibes or kw in entry_textures or kw in entry_genres:
-            score += 3  # dimension match — high confidence
+            score += weights["keyword_dimension"]  # dimension match — high confidence
         elif kw in entry_tags:
-            score += 2  # flat tag match
+            score += weights["keyword_tag"]  # flat tag match
         elif kw in os.path.basename(entry.get("path", "")).lower():
-            score += 1  # filename fallback
+            score += weights["keyword_filename"]  # filename fallback
 
     # --- Duration penalty for one-shots ---
     duration = entry.get("duration", 0)
     if q["playability"] == "one-shot" and duration > 10:
-        score -= 3
+        score += weights["oneshot_long_penalty"]
     if q["playability"] == "loop" and duration < 1:
-        score -= 3
+        score += weights["loop_short_penalty"]
 
     # --- Plex metadata bonuses ---
     # Stems from personal library with Plex moods get a small bonus
     # because the vibes are machine-tagged (more reliable than filename inference)
     if entry.get("plex_moods"):
-        score += 1  # Plex-tagged = higher confidence metadata
+        score += weights["plex_moods_bonus"]  # Plex-tagged = higher confidence metadata
     # Samples from tracks with play history rank higher (user actually listens to these)
     if entry.get("plex_play_count", 0) > 0:
-        score += 2
+        score += weights["plex_play_count_bonus"]
 
     return score
 
@@ -250,24 +256,16 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8):
 
     Returns (filepath, score) or (None, 0).
     """
-    parsed = parse_pad_query(query)
-    tag_db = tag_db if isinstance(tag_db, dict) else {}
-    best_path = None
-    best_score = 0
-
-    for rel_path, entry in tag_db.items():
-        # Skip already-used files
-        full_path = os.path.join(LIBRARY, rel_path)
-        if full_path in used_files:
-            continue
-
-        score = score_from_tags(entry, parsed, bank_config)
-        if score > best_score:
-            best_score = score
-            best_path = full_path
-
-    if best_score >= min_score:
-        return best_path, best_score
+    matches = rank_library_matches(
+        query,
+        bank_config=bank_config,
+        tag_db=tag_db,
+        used_files=used_files,
+        limit=1,
+        min_score=min_score,
+    )
+    if matches:
+        return matches[0]["path"], matches[0]["score"]
     return None, 0
 
 
@@ -278,34 +276,43 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
     tag_db = tag_db if tag_db is not None else load_tag_db()
     tag_db = tag_db if isinstance(tag_db, dict) else {}
     used_files = used_files or set()
-    results = []
+    cache_entries = load_score_cache(LIBRARY)
+    cache_key = score_cache_key(
+        parsed,
+        bank_config,
+        score_version=SCORING_VERSION,
+        tags_marker=tags_freshness_marker(TAGS_FILE),
+    )
+    cached_results = cache_entries.get(cache_key)
 
-    for rel_path, entry in tag_db.items():
-        full_path = os.path.join(LIBRARY, rel_path)
-        if full_path in used_files:
-            continue
+    if not isinstance(cached_results, list):
+        cached_results = []
+        for rel_path, entry in tag_db.items():
+            full_path = os.path.join(LIBRARY, rel_path)
+            score = score_from_tags(entry, parsed, bank_config)
+            cached_results.append({
+                "path": full_path,
+                "rel_path": rel_path,
+                "score": score,
+                "type_code": entry.get("type_code"),
+                "playability": entry.get("playability"),
+                "bpm": entry.get("bpm"),
+                "key": entry.get("key"),
+                "tags": entry.get("tags", []),
+                "vibe": entry.get("vibe", []),
+                "genre": entry.get("genre", []),
+                "texture": entry.get("texture", []),
+                "duration": entry.get("duration"),
+            })
+        cached_results.sort(key=lambda item: item["score"], reverse=True)
+        cache_entries[cache_key] = cached_results
+        save_score_cache(LIBRARY, cache_entries)
 
-        score = score_from_tags(entry, parsed, bank_config)
-        if score < min_score:
-            continue
-
-        results.append({
-            "path": full_path,
-            "rel_path": rel_path,
-            "score": score,
-            "type_code": entry.get("type_code"),
-            "playability": entry.get("playability"),
-            "bpm": entry.get("bpm"),
-            "key": entry.get("key"),
-            "tags": entry.get("tags", []),
-            "vibe": entry.get("vibe", []),
-            "genre": entry.get("genre", []),
-            "texture": entry.get("texture", []),
-            "duration": entry.get("duration"),
-        })
-
-    results.sort(key=lambda item: item["score"], reverse=True)
-    return results[:limit]
+    filtered = [
+        item for item in cached_results
+        if item["path"] not in used_files and item["score"] >= min_score
+    ]
+    return filtered[:limit]
 
 
 def load_config():

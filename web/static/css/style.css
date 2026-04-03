@@ -181,6 +181,7 @@ header .accent {
     display: flex;
     gap: 6px;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .vibe-prompt {
@@ -253,6 +254,54 @@ select.vibe-field {
     font-size: 10px;
     margin: 2px 2px;
     font-weight: 600;
+}
+
+.vibe-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.vibe-result-note {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--accent);
+}
+
+.vibe-draft-list {
+    display: grid;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.vibe-draft-row {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr) auto auto auto auto;
+    gap: 6px;
+    align-items: center;
+}
+
+.vibe-draft-pad {
+    font-family: 'Space Mono', monospace;
+    color: var(--text);
+    font-size: 11px;
+}
+
+.vibe-draft-input {
+    min-width: 0;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.vibe-draft-input:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 .btn-primary {

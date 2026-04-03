@@ -8,6 +8,7 @@ const state = {
     fetchJobId: null,
     sidebarOpen: false,
     libraryPath: '',
+    vibeDraft: null,
 };
 
 const audio = document.getElementById('audio-player');
@@ -55,11 +56,6 @@ async function init() {
         // Tutorial
         document.getElementById('tutorial-close').onclick = hideTutorial;
         document.getElementById('tutorial-go').onclick = hideTutorial;
-
-        // Show tutorial on first visit
-        if (!localStorage.getItem('jambox-tutorial-seen')) {
-            showTutorial();
-        }
 
         // Sidebar close
         document.getElementById('sidebar-close').onclick = () => toggleLibrary(false);
@@ -356,7 +352,7 @@ async function fetchSamples(bank, pad) {
     }
 
     state.fetchJobId = result.job_id;
-    showProgress();
+    showProgress(`Fetching ${label}...`, 12);
     pollFetchStatus(result.job_id);
 }
 
@@ -365,10 +361,10 @@ async function pollFetchStatus(jobId) {
         const data = await api(`/api/pipeline/status/${jobId}`);
 
         if (data.status === 'running' || data.status === 'starting') {
-            document.getElementById('progress-text').textContent = data.progress || 'Starting...';
-            document.getElementById('progress-fill').style.width = '50%';
+            showProgress(data.progress || 'Starting...', 55);
             setTimeout(() => pollFetchStatus(jobId), 2000);
         } else {
+            showProgress(data.progress || 'Finishing...', 100);
             hideProgress();
             if (data.status === 'done') {
                 toast(`Fetch complete: ${data.result}`, 'success');
@@ -412,22 +408,30 @@ async function generatePattern() {
     if (!variant) return;
     const bars = parseInt(prompt('Bars:', '2') || '2', 10);
     toast(`Generating ${variant} pattern...`);
-    const result = await api('/api/pattern/generate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            variant,
-            bars: Number.isFinite(bars) ? bars : 2,
-            bpm: state.currentBank.bpm || 120,
-            key: state.currentBank.key || '',
-            bank: state.currentBank.letter,
-            pad: 1,
-        }),
-    });
-    if (result.ok) {
-        toast(`Pattern generated: ${result.path}`, 'success');
-    } else {
-        toast(result.error || 'Pattern generation failed', 'error');
+    showProgress(`Generating ${variant} pattern...`, 25);
+    try {
+        const result = await api('/api/pattern/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                variant,
+                bars: Number.isFinite(bars) ? bars : 2,
+                bpm: state.currentBank.bpm || 120,
+                key: state.currentBank.key || '',
+                bank: state.currentBank.letter,
+                pad: 1,
+            }),
+        });
+        if (result.ok) {
+            const message = result.fallback_used
+                ? `Starter fallback pattern generated: ${result.path}`
+                : `Pattern generated: ${result.path}`;
+            toast(message, result.fallback_used ? 'error' : 'success');
+        } else {
+            toast(result.error || 'Pattern generation failed', 'error');
+        }
+    } finally {
+        hideProgress();
     }
 }
 
@@ -459,24 +463,33 @@ async function generateVibeSuggestions() {
         bank: state.currentBank?.letter || null,
     };
     toast('Generating vibe suggestions...');
-    const response = await api('/api/vibe/generate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        toast(response.error || 'Vibe generation failed', 'error');
-        return;
+    showProgress('Parsing vibe prompt...', 20);
+    try {
+        const response = await api('/api/vibe/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            toast(response.error || 'Vibe generation failed', 'error');
+            return;
+        }
+        state.vibeDraft = response.result.draft_preset || null;
+        renderVibeResults(response.result);
+        document.getElementById('btn-vibe-populate').style.display = '';
+        document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+        document.getElementById('vibe-bank-select').style.display = '';
+        document.getElementById('vibe-auto-fetch-wrap').classList.remove('hidden');
+        if (state.currentBank?.letter) {
+            document.getElementById('vibe-bank-select').value = state.currentBank.letter;
+        }
+        const successMessage = response.result.fallback_used
+            ? `Suggestions ready with keyword fallback. Review and apply when ready.`
+            : 'Suggestions ready. Review the draft and apply when ready.';
+        toast(successMessage, response.result.fallback_used ? 'error' : 'success');
+    } finally {
+        hideProgress();
     }
-    renderVibeResults(response.result);
-    // Show the populate button and bank selector
-    document.getElementById('btn-vibe-populate').style.display = '';
-    document.getElementById('vibe-bank-select').style.display = '';
-    // Default bank selector to current bank
-    if (state.currentBank?.letter) {
-        document.getElementById('vibe-bank-select').value = state.currentBank.letter;
-    }
-    toast('Suggestions ready — click Populate Bank to fill a bank!', 'success');
 }
 
 function renderVibeResults(result) {
@@ -489,10 +502,25 @@ function renderVibeResults(result) {
     );
     const parsed = result.parsed || {};
     const tagPills = [...(parsed.keywords || []), ...(parsed.vibe || []), ...(parsed.genre || [])].slice(0, 8)
-        .map(t => `<span class="vibe-tag-pill">${t}</span>`).join('');
+        .map(t => `<span class="vibe-tag-pill">${escapeHtml(t)}</span>`).join('');
+    const fallbackNote = result.fallback_used
+        ? `<div class="vibe-result-note">Fallback used: ${escapeHtml(result.fallback_reason || 'keyword-only parsing')}</div>`
+        : '';
+    const draftRows = Object.entries(result.draft_preset?.pads || {})
+        .sort((a, b) => Number(a[0]) - Number(b[0]))
+        .map(([padNum, desc]) => `
+            <div class="vibe-draft-row" data-pad="${padNum}">
+                <span class="vibe-draft-pad">Pad ${padNum}</span>
+                <input class="vibe-draft-input" data-pad="${padNum}" value="${escapeHtml(desc)}" />
+                <button class="btn btn-sm" onclick="swapVibeDraftPads(${padNum}, -1)" ${Number(padNum) === 1 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-sm" onclick="swapVibeDraftPads(${padNum}, 1)" ${Number(padNum) === 12 ? 'disabled' : ''}>↓</button>
+                <button class="btn btn-sm" onclick="resetVibeDraftPad(${padNum})">Reset</button>
+                <button class="btn btn-sm" onclick="clearVibeDraftPad(${padNum})">Clear</button>
+            </div>
+        `).join('');
     container.innerHTML = `
         <div class="vibe-result-card">
-            <strong>Parsed Tags</strong><br>${tagPills || 'No tags parsed'}
+            <strong>Parsed Tags</strong><br>${tagPills || 'No tags parsed'}${fallbackNote}
         </div>
         <div class="vibe-result-card">
             <strong>Best Banks</strong><br>${banks.join('<br>') || 'No matches'}
@@ -500,33 +528,34 @@ function renderVibeResults(result) {
         <div class="vibe-result-card vibe-result-wide">
             <strong>Top Samples</strong><br>${samples.join('<br>') || 'No sample matches'}
         </div>
+        <div class="vibe-result-card vibe-result-wide">
+            <strong>Draft Pads</strong>
+            <div class="vibe-draft-list">${draftRows || 'No draft available'}</div>
+        </div>
     `;
 }
 
 async function populateBankFromVibe() {
-    const promptValue = document.getElementById('vibe-prompt').value.trim();
-    if (!promptValue) {
-        toast('Enter a vibe prompt first', 'error');
+    if (!state.vibeDraft) {
+        toast('Generate suggestions first', 'error');
         return;
     }
 
     const bank = document.getElementById('vibe-bank-select').value;
-    const bpmField = document.getElementById('vibe-bpm');
-    const keyField = document.getElementById('vibe-key');
-
+    const autoFetch = document.getElementById('vibe-auto-fetch')?.checked !== false;
+    const draftPreset = collectVibeDraftPreset();
     const payload = {
-        prompt: promptValue,
+        preset: draftPreset,
         bank: bank,
-        bpm: parseInt(bpmField?.value) || state.currentBank?.bpm || 120,
-        key: keyField?.value?.trim() || state.currentBank?.key || 'Am',
-        fetch: true,
+        fetch: autoFetch,
     };
 
-    toast(`Populating Bank ${bank.toUpperCase()} from vibe...`);
+    toast(`Applying draft to Bank ${bank.toUpperCase()}...`);
     document.getElementById('btn-vibe-populate').disabled = true;
     document.getElementById('btn-vibe-populate').textContent = 'Working...';
+    showProgress(`Applying Bank ${bank.toUpperCase()} draft...`, 18);
 
-    const response = await api('/api/vibe/populate-bank', {
+    const response = await api('/api/vibe/apply-bank', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload),
@@ -535,29 +564,44 @@ async function populateBankFromVibe() {
     if (!response.ok) {
         toast(response.error || 'Populate failed', 'error');
         document.getElementById('btn-vibe-populate').disabled = false;
-        document.getElementById('btn-vibe-populate').textContent = 'Populate Bank';
+        document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+        hideProgress();
         return;
     }
 
     // Poll job status
     const jobId = response.job_id;
     const pollInterval = setInterval(async () => {
-        const status = await api(`/api/vibe/populate-status/${jobId}`);
-        document.getElementById('btn-vibe-populate').textContent = status.progress || 'Working...';
+        try {
+            const status = await api(`/api/vibe/populate-status/${jobId}`);
+            document.getElementById('btn-vibe-populate').textContent = status.progress || 'Working...';
+            showProgress(status.progress || 'Applying vibe draft...', vibeProgressPercent(status.status));
 
-        if (status.status === 'done') {
+            if (status.status === 'done') {
+                clearInterval(pollInterval);
+                document.getElementById('btn-vibe-populate').disabled = false;
+                document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+                hideProgress();
+                const doneMessage = status.fallback_used
+                    ? `Bank ${bank.toUpperCase()} applied with fallback parsing. ${status.fetched || ''}`
+                    : `Bank ${bank.toUpperCase()} applied. ${status.fetched || ''}`;
+                toast(doneMessage.trim(), status.fallback_used ? 'error' : 'success');
+                await refreshBanks();
+                const updated = state.banks.find((item) => item.letter === bank);
+                if (updated) switchBank(updated);
+            } else if (status.status === 'error') {
+                clearInterval(pollInterval);
+                document.getElementById('btn-vibe-populate').disabled = false;
+                document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+                hideProgress();
+                toast(`Error: ${status.progress}`, 'error');
+            }
+        } catch (e) {
             clearInterval(pollInterval);
             document.getElementById('btn-vibe-populate').disabled = false;
-            document.getElementById('btn-vibe-populate').textContent = 'Populate Bank';
-            toast(`Bank ${bank.toUpperCase()} populated! ${status.fetched || ''}`, 'success');
-            // Refresh the bank view
-            await loadBanks();
-            switchBank(bank);
-        } else if (status.status === 'error') {
-            clearInterval(pollInterval);
-            document.getElementById('btn-vibe-populate').disabled = false;
-            document.getElementById('btn-vibe-populate').textContent = 'Populate Bank';
-            toast(`Error: ${status.progress}`, 'error');
+            document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+            hideProgress();
+            toast(`Populate status failed: ${e.message}`, 'error');
         }
     }, 2000);
 }
@@ -579,8 +623,10 @@ async function generateDailyBank() {
     }
 }
 
-function showProgress() {
+function showProgress(text = 'Working...', percent = 18) {
     document.getElementById('progress-bar').classList.remove('hidden');
+    document.getElementById('progress-text').textContent = text;
+    document.getElementById('progress-fill').style.width = `${Math.max(0, Math.min(100, percent))}%`;
 }
 
 function hideProgress() {
@@ -873,8 +919,64 @@ function toast(msg, type = '') {
 }
 
 // ── Utils ──
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+}
+
 function truncate(str, len) {
     return str.length > len ? str.slice(0, len) + '...' : str;
+}
+
+function collectVibeDraftPreset() {
+    const draft = JSON.parse(JSON.stringify(state.vibeDraft || {}));
+    draft.pads = {};
+    document.querySelectorAll('.vibe-draft-input').forEach((input) => {
+        draft.pads[Number(input.dataset.pad)] = input.value.trim();
+    });
+    return draft;
+}
+
+function getVibeDraftInput(padNum) {
+    return document.querySelector(`.vibe-draft-input[data-pad="${padNum}"]`);
+}
+
+function swapVibeDraftPads(padNum, direction) {
+    const otherPad = padNum + direction;
+    if (otherPad < 1 || otherPad > 12) return;
+    const current = getVibeDraftInput(padNum);
+    const other = getVibeDraftInput(otherPad);
+    if (!current || !other) return;
+    const temp = current.value;
+    current.value = other.value;
+    other.value = temp;
+}
+
+function resetVibeDraftPad(padNum) {
+    const input = getVibeDraftInput(padNum);
+    if (!input) return;
+    input.value = state.vibeDraft?.pads?.[padNum] || state.vibeDraft?.pads?.[String(padNum)] || '';
+}
+
+function clearVibeDraftPad(padNum) {
+    const input = getVibeDraftInput(padNum);
+    if (input) input.value = '';
+}
+
+function vibeProgressPercent(status) {
+    return {
+        starting: 8,
+        generating: 18,
+        reviewed: 25,
+        saving: 45,
+        loading: 65,
+        fetching: 82,
+        done: 100,
+        error: 100,
+    }[status] || 20;
 }
 
 // ── Tutorial ──
