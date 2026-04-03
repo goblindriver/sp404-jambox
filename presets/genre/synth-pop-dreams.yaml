@@ -1,0 +1,33 @@
+name: Synth-Pop Dreams
+slug: synth-pop-dreams
+author: jambox
+bpm: 110
+key: Fm
+vibe: Airy melancholy synths and gentle electronic drums — late-night headphone music
+notes: Dreamy indie-electronic palette. Warm analog pads, glitchy arpeggios, restrained
+  drum machines, and ethereal vocal textures. Postal Service laptop intimacy meets
+  Empire Of The Sun cinematic sweep. Pretty but slightly sad.
+source: curated
+tags:
+- synth-pop
+- indie-electronic
+- dreamy
+- melancholy
+- atmospheric
+- postal-service
+- mgmt
+- la-roux
+- imogen-heap
+pads:
+  1: KIK tight clean electronic one-shot
+  2: SNR crisp programmed thin one-shot
+  3: HAT delicate closed subtle one-shot
+  4: CLP soft minimal dry one-shot
+  5: BRK drum-machine clean steady loop
+  6: BAS warm sub rounded loop
+  7: SYN arpeggio glitchy bright loop
+  8: KEY rhodes warm mellow loop
+  9: PAD analog evolving lush loop
+  10: SYN bell glassy shimmery one-shot
+  11: PAD ambient wash reverb loop
+  12: VOX ethereal airy processed chop-ready

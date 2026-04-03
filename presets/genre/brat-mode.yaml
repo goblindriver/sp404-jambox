@@ -1,0 +1,33 @@
+name: Brat Mode
+slug: brat-mode
+author: jambox
+bpm: 128
+key: Gm
+vibe: Buzzy detuned synths and hard pop drums — bratty maximalist attitude
+notes: Hyperpop-adjacent club kit. Aggressive supersaws, crushed drums, glitchy FX,
+  and vocal chops dripping with attitude. Charli XCX at 2 AM energy. Everything is
+  loud, detuned, and a little bit broken on purpose.
+source: curated
+tags:
+- hyperpop
+- brat
+- pc-music
+- club
+- maximalist
+- charli-xcx
+- mia
+- slayyyter
+- detuned
+pads:
+  1: KIK punchy clicky hard one-shot
+  2: SNR aggressive crushed loud one-shot
+  3: HAT rapid trap metallic one-shot
+  4: CLP distorted trashy big one-shot
+  5: BRK four-on-floor hard driving loop
+  6: BAS 808 distorted aggressive loop
+  7: SYN supersaw detuned buzzy loop
+  8: SYN lead harsh bitcrushed loop
+  9: SYN stab glitch metallic one-shot
+  10: PRC cowbell 808 noise one-shot
+  11: FX riser build siren loop
+  12: VOX chop attitude glitch chop-ready
