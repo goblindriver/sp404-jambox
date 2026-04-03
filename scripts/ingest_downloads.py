@@ -400,7 +400,11 @@ def _log_ingest(source_name, num_samples, categories, source_type='pack'):
 
 
 def is_sample_pack(dirname):
-    """Check if a directory name looks like a sample pack."""
+    """Check if a directory name looks like a sample pack.
+
+    Matches scene-release names, known vendors, and any folder that
+    contains audio files (the common case for Cowork-delivered packs).
+    """
     for suffix in SAMPLE_PACK_SUFFIXES:
         if suffix in dirname:
             return True
@@ -408,6 +412,23 @@ def is_sample_pack(dirname):
     if any(kw in name_lower for kw in ['prime loops', 'sample magic', 'loopmasters',
                                         'sampleradar', 'musicradar', 'samples']):
         return True
+
+    # Fallback: if the folder contains audio files, treat it as a pack
+    full_path = os.path.join(DOWNLOADS, dirname)
+    if os.path.isdir(full_path):
+        try:
+            for item in os.listdir(full_path):
+                if os.path.splitext(item)[1].lower() in AUDIO_EXTENSIONS:
+                    return True
+                # Check one level deep for nested audio
+                sub = os.path.join(full_path, item)
+                if os.path.isdir(sub):
+                    for f in os.listdir(sub):
+                        if os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS:
+                            return True
+        except OSError:
+            pass
+
     return False
 
 

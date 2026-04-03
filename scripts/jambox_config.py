@@ -136,7 +136,7 @@ def load_settings(repo_dir):
             "SP404_MUSICVAE_CHECKPOINT_DIR", os.path.join(repo_dir, "models", "musicvae")
         ),
         "MAGENTA_COMMAND": _read_command("SP404_MAGENTA_COMMAND", "music_vae_generate"),
-        "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", "fpcalc"),
+        "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "fpcalc")),
         "DAILY_BANK_SOURCE": _read_choice("SP404_DAILY_BANK_SOURCE", "recent", {"recent", "trending"}),
         "TRENDING_FILE": _read_optional_path("SP404_TRENDING_FILE", os.path.join(repo_dir, "trending.json")),
         "VIBE_DATA_DIR": os.path.join(repo_dir, "data"),

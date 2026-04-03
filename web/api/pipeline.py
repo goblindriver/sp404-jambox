@@ -377,9 +377,9 @@ def server_status():
         features['llm'] = bool(llm_endpoint)
 
         try:
-            subprocess.run(['demucs', '--help'], capture_output=True, timeout=5)
+            import demucs
             features['demucs'] = True
-        except Exception:
+        except ImportError:
             features['demucs'] = False
 
         try:
