@@ -1,0 +1,33 @@
+name: Purity Ring Dreams
+slug: purity-ring-dreams
+author: jambox
+bpm: 108
+key: Ab
+vibe: Your number one synth-pop reference — granular vocals, lush pads, delicate leads
+notes: 'Purity Ring appeared 7 times in Tiger Dust — more than any other artist. This
+  preset channels their specific production: granular vocal processing, layered ambient
+  pads, delicate synth leads, sparse but textured drums. Complements the broader synth-pop-dreams
+  preset with a more focused aesthetic.
+
+  '
+source: curated
+tags:
+- synth-pop
+- granular
+- ethereal
+- ambient
+- dreamy
+- textured
+pads:
+  1: KIK soft deep sub thump one-shot
+  2: SNR processed snap glassy reverb one-shot
+  3: HHT delicate tiny sparkle click one-shot
+  4: PRC metallic bell granular shimmer one-shot
+  5: PAD lush warm evolving ambient pad loop
+  6: VOX granular chopped pitched ethereal loop
+  7: SYN delicate arp ascending crystalline loop
+  8: PAD dark deep underwater swelling pad loop
+  9: BAS soft sub pulse gentle throb loop
+  10: SYN lead thin melody distant bright loop
+  11: FX granular scatter vocal texture dust loop
+  12: PAD reversed swell ambient breathe pad loop

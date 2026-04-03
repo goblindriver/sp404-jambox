@@ -1,146 +1,162 @@
-SP-404 JAM BOX - PAD MAP v3 (Real Samples Edition)
-===================================================
-Bank A: EMPTY (your space!)
-Bank B: Novelty & FX (synthesized)
-Banks C-J: Loaded with royalty-free samples from MusicRadar SampleRadar
+SP-404 JAM BOX — PAD MAP v3
+============================
+Bank A: Your Space (empty — resample and chop on-device)
+Banks B–J: Loaded via fetch_samples.py from bank_config.yaml
 
-LAYOUT: Pads 1-4 = Drum Hits | Pads 5-12 = Loops & Melodic
+LAYOUT: Pads 1–4 = Drum Hits (one-shots) | Pads 5–12 = Loops & Melodic
 
-=== BANK B: NOVELTY & FX ===
-  1: Air Horn (1.50s)
-  2: Record Scratch (0.80s)
-  3: Laser Zap (0.60s)
-  4: Robot "Yeah" (0.80s)
-  5: Siren Whoop (1.20s)
-  6: 8-Bit Power-Up (0.40s)
-  7: Vinyl Stop (1.50s)
-  8: Tape Rewind (1.00s)
-  9: Robot "OK" (0.50s)
-  10: DJ Horn Stab (0.30s)
-  11: Riser Build-Up (3.00s)
-  12: Impact Drop (1.50s)
+HARMONIC KEY: All keys diatonic to C major (Am, Dm, Em, F)
+TEMPO CLUSTER: 112 / 120 / 128 / 130 BPM
 
-=== BANK C: LO-FI HIP-HOP ===
-  1: Kick (Hip-Hop Essentials)
-  2: Snare (Oberheim DX)
-  3: Hi-Hat (Hip-Hop Essentials)
-  4: Clap (Hip-Hop Essentials)
-  5: Lo-Fi Drum Loop 75bpm
-  6: Lo-Fi Drum Loop 110bpm
-  7: Lo-Fi Bass
-  8: Lo-Fi Lead Synth
-  9: Lo-Fi Beeper FX
-  10: Lo-Fi Construction Kit
-  11: Lo-Fi Sound FX 1
-  12: Lo-Fi Sound FX 2
+=== BANK A: YOUR SPACE ===
+  (Empty — use for resampling and on-device chopping)
 
-=== BANK D: WITCH HOUSE / DARK (70bpm) ===
-  1: Oberheim DX Shaker
-  2: Oberheim DX Hat
-  3: Oberheim DX Hat 2
-  4: Oberheim DX Clap
-  5: Dark Lo-Fi Loop
-  6: Dark Glitch Loop
-  7: Dark Bass
-  8: Jupiter Poly Pad 105bpm
-  9: Jupiter Poly Pad 130bpm
-  10: Bleep Hit
-  11: FX Loop
-  12: Lo-Fi FX 3
+=== BANK B: SESSIONS (120 BPM, Am) ===
+  Long-form breaks and full tracks for live sampling and chopping
+   1: SMP funk soul chop-ready
+   2: SMP disco bright chop-ready
+   3: SMP electronic raw chop-ready
+   4: SMP electronic hype chop-ready
+   5: BRK funk warm loop
+   6: BRK disco bright loop
+   7: BRK electronic raw loop
+   8: BRK electronic hype loop
+   9: SMP funk nostalgic chop-ready
+  10: SMP disco soulful chop-ready
+  11: SMP electronic dark chop-ready
+  12: SMP electronic aggressive chop-ready
 
-=== BANK E: NU-RAVE (130bpm) ===
-  1: Electro Kick
-  2: Electro Hi-Hat
-  3: Electro Clap
-  4: Electro FX
-  5: Synth Percussion Loop 1
-  6: Synth Percussion Loop 2
-  7: CZ Lead Arp (130bpm, A)
-  8: CZ Lead Arp (130bpm, E)
-  9: Jupiter Poly Pad (130bpm)
-  10: Jupiter Poly Pad 2 (130bpm)
-  11: Synth Percussion Loop 3
-  12: Synth Percussion Loop 4
+=== BANK C: DRUM LOOPS (120 BPM, XX) ===
+  Pure rhythm — no melody, all genres, mix and match
+   1: BRK funk warm loop
+   2: BRK funk raw loop
+   3: BRK disco bright loop
+   4: BRK disco soulful loop
+   5: BRK electronic raw loop
+   6: BRK electronic aggressive loop
+   7: BRK electronic hype loop
+   8: BRK electronic crunchy loop
+   9: BRK electronic aggressive loop
+  10: BRK electronic bitcrushed loop
+  11: BRK house clean loop
+  12: BRK house bright loop
 
-=== BANK F: ELECTROCLASH (120bpm) ===
-  1: Vinyl Kick
-  2: Vinyl Snare
-  3: Vinyl Open Hat
-  4: Vinyl Percussion
-  5: Hip-Hop Beat 1 (100bpm)
-  6: Hip-Hop Beat 2 (100bpm)
-  7: CZ Bass (120bpm, A)
-  8: Clavier Arp (120bpm, A)
-  9: CZ Poly Pad (120bpm, C)
-  10: Bass Hit 1
-  11: Bass Hit 2
-  12: Bass Loop (95bpm)
+=== BANK D: FUNK (112 BPM, Em) ===
+  Live, groovy, !!! energy — guitar-driven dance-punk
+   1: KIK clean funk one-shot
+   2: SNR bright funk one-shot
+   3: HAT bright funk one-shot
+   4: CLP clean funk one-shot
+   5: BRK funk warm loop
+   6: BAS funk warm loop
+   7: GTR funk bright loop
+   8: KEY clavinet funk loop
+   9: KEY organ funk soulful loop
+  10: BRS funk bright one-shot
+  11: GTR funk raw loop
+  12: SMP funk soulful chop-ready
 
-=== BANK G: FUNK & HORNS (110bpm) ===
-  1: Acoustic Kick
-  2: Acoustic Snare
-  3: Acoustic Hat
-  4: Crash Cymbal
-  5: Soul-Funk Beat 1 (110bpm)
-  6: Soul-Funk Beat 2 (110bpm)
-  7: Funk Bass Loop (110bpm, E)
-  8: Funk Guitar Loop (110bpm, E)
-  9: Funk Organ Loop (110bpm, E)
-  10: Funk Clavinet Loop (110bpm, C)
-  11: Funk Electric Piano (110bpm, C)
-  12: Funk Piano (110bpm, E)
+=== BANK E: DISCO (120 BPM, Am) ===
+  Four-on-the-floor, warm, danceable — classic disco energy
+   1: KIK clean disco one-shot
+   2: SNR bright disco one-shot
+   3: HAT open bright one-shot
+   4: CLP disco one-shot
+   5: BRK disco warm loop
+   6: BAS disco warm loop
+   7: SYN pad warm bright loop
+   8: KEY piano disco soulful loop
+   9: GTR disco funk loop
+  10: BRS warm funk one-shot
+  11: SYN stab disco one-shot
+  12: VOX disco hype chop-ready
 
-=== BANK H: IDM (140bpm) ===
-  1: IDM Ambient 1 (140bpm)
-  2: IDM Ambient 2 (140bpm)
-  3: IDM Ambient 3 (140bpm)
-  4: IDM Ambient 4 (140bpm)
-  5: IDM Ambient 5 (140bpm)
-  6: IDM Bass 1 (140bpm)
-  7: IDM Bass 2 (140bpm)
-  8: IDM Bass 3 (140bpm)
-  9: IDM Bass 4 (140bpm)
-  10: IDM Bass 5 (140bpm)
-  11: IDM Chap 1 (140bpm)
-  12: IDM Chap 2 (140bpm)
+=== BANK F: ELECTROCLASH (120 BPM, Dm) ===
+  Dirty, minimal, Fischerspooner attitude — drum machines and analog synths
+   1: KIK 808 raw one-shot
+   2: SNR 808 raw one-shot
+   3: HAT closed raw one-shot
+   4: PRC cowbell electronic one-shot
+   5: BRK electronic raw loop
+   6: BAS gritty electronic loop
+   7: SYN lead aggressive loop
+   8: SYN pad dark loop
+   9: SYN arp electronic loop
+  10: VOX spoken dark one-shot
+  11: SFX industrial gritty one-shot
+  12: SYN stab aggressive one-shot
 
-=== BANK I: AMBIENT (80-105bpm) ===
-  1: Soft Hi-Hat (Zildjian K)
-  2: Percussion Hit
-  3: Wave Drum Loop 1 (130bpm)
-  4: Wave Drum Loop 2 (130bpm)
-  5: Jupiter Poly Pad (105bpm, C)
-  6: Jupiter Poly Pad (105bpm, EG)
-  7: Matrix Poly Pad (105bpm, A)
-  8: Matrix Poly Pad (105bpm, E)
-  9: Lo-Fi FX Texture 1
-  10: Lo-Fi FX Texture 2
-  11: Pro Brass Pad (105bpm, A)
-  12: Pro Brass Pad (105bpm, C)
+=== BANK G: NU-RAVE (128 BPM, F) ===
+  Neon, blog-house, 2007 energy — bright and relentless
+   1: KIK electro hard one-shot
+   2: CLP electro bright one-shot
+   3: HAT open bright one-shot
+   4: PRC bright electronic one-shot
+   5: BRK electronic hype loop
+   6: BAS acid gritty loop
+   7: SYN stab bright one-shot
+   8: SYN arp bright loop
+   9: SYN lead hype loop
+  10: VOX chant hype chop-ready
+  11: RSR bright transition
+  12: SFX alarm hype loop
 
-=== BANK J: UTILITY / FX ===
-  1: Lo-Fi FX 3
-  2: Lo-Fi FX 4
-  3: Synth Perc Loop 1 (100bpm)
-  4: Synth Perc Loop 2 (100bpm)
-  5: Vermona Drum Loop 1 (120bpm)
-  6: Vermona Drum Loop 2 (120bpm)
-  7: Hip-Hop Bass Hit 3
-  8: Hip-Hop Bass Hit 4
-  9: Lo-Fi FX 5
-  10: Synth Perc Loop 3 (100bpm)
-  11: Vermona Drum Loop 3 (120bpm)
-  12: Lo-Fi FX 6
+=== BANK H: AGGRESSIVE (130 BPM, Dm) ===
+  Hard, industrial-tinged, peak-time — maximum energy
+   1: KIK hard aggressive one-shot
+   2: SNR hard aggressive one-shot
+   3: HAT metallic aggressive one-shot
+   4: PRC industrial dark one-shot
+   5: BRK electronic aggressive loop
+   6: BAS dark gritty loop
+   7: SYN lead dark loop
+   8: SYN stab aggressive one-shot
+   9: SYN pad dark tense loop
+  10: FX industrial dark one-shot
+  11: FX crunchy aggressive loop
+  12: VOX dark aggressive one-shot
 
-===================================================
-All samples: 16-bit / 44.1kHz / Mono PCM WAV
-Source: MusicRadar SampleRadar (royalty-free)
-Sample Library: ~/Music/SP404-Sample-Library (7,644 WAVs)
+=== BANK I: TEXTURES & TRANSITIONS (120 BPM, Am) ===
+  Pads, risers, ambient glue — connective tissue between banks
+   1: PAD warm dreamy loop
+   2: PAD dark eerie loop
+   3: PAD dark tense loop
+   4: PAD bright airy loop
+   5: RSR bright transition
+   6: RSR dark transition
+   7: FX processed transition
+   8: TPE warm nostalgic layer
+   9: AMB airy layer
+  10: AMB dark lo-fi layer
+  11: FX vinyl lo-fi layer
+  12: SYN drone dark loop
 
-TIPS FOR JAMMING:
-- Hit pads 5-12 to layer loops - they'll play simultaneously
-- Use PATTERN SELECT + REC to record your pad performances as patterns
-- BPM range: 40-200 (use CTRL 2 knob in pattern mode)
-- Set samples to LOOP mode for continuous playback
+=== BANK J: UTILITY & FUN (120 BPM) ===
+  Speeches, gunshots, cash registers, iconic sounds — performance triggers
+   1: VOX speech dramatic one-shot
+   2: VOX speech aggressive one-shot
+   3: VOX countdown one-shot
+   4: VOX crowd hype one-shot
+   5: SFX gunshot hard one-shot
+   6: SFX explosion hard one-shot
+   7: SFX cash-register one-shot
+   8: SFX siren hype one-shot
+   9: SFX glass impact one-shot
+  10: SFX air-horn bright one-shot
+  11: SFX whip bright one-shot
+  12: SFX boom dark one-shot
+
+============================
+Audio format: 16-bit / 44.1kHz / Mono PCM WAV
+Source: MusicRadar SampleRadar + Freesound (royalty-free)
+Library: ~/Music/SP404-Sample-Library (~9,600+ WAVs)
+Config: bank_config.yaml
+
+JAMMING TIPS:
+- Pads 5–12 are set to LOOP mode — layer them freely
+- Pads 1–4 are GATE mode — hold to sustain, release to stop
+- All keys are diatonic to C major — everything harmonizes across banks
+- BPMs (112/120/128/130) cluster tight — cross-bank mixing works
 - Use HOLD pad to keep sounds playing after release
-- Layer effects (Filter, Lo-Fi, Isolator) while jamming
+- Layer effects (Filter, Lo-Fi, Isolator) while performing
+- Bank A is yours — resample anything into it on-device

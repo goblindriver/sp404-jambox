@@ -68,7 +68,17 @@ def _recent_candidates(db):
             continue
         candidates.append((mtime, rel_path, entry))
     candidates.sort(reverse=True)
-    return candidates[:120]
+    # Diversify by type_code: take top files per type, not just overall newest
+    by_type = {}
+    for item in candidates:
+        tc = item[2].get("type_code", "UNK")
+        by_type.setdefault(tc, []).append(item)
+    diversified = []
+    per_type = max(10, 120 // max(len(by_type), 1))
+    for tc, items in by_type.items():
+        diversified.extend(items[:per_type])
+    diversified.sort(reverse=True)
+    return diversified[:120]
 
 
 def _trending_candidates(db, terms):
@@ -91,8 +101,9 @@ def _weighted_pick(candidates, count):
 
     chosen = []
     pool = list(candidates)
+    # Use rank-based weights (not raw mtime) so recency is a gentle bias
     while pool and len(chosen) < count:
-        weights = [max(1, item[0]) for item in pool]
+        weights = [max(1, len(pool) - i) for i in range(len(pool))]
         picked = random.choices(pool, weights=weights, k=1)[0]
         chosen.append(picked)
         pool.remove(picked)
@@ -125,6 +136,35 @@ def build_daily_preset(source=None, pad_count=12):
     picks = _weighted_pick(candidates, pad_count)
     if not picks:
         raise ValueError("Could not assemble a daily bank from the current library")
+
+    # Enforce type diversity: no more than 3 pads of the same type_code
+    MAX_PER_TYPE = 3
+    type_counts = {}
+    diverse_picks = []
+    overflow = []
+    for pick in picks:
+        tc = pick[2].get("type_code", "UNK")
+        if type_counts.get(tc, 0) < MAX_PER_TYPE:
+            diverse_picks.append(pick)
+            type_counts[tc] = type_counts.get(tc, 0) + 1
+        else:
+            overflow.append(pick)
+    # Fill remaining slots from unused candidates of different types
+    if len(diverse_picks) < pad_count:
+        used_paths = {p[1] for p in diverse_picks}
+        extras = [c for c in candidates if c[1] not in used_paths
+                  and type_counts.get(c[2].get("type_code", "UNK"), 0) < MAX_PER_TYPE]
+        for extra in extras:
+            if len(diverse_picks) >= pad_count:
+                break
+            tc = extra[2].get("type_code", "UNK")
+            if type_counts.get(tc, 0) < MAX_PER_TYPE:
+                diverse_picks.append(extra)
+                type_counts[tc] = type_counts.get(tc, 0) + 1
+    # If still short (limited library), accept overflow rather than empty pads
+    if len(diverse_picks) < pad_count:
+        diverse_picks.extend(overflow[:pad_count - len(diverse_picks)])
+    picks = diverse_picks[:pad_count]
 
     pads = {}
     tags = set()

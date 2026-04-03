@@ -1,0 +1,13 @@
+name: Songwriting Session
+slug: songwriting-session
+author: jambox
+description: 'Mellow tempo, melodic focus. Scale-mapped songwriter presets plus atmospheric
+  banks. For when you''re writing, not performing.
+
+  '
+presets:
+- genre/fm-songwriter
+- genre/am-songwriter
+- genre/synth-pop-dreams
+- genre/purity-ring-dreams
+- genre/outlaw-country-kitchen

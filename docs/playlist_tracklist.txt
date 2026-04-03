@@ -1,0 +1,61 @@
+PLAYLIST: tiger tingtingting
+SOURCE: https://youtube.com/playlist?list=PLVBBuxGgRXO-04B_DLZNfk31x_HUZ2qqc
+EXTRACTED: April 2, 2026
+TOTAL TRACKS: 54
+
+#  | TRACK TITLE                              | ARTIST                          | VIDEO TITLE (if different)
+---|------------------------------------------|---------------------------------|------------------------------------------
+1  | All My Friends                           | the 4onthefloor                 | the 4onthefloor - All My Friends (Official Video)
+2  | Feel It Still                            | Portugal. The Man               | Portugal. The Man - Feel It Still (Official Music Video)
+3  | 1982 (Vitalic Remix)                     | Miss Kittin & The Hacker        | Miss Kittin & The Hacker - 1982 (Vitalic Remix) HQ
+4  | NRGQ                                     | !!! (Chk Chk Chk)              | !!! (Chk Chk Chk) - NRGQ (Live Music Video)
+5  | D.A.N.C.E.                               | Justice                         | Justice - D.A.N.C.E. (Official Video)
+6  | Over and Over                            | Hot Chip                        | Hot Chip - Over and Over (Official Video) (HD)
+7  | Live at Pioneer Works                    | Marijuana Deathsquads           | Marijuana Deathsquads Live at Pioneer Works
+8  | Emerge                                   | Fischerspooner                  | Emerge (Remastered 2020)
+9  | Deceptacon                               | Le Tigre                        | Deceptacon
+10 | We Are Your Friends                      | Justice vs Simian               | We Are Your Friends (Justice Vs Simian)
+11 | Gray Duck                                | Doomtree                        | Doomtree "Gray Duck" (Official Music Video)
+12 | Block Rockin' Beats                      | The Chemical Brothers           | The Chemical Brothers - Block Rockin' Beats (Official Music Video)
+13 | Tribulations                             | LCD Soundsystem                 | LCD Soundsystem - Tribulations
+14 | Such Great Heights                       | The Postal Service              | The Postal Service - Such Great Heights [OFFICIAL VIDEO]
+15 | Strict Machine                           | Goldfrapp                       | Goldfrapp - Strict Machine (Official HD Video)
+16 | Walking On A Dream                       | Empire Of The Sun               | Empire Of The Sun - Walking On A Dream (Official Music Video)
+17 | Electric Feel                            | MGMT                            | MGMT - Electric Feel (Official HD Video)
+18 | I Feel Love                              | Donna Summer                    | Donna Summer - I Feel Love
+19 | Sandstorm                                | Darude                          | Darude - Sandstorm
+20 | I Believe                                | Simian Mobile Disco             | Simian Mobile Disco - I Believe [HQ]
+21 | That's Not My Name                       | The Ting Tings                  | That's Not My Name
+22 | Better Off Alone                         | Alice Deejay                    | Alice Deejay - Better Off Alone (Official Video)
+23 | Pumped Up Kicks                          | Foster The People               | Pumped Up Kicks
+24 | Yeah Yeah                                | Bodyrox feat. Luciana           | Bodyrox feat. Luciana - Yeah Yeah (Official Video)
+25 | Bolt Cutter                              | Doomtree                        | Doomtree "Bolt Cutter" Music Video
+26 | You Spin Me Round (Like a Record)        | Dead or Alive                   | You Spin Me Round (Like a Record)
+27 | In For The Kill                          | La Roux                         | La Roux - In For The Kill (Official Music Video)
+28 | Washing Machine Heart                    | Mitski                          | Mitski - Washing Machine Heart
+29 | Rockafeller Skank                        | Fatboy Slim                     | Fatboy Slim - Rockafeller Skank [Official Video]
+30 | Great DJ                                 | The Ting Tings                  | The Ting Tings - Great DJ
+31 | Firestarter                              | The Prodigy                     | The Prodigy - Firestarter (Official Video)
+32 | Heartbeats                               | The Knife                       | The Knife - Heartbeats (Official Video)
+33 | Thrift Shop                              | Macklemore & Ryan Lewis ft. Wanz| MACKLEMORE & RYAN LEWIS - THRIFT SHOP FEAT. WANZ (OFFICIAL VIDEO)
+34 | Bad Wings                                | The Glitch Mob                  | The Glitch Mob - Bad Wings (2020 Remaster)
+35 | Get Free                                 | Major Lazer ft. Amber (Dirty Projectors) | Major Lazer - Get Free ft. Amber of the Dirty Projectors
+36 | Hideaway                                 | Kiesza                          | Kiesza - Hideaway
+37 | Drop the Game                            | Flume & Chet Faker              | Flume & Chet Faker - Drop the Game [Official Music Video]
+38 | Just Dance                               | Lady Gaga ft. Colby O'Donis    | Lady Gaga - Just Dance (Official Music Video) ft. Colby O'Donis
+39 | Headlock                                 | Imogen Heap                     | Imogen Heap - Headlock (Official Video)
+40 | Teardrop                                 | Massive Attack                  | Massive Attack - Teardrop (Official Video)
+41 | Lights                                   | Ellie Goulding                  | Ellie Goulding - Lights (Official Video)
+42 | Ride A White Horse                       | Goldfrapp                       | Goldfrapp - Ride A White Horse (Official 4K Video)
+43 | You (Ha Ha Ha)                           | Charli XCX                      | Charli XCX - You (Ha Ha Ha) [Official Video]
+44 | Audacity of Huge                         | Simian Mobile Disco             | Simian Mobile Disco - Audacity of Huge
+45 | Bad Girls                                | M.I.A.                          | M.I.A. - Bad Girls
+46 | Break The Rules                          | Charli XCX                      | Charli XCX - Break The Rules [Official Video]
+47 | Boom Clap                                | Charli XCX                      | Charli XCX - Boom Clap (The Fault In Our Stars Soundtrack) [Official Video]
+48 | SuperLove                                | Charli XCX                      | Charli XCX - SuperLove [Official Video]
+49 | Gallows                                  | Katie Garfield                  | Gallows
+50 | CRANK                                    | Slayyyter                       | Slayyyter - CRANK (Official Video)
+51 | Kyiv                                     | Apashe & Alina Pash             | Apashe & Alina Pash - Kyiv
+52 | Where's Your Head At                     | Basement Jaxx                   | Basement Jaxx - Where's Your Head At (Official Video)
+53 | Gucci Gucci                              | Kreayshawn                      | Kreayshawn - Gucci Gucci
+54 | B**** YOU COULD NEVER                    | Yseult                          | YSEULT - B**** YOU COULD NEVER (Official Music Video)

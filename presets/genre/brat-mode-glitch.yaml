@@ -1,0 +1,36 @@
+name: Brat Mode Glitch
+slug: brat-mode-glitch
+author: jambox
+bpm: 135
+key: Bbm
+vibe: Broken screens and beautiful chaos — stuttered synths, crushed drums, digital
+  wreckage as melody
+notes: 'A texture-heavy variant of Brat Mode that leans into the SOPHIE / AG Cook
+  / 100 gecs production side — granular glitch, buffer stutter, bitcrushed everything.
+  Less pop structure, more sonic destruction as art. Reference the Brat Mode Sound
+  Design doc sections on granular synthesis (3.1), buffer effects (3.2), and digital
+  artifacts (3.4). Pairs with Brat Mode main preset — this one handles the weird pads
+  while that one handles the bangers.
+
+  '
+source: curated
+tags:
+- glitch
+- hyperpop
+- experimental
+- bitcrushed
+- texture
+- deconstructed
+pads:
+  1: KIK crushed distorted clipped hard one-shot
+  2: SNR glitched stuttered bitcrushed metallic one-shot
+  3: HAT granular scattered digital shattered one-shot
+  4: PRC buffer stutter chopped mangled one-shot
+  5: SYN hypersaw detuned massive washed loop
+  6: SYN crystalline pitched sparkle arp loop
+  7: GLT digital artifact corrupted warped one-shot
+  8: GLT buffer stutter rhythmic chopped loop
+  9: VOX pitched chipmunk chopped processed one-shot
+  10: VOX distorted bitcrushed formant shifted one-shot
+  11: FX riser noise granular building loop
+  12: TEX bitcrushed ambient degraded atmosphere loop

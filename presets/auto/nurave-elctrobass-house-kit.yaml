@@ -1,0 +1,27 @@
+name: 'Vibe: nurave elctrobass house kit'
+slug: nurave-elctrobass-house-kit
+author: jambox-vibe
+bpm: 120
+key: e
+vibe: nurave elctrobass house kit
+notes: The prompt combines 'electrobass' (BAS type_code) with house music genre. 'Kit'
+  suggests loop-based playability. Texture is electronic due to bass focus, and energy
+  is medium typical for house.
+source: vibe-generated
+tags:
+- electrobass
+- house
+- kit
+pads:
+  1: KIK house electronic one-shot
+  2: SNR electronic electrobass one-shot
+  3: HAT electrobass kit one-shot
+  4: CLP kit house one-shot
+  5: BRK house electronic loop
+  6: BAS electronic electrobass loop
+  7: SYN synth electrobass kit loop
+  8: KEY piano kit house loop
+  9: PAD house electronic loop
+  10: FX electronic electrobass one-shot
+  11: SMP electrobass kit loop
+  12: VOX kit house chop-ready

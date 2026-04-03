@@ -1,0 +1,26 @@
+PACK NAME: SampleRadar: 318 free old-school rave samples
+SOURCE URL: https://www.musicradar.com/news/tech/sampleradar-318-free-old-school-rave-samples-356800
+DOWNLOAD URL: https://cdn.mos.musicradar.com/audio/samples/musicradar-rave-samples.zip
+FILE SIZE: 108MB (ZIP)
+FORMAT: WAV
+LICENSE: Royalty-free (free to use in your music in any way you like, do not re-distribute)
+AUTHOR: MusicRadar / Future Music magazine
+SOURCE PLATFORM: MusicRadar SampleRadar
+
+DESCRIPTION FROM PAGE:
+"For most people, the party season has just come to an abrupt end, but for SampleRadar, it never stops. In fact, we're starting 2011 by getting our old-school rave on, with a collection of sounds that hark back to the early '90s. So, grab your whistle and dive in."
+
+CONTENTS:
+- Split into five folders: Beats, Drum hits, FX, Loops and Construction Kits
+- Construction Kits at tempos: 127, 135 and 140bpm
+- 318 total samples
+- Example sounds demonstrated: Beat 140bpm, Lazer, Hoover, Bass 135bpm
+
+TAGS/CATEGORIES: rave, old-school, 90s, electronic, dance, hardcore
+GENRE INTENT: Old-school rave, early 90s rave, hardcore
+MOOD: Euphoric, energetic, nostalgic, party
+INSTRUMENTS: Drums, synth (hoover), bass, FX (lazer), beats
+BPM: 127, 135, 140
+
+ORIGINALLY APPEARED ON: Future Music magazine cover DVD
+MADE WITH / RECORDED WITH: Classic early 90s rave sound palette — hoover synths (mentasm-style), acid bass, breakbeats, stab synths

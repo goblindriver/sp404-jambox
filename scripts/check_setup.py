@@ -107,8 +107,9 @@ def run_checks():
         tuned_endpoint = settings.get("FINE_TUNED_LLM_ENDPOINT", "").strip()
         tuned_model = settings.get("FINE_TUNED_LLM_MODEL", "").strip() or "(unset)"
         tuned_ready = bool(tuned_endpoint)
+        tuned_detail = (tuned_endpoint or "SP404_FINE_TUNED_LLM_ENDPOINT not set") + f"; model={tuned_model}"
         messages.append(
-            f"  {_integration_status(tuned_ready, 'Fine-tuned vibe parser', f'{tuned_endpoint or 'SP404_FINE_TUNED_LLM_ENDPOINT not set'}; model={tuned_model}')}"
+            f"  {_integration_status(tuned_ready, 'Fine-tuned vibe parser', tuned_detail)}"
         )
         if not tuned_ready:
             warnings += 1

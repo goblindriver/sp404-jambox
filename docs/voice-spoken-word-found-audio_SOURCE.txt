@@ -1,0 +1,309 @@
+VOICE, SPOKEN WORD & FOUND AUDIO COLLECTION — MASTER SOURCE DOCUMENT
+=====================================================================
+All files in ~/Downloads/, ready for ingest into watchfolder.
+License: All clips are public domain or Creative Commons unless noted.
+Format: MP3
+
+This document captures the full context behind each clip — who's speaking, what's happening, why it matters culturally, and mood/energy notes for tagging. This is the raw material for building out `spoken-word` and `found-audio` tag vocabularies.
+
+=====================================================================
+CIVIL RIGHTS & POLITICAL SPEECHES
+=====================================================================
+
+1. MLK_I_Have_A_Dream.mp3 (9.0MB)
+   SOURCE: https://archive.org/details/MLKDream
+   LICENSE: Public domain (US government recording of public event, 1963)
+   WHO: Martin Luther King Jr.
+   WHEN/WHERE: August 28, 1963, Lincoln Memorial, Washington D.C.
+   WHAT: The March on Washington for Jobs and Freedom. King delivered this speech to approximately 250,000 civil rights supporters.
+   CULTURAL SIGNIFICANCE: Arguably the most important speech in American history. "I have a dream that my four little children will one day live in a nation where they will not be judged by the color of their skin but by the content of their character." Sampled endlessly in hip-hop, electronic music, and film. The cadence is pure gospel-preacher rhythm — rising and falling, call-and-response with the crowd.
+   TRANSCRIPT (KEY LINES): "I have a dream today... I have a dream that one day this nation will rise up and live out the true meaning of its creed... Free at last, free at last, thank God almighty, we are free at last."
+   MOOD/ENERGY: Triumphant, righteous, building intensity, crowd energy swelling. Starts measured, ends ecstatic.
+
+2. MalcolmX_House_Negro_Field_Negro.mp3 (32MB)
+   SOURCE: https://archive.org/details/Malcolm_X
+   LICENSE: Public domain (historical speech recording)
+   WHO: Malcolm X (El-Hajj Malik El-Shabazz)
+   WHEN/WHERE: Circa 1963, various speaking engagements
+   WHAT: Malcolm X's famous analogy comparing different responses to oppression among Black Americans — the "house Negro" who identified with the master's interests vs. the "field Negro" who resisted.
+   CULTURAL SIGNIFICANCE: One of the most quoted and sampled Malcolm X speeches. The analogy has become a permanent part of American political discourse. His delivery is razor-sharp, witty, and confrontational — the polar opposite of MLK's soaring oratory. Where King persuades, Malcolm X provokes.
+   TRANSCRIPT (KEY LINES): "There was two kinds of slaves. There was the house Negro and the field Negro... If the master's house caught on fire, the house Negro would fight harder to put the blaze out than the master would."
+   MOOD/ENERGY: Sharp, confrontational, darkly funny, intellectually devastating. Crowd laughs and agrees.
+
+3. MalcolmX_Revolution.mp3 (3.1MB)
+   SOURCE: https://archive.org/details/Malcolm_X
+   LICENSE: Public domain
+   WHO: Malcolm X
+   WHAT: Short, incendiary speech on the nature of revolution vs. compromise.
+   CULTURAL SIGNIFICANCE: Raw, unfiltered Malcolm X at his most intense. Good for short, punchy vocal drops.
+   MOOD/ENERGY: Intense, aggressive, uncompromising.
+
+4. MalcolmX_Oxford_Debate.mp3 (77MB)
+   SOURCE: https://archive.org/details/Malcolm_X
+   LICENSE: Public domain
+   WHO: Malcolm X
+   WHEN/WHERE: December 3, 1964, Oxford Union, Oxford University, England
+   WHAT: Malcolm X's famous debate at the Oxford Union on the motion "Extremism in the defense of liberty is no vice; moderation in the pursuit of justice is no virtue." Extended format — full debate with audience Q&A.
+   CULTURAL SIGNIFICANCE: Shows Malcolm X in an entirely different context — debating British intellectuals with wit and precision. His rhetorical skill is staggering. The audio quality captures the room acoustics of the Oxford Union hall beautifully.
+   MOOD/ENERGY: Intellectual, sharp, occasionally humorous, commanding. Audience reactions add texture.
+
+5. FDR_Day_Of_Infamy.mp3 (7.9MB)
+   SOURCE: https://archive.org/details/FranklinDelanoRooseveltDayOfInfamySpeech
+   LICENSE: Public domain (US government)
+   WHO: President Franklin D. Roosevelt
+   WHEN/WHERE: December 8, 1941, Joint Session of Congress, Washington D.C.
+   WHAT: The day after the Japanese attack on Pearl Harbor, FDR addressed Congress to request a declaration of war. The opening line became one of the most famous in American history.
+   CULTURAL SIGNIFICANCE: "Yesterday, December 7th, 1941 — a date which will live in infamy — the United States of America was suddenly and deliberately attacked by naval and air forces of the Empire of Japan." The speech that brought America into World War II. FDR's aristocratic patrician voice, the crackle of 1940s radio, the gravitas of the moment — all priceless for sampling.
+   TRANSCRIPT (KEY OPENING): "Yesterday, December 7th, 1941 — a date which will live in infamy..."
+   MOOD/ENERGY: Grave, determined, angry but controlled. The crowd erupts with applause.
+
+6. JFK_Inaugural_Address.mp3 (13MB)
+   SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+   LICENSE: Public domain (US government)
+   WHO: President John F. Kennedy
+   WHEN/WHERE: January 20, 1961, US Capitol, Washington D.C.
+   WHAT: JFK's inaugural address — the youngest elected president, Cold War tension at its peak, the dawn of the 1960s.
+   CULTURAL SIGNIFICANCE: "Ask not what your country can do for you — ask what you can do for your country." One of the most quoted lines in political history. JFK's Boston Brahmin accent and youthful energy defined a generation. The speech also contains the powerful "Let the word go forth... that the torch has been passed to a new generation of Americans."
+   MOOD/ENERGY: Youthful, idealistic, urgent, Cold War gravitas. Crowd roaring.
+
+7. Nixon_Resignation.mp3 (3.3MB)
+   SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+   LICENSE: Public domain (US government)
+   WHO: President Richard Nixon
+   WHEN/WHERE: August 8, 1974, Oval Office, White House
+   WHAT: Nixon's resignation speech — the only US president to resign, following the Watergate scandal.
+   CULTURAL SIGNIFICANCE: The sound of power collapsing. Nixon's voice is strained, trying to maintain dignity while his presidency crumbles. "I shall resign the presidency effective at noon tomorrow." The contrast between the formality of the setting and the devastation of the moment creates incredible tension.
+   MOOD/ENERGY: Defeated, strained, tense, historic weight. Eerily calm surface over an abyss.
+
+8. Cuban_Missile_Crisis.mp3 (6.9MB)
+   SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+   LICENSE: Public domain (US government)
+   WHO: President John F. Kennedy
+   WHEN/WHERE: October 22, 1962, televised address from the White House
+   WHAT: JFK informing the American public that the Soviet Union had placed nuclear missiles in Cuba — the closest the world came to nuclear war.
+   CULTURAL SIGNIFICANCE: This is the sound of the world almost ending. JFK's measured, deliberate tone while describing potential nuclear annihilation is chilling. "It shall be the policy of this nation to regard any nuclear missile launched from Cuba against any nation in the Western Hemisphere as an attack by the Soviet Union on the United States, requiring a full retaliatory response upon the Soviet Union."
+   MOOD/ENERGY: Terrifying calm, apocalyptic stakes delivered in measured tones. Cold War dread.
+
+9. Moon_Landing_Broadcast.mp3 (4.0MB)
+   SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+   LICENSE: Public domain (NASA/US government)
+   WHO: Walter Cronkite (CBS News), Neil Armstrong, Mission Control
+   WHEN/WHERE: July 20, 1969
+   WHAT: The broadcast coverage of Apollo 11's moon landing — humanity's first steps on another world.
+   CULTURAL SIGNIFICANCE: "That's one small step for man, one giant leap for mankind." The most-watched broadcast in history at that point. Cronkite's emotional reaction ("Man on the moon!") captures the collective awe. Static-laden radio communications from the lunar surface have an otherworldly quality perfect for electronic music.
+   MOOD/ENERGY: Awe, wonder, triumph, tension during descent, euphoria at landing.
+
+10. Kitchen_Debate_Nixon_Khrushchev.mp3 (6.8MB)
+    SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+    LICENSE: Public domain
+    WHO: Vice President Richard Nixon and Soviet Premier Nikita Khrushchev
+    WHEN/WHERE: July 24, 1959, American National Exhibition, Moscow
+    WHAT: The impromptu "Kitchen Debate" — Nixon and Khrushchev arguing about capitalism vs. communism while standing in a model American kitchen at a trade exhibition in Moscow.
+    CULTURAL SIGNIFICANCE: Absurdist Cold War theater — two world leaders arguing about washing machines and color television while their countries point nuclear weapons at each other. The audio has a chaotic, confrontational quality with simultaneous translation and crowd noise. Surreal found audio gold.
+    MOOD/ENERGY: Confrontational, absurd, competitive, oddly funny. Translator struggling to keep up.
+
+11. Berlin_Wall_Address.mp3 (1.8MB)
+    SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+    LICENSE: Public domain
+    WHO: President Ronald Reagan
+    WHEN/WHERE: June 12, 1987, Brandenburg Gate, West Berlin
+    WHAT: Reagan's famous challenge to Soviet leader Mikhail Gorbachev.
+    TRANSCRIPT (KEY LINE): "Mr. Gorbachev, tear down this wall!"
+    MOOD/ENERGY: Commanding, dramatic, Cold War climax.
+
+12. Stokely_Carmichael_Black_Power.mp3 (1.2MB)
+    SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+    LICENSE: Public domain
+    WHO: Stokely Carmichael (Kwame Ture)
+    WHEN/WHERE: 1966, various rallies
+    WHAT: Carmichael coined and popularized the phrase "Black Power" during the Meredith March Against Fear.
+    CULTURAL SIGNIFICANCE: The moment the civil rights movement split — from nonviolent integration to militant self-determination. His voice is young, passionate, electric. "We been saying 'freedom' for six years. What we are going to start saying now is 'Black Power!'"
+    MOOD/ENERGY: Electrifying, defiant, young, crowd responding with increasing intensity.
+
+13. First_Atomic_Bomb_Broadcast.mp3 (406KB)
+    SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+    LICENSE: Public domain
+    WHO: President Harry S. Truman (radio address)
+    WHEN/WHERE: August 6, 1945
+    WHAT: Truman announcing to the world that the United States had dropped an atomic bomb on Hiroshima, Japan.
+    CULTURAL SIGNIFICANCE: The announcement that changed everything — the nuclear age begins. Short, matter-of-fact delivery of the most consequential military action in history. "The force from which the sun draws its power has been loosed against those who brought war to the Far East."
+    MOOD/ENERGY: Eerily calm, matter-of-fact delivery of apocalyptic news. Very short clip — punchy.
+
+14. Iran_Contra_Testimony.mp3 (9.1MB)
+    SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+    LICENSE: Public domain (US government proceedings)
+    WHO: Lt. Col. Oliver North
+    WHEN/WHERE: 1987, Congressional hearings
+    WHAT: Oliver North's televised testimony during the Iran-Contra affair — the Reagan administration secretly selling arms to Iran and funneling the proceeds to Nicaraguan rebels.
+    CULTURAL SIGNIFICANCE: Political theater at its finest. North in full Marine uniform, defiant, playing to the cameras. The sound of government scandal in real-time. Great for the "courtroom moments" category.
+    MOOD/ENERGY: Defiant, theatrical, tense, confrontational. Sounds of gavel, committee members.
+
+15. Edison_First_Phonograph.mp3 (2.0MB)
+    SOURCE: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+    LICENSE: Public domain
+    WHO: Thomas Edison
+    WHEN/WHERE: Late 1800s (exact date uncertain)
+    WHAT: Edison's promotional message for his newly invented phonograph — literally one of the first recordings ever made.
+    CULTURAL SIGNIFICANCE: The very beginning of recorded sound. Edison's voice through the primitive phonograph is ghostly and barely intelligible — it sounds like a voice from another dimension. For sampling, this is the ultimate "found audio" — the medium itself is the message. The crackle, distortion, and otherworldly quality make it perfect for experimental and ambient music.
+    MOOD/ENERGY: Ghostly, ancient, eerie, historically weighted. Lo-fi to the extreme.
+
+=====================================================================
+FOUND AUDIO & NUMBERS STATIONS
+=====================================================================
+
+16. Conet_Swedish_Rhapsody.mp3 (2.0MB)
+    SOURCE: https://archive.org/details/ird059 (The Conet Project - Recordings of Shortwave Numbers Stations)
+    LICENSE: Creative Commons (Irdial-Discs release)
+    WHAT: Track 1 from The Conet Project — a compilation of recordings of shortwave "numbers stations," mysterious radio broadcasts believed to be used by intelligence agencies to communicate with spies in the field.
+    WHO: Unknown — believed to be operated by intelligence agencies (CIA, MI5, Stasi, etc.)
+    CULTURAL SIGNIFICANCE: The Conet Project is one of the most influential found-audio releases ever. Sampled by Boards of Canada, Wilco (on Yankee Hotel Foxtrot — named after a numbers station callsign), Porcupine Tree, and countless electronic artists. "Swedish Rhapsody" features a child's voice reading numbers in German over a music box melody — profoundly eerie.
+    TRANSCRIPT: A young girl's voice reads strings of numbers in German: "Eins... zwei... drei..." over a tinkling music box playing "Swedish Rhapsody."
+    MOOD/ENERGY: Deeply eerie, uncanny valley, Cold War paranoia. The juxtaposition of a child's voice with espionage is unsettling.
+
+17. Conet_Lincolnshire_Poacher.mp3 (2.1MB)
+    SOURCE: https://archive.org/details/ird059
+    LICENSE: Creative Commons
+    WHAT: Recording of "The Lincolnshire Poacher" numbers station — believed to be operated by MI5/MI6 from Cyprus.
+    CULTURAL SIGNIFICANCE: The station played the English folk tune "The Lincolnshire Poacher" as its interval signal, followed by groups of five numbers read by a female English voice. Operated from the 1970s until 2008. The most famous British numbers station.
+    TRANSCRIPT: Electronic rendition of folk tune, then: "0-0-5-8-8... 0-0-5-8-8... Group 43..." followed by five-digit number groups.
+    MOOD/ENERGY: Hypnotic, repetitive, eerie, institutional. The mechanical female voice is unsettling.
+
+18. Conet_Gong_Station.mp3 (1.6MB)
+    SOURCE: https://archive.org/details/ird059
+    LICENSE: Creative Commons
+    WHAT: "Gong Station Chimes" — a numbers station that used gong/chime sounds as its interval signal before broadcasting coded number groups.
+    MOOD/ENERGY: Mysterious, ritualistic, eerie. The gong sounds are beautiful and strange.
+
+19. Conet_Phonetic_Alphabet_NATO.mp3 (2.1MB)
+    SOURCE: https://archive.org/details/ird059
+    LICENSE: Creative Commons
+    WHAT: A numbers station broadcasting using NATO phonetic alphabet (Alpha, Bravo, Charlie, etc.)
+    MOOD/ENERGY: Military, methodical, hypnotic. Useful for the utilitarian vocal texture.
+
+20. Conet_Czech_Lady.mp3 (1.5MB)
+    SOURCE: https://archive.org/details/ird059
+    LICENSE: Creative Commons
+    WHAT: "Czech Lady" — a female voice reading numbers in Czech. One of the most frequently recorded stations.
+    MOOD/ENERGY: Monotone, hypnotic, eerie, mechanical.
+
+=====================================================================
+HISTORIC BROADCASTS & DISASTER AUDIO
+=====================================================================
+
+21. Hindenburg_Disaster.mp3 (2.5MB)
+    SOURCE: https://archive.org/details/hindenberg_explodes
+    LICENSE: Public domain
+    WHO: Herbert Morrison (WLS Chicago radio reporter)
+    WHEN/WHERE: May 6, 1937, Lakehurst Naval Air Station, New Jersey
+    WHAT: Morrison's live eyewitness account of the Hindenburg airship catching fire and crashing. The most famous piece of broadcast journalism ever recorded.
+    TRANSCRIPT (KEY LINES): "It's burst into flames!... Oh, the humanity! And all the passengers screaming around here... I can't talk, ladies and gentlemen... This is terrible, this is one of the worst catastrophes in the world!"
+    CULTURAL SIGNIFICANCE: "Oh, the humanity" became one of the most quoted phrases in history. Morrison's voice breaking with genuine emotion in real-time is still devastating. The audio quality — recorded on transcription discs — has a raw, crackling quality that adds to the horror. Sampled in countless songs and films.
+    MOOD/ENERGY: Horror, shock, grief, barely-controlled hysteria. Genuine emotional devastation in real-time.
+
+22. Orson_Welles_War_Of_The_Worlds_1938.mp3 (27MB)
+    SOURCE: https://archive.org/details/OrsonWellesMrBruns
+    LICENSE: Public domain
+    WHO: Orson Welles and the Mercury Theatre on the Air
+    WHEN/WHERE: October 30, 1938, CBS Radio broadcast
+    WHAT: Welles' legendary radio adaptation of H.G. Wells' "The War of the Worlds," performed as a series of simulated news bulletins reporting a Martian invasion of New Jersey. The broadcast caused mass panic among listeners who believed it was real.
+    CULTURAL SIGNIFICANCE: The most famous radio broadcast in history. It demonstrated the power of media to create reality — or at least the perception of it. The fake news bulletins, reporter voices, crowd panic, and "military communications" are a masterclass in sound design. For sampling: fake breaking news drops, panicked reporter voices, military radio chatter, crowd scenes, eerie silence.
+    MOOD/ENERGY: Escalating dread, fake journalistic authority, crowd panic, eerie alien atmospherics. Starts mundane, builds to hysteria.
+
+23. DDay_Broadcast_Part1.mp3 (15MB)
+    SOURCE: https://archive.org/details/Complete_Broadcast_Day_D-Day
+    LICENSE: Public domain
+    WHO: Various CBS/NBC/ABC radio anchors and correspondents
+    WHEN/WHERE: June 6, 1944 — D-Day, the Allied invasion of Normandy
+    WHAT: Part 1 of the complete broadcast day — radio coverage of the largest amphibious military operation in history. Breaking news as the invasion unfolds, reporter dispatches from London, military communiqués.
+    CULTURAL SIGNIFICANCE: Real-time war journalism at its most raw. Anchors receiving and reading bulletins as they come in, the tension of not knowing how the invasion is going, shortwave dispatches crackling with static. The texture of 1940s live radio — hiss, pops, urgency, formality.
+    MOOD/ENERGY: Tense, urgent, formal 1940s broadcast diction, crackling shortwave, historic gravity.
+
+24. Seinfeld_George_Answering_Machine.mp3 (502KB)
+    SOURCE: https://archive.org/details/Seinfeld-GeorgesAnsweringMachine
+    LICENSE: Unknown (community upload — use with caution, likely fair use for sampling)
+    WHO: Jason Alexander as George Costanza (Seinfeld)
+    WHAT: George Costanza's iconic answering machine message, sung to the tune of the Greatest American Hero theme: "Believe it or not, George isn't at home, please leave a message at the beep. I must be out, or I'd pick up the phone. Where could I be? Believe it or not, I'm not home."
+    CULTURAL SIGNIFICANCE: One of the most beloved comedic moments in television history. Instantly recognizable to anyone who watched 90s TV. The answering machine format is itself a piece of lost technology that evokes a specific era. Perfect for the "sometimes funny" part of your brief.
+    MOOD/ENERGY: Hilarious, nostalgic, lo-fi phone quality, 90s culture.
+
+=====================================================================
+PROTEST & CIVIL RIGHTS MUSIC
+=====================================================================
+
+25. We_Shall_Overcome.mp3 (5.4MB)
+    SOURCE: https://archive.org/details/WeShallOvercome
+    LICENSE: Public domain (traditional folk/protest song)
+    WHAT: "We Shall Overcome" — the anthem of the civil rights movement, adapted from gospel hymns and labor movement songs.
+    CULTURAL SIGNIFICANCE: THE protest song. Sung by crowds at every major civil rights demonstration from the 1950s through today. The communal singing — imperfect, raw, powerful — is the sound of collective resistance. For sampling, the crowd-sung quality is the gold: hundreds of voices together, not a polished studio recording.
+    MOOD/ENERGY: Resolute, communal, hopeful, powerful. Raw group singing.
+
+=====================================================================
+BEAT POETRY & LITERARY READINGS
+=====================================================================
+
+26. Ginsberg_Waldman_Howl_Naropa.mp3 (92MB)
+    SOURCE: https://archive.org/details/naropa_anne_waldman_and_allen_ginsberg
+    LICENSE: Creative Commons (Naropa University archive)
+    WHO: Allen Ginsberg and Anne Waldman
+    WHEN/WHERE: Naropa University, Boulder, Colorado (Jack Kerouac School of Disembodied Poetics), date uncertain (1970s-80s)
+    WHAT: Live performance/reading including Ginsberg performing "Howl" and other works, with Anne Waldman. Extended recording from the legendary Naropa poetry school founded by Ginsberg and others.
+    CULTURAL SIGNIFICANCE: Allen Ginsberg's "Howl" (1956) is the defining poem of the Beat Generation and one of the most important works of 20th century American literature. "I saw the best minds of my generation destroyed by madness, starving hysterical naked..." The live performance quality — Ginsberg's incantatory voice, audience coughs and shuffles, room acoustics — is exactly the texture you described wanting. DJ Shadow, The Avalanches, and Saul Williams have all used beat poetry readings over beats.
+    TRANSCRIPT (OPENING OF HOWL): "I saw the best minds of my generation destroyed by madness, starving hysterical naked, dragging themselves through the negro streets at dawn looking for an angry fix..."
+    MOOD/ENERGY: Incantatory, raw, intense, building rhythm, literary jazz. Ginsberg's voice has a hypnotic, chanting quality.
+
+27. Burroughs_Reading_Naropa.mp3 (92MB)
+    SOURCE: https://archive.org/details/naropa_william_s_burroughs3
+    LICENSE: Creative Commons (Naropa University archive)
+    WHO: William S. Burroughs
+    WHEN/WHERE: Naropa University, Boulder, Colorado
+    WHAT: Extended reading by William S. Burroughs — novelist, painter, spoken word performer, the "Godfather of Punk." Known for his cut-up technique, deadpan delivery, and surrealist prose.
+    CULTURAL SIGNIFICANCE: Burroughs' voice is one of the most distinctive in American letters — a flat, Midwestern drawl delivering the most hallucinatory, transgressive prose imaginable. He's been sampled by Ministry, Laurie Anderson, Disposable Heroes of Hiphoprisy, and R.E.M. His "cut-up" literary technique directly inspired hip-hop sampling and electronic music's approach to fragmentation. His reading style is deadpan, almost robotic, which makes the surreal content even more unsettling.
+    MOOD/ENERGY: Deadpan, surreal, darkly funny, unsettling, hypnotic monotone. Like a very calm person describing a nightmare.
+
+=====================================================================
+MANUAL DOWNLOAD NOTES
+=====================================================================
+
+KMART IN-STORE MUZAK TAPES (too large for curl, manual download needed):
+- https://archive.org/details/KmartOctober1989 — Kmart October 1989
+- https://archive.org/details/Kmart1973ReelToReel — Kmart 1973 Reel to Reel
+- https://archive.org/details/KmartDecember1974ReelToReel — Kmart December 1974
+CONTEXT: These are the actual background music tapes that played in Kmart stores. They became a cult phenomenon when a former employee rescued them from the trash. The tapes feature easy listening, soft rock, and muzak arrangements of pop songs — they're the sonic DNA of vaporwave (Macintosh Plus, etc.). The lo-fi tape degradation, store announcements bleeding in, and general atmosphere of American consumer culture make them incredible found audio.
+
+ADDITIONAL CONET PROJECT TRACKS (available at https://archive.org/details/ird059):
+The full collection has 150+ tracks across 4 discs. Recommended additional grabs:
+- tcp_d1_09_ready_ready_15728_irdial.mp3 — "Ready? Ready?" station
+- tcp_d1_10_bugle_irdial.mp3 — Bugle call station
+- tcp_d1_13_new_star_broadcasting_irdial.mp3 — "New Star Broadcasting" Chinese station
+- tcp_d2_* tracks — Disc 2 has many more stations in different languages
+
+COMPLETE BROADCAST DAY D-DAY (10 parts):
+Only Part 1 downloaded. Full set at https://archive.org/details/Complete_Broadcast_Day_D-Day
+Parts 2-10 contain increasingly dramatic coverage as the invasion unfolds throughout the day.
+
+GREATEST SPEECHES COLLECTION — MORE AVAILABLE:
+Full collection at https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+Additional recommended grabs not yet downloaded:
+- CheckersSpeech.mp3 — Nixon's "Checkers" speech (1952) — early TV political manipulation
+- FarewellAddress.mp3 — Eisenhower's "Military-Industrial Complex" warning
+- AddresstotheYippieConvention.mp3 — Abbie Hoffman at the Yippie convention
+- TheFirstAmericaninEarthOrbit.mp3 — John Glenn orbital flight
+- DemocraticConventionAcceptanceSpeech.mp3
+- PresidentialDebate.mp3 — Nixon/Kennedy debate
+- DeclarationofWarAgainstJapan.mp3
+
+=====================================================================
+TAG VOCABULARY SUGGESTIONS FOR WEBAPP
+=====================================================================
+
+New tag categories to add to sample_index.json taxonomy:
+
+TYPE additions: "speech", "found-audio", "broadcast", "numbers-station", "poetry-reading", "protest-song", "answering-machine", "news-broadcast", "radio-drama", "field-recording"
+
+MOOD additions: "eerie", "triumphant", "absurd", "defiant", "haunting", "nostalgic", "devastating", "surreal"
+
+GENRE additions: "spoken-word", "found-sound", "beat-poetry", "protest", "vaporwave-source", "cold-war"
+
+INSTRUMENT additions: "voice-male", "voice-female", "voice-crowd", "voice-child", "shortwave-radio", "telephone", "public-address"
+
+ERA tags (new category): "1930s", "1940s", "1950s", "1960s", "1970s", "1980s", "1990s"

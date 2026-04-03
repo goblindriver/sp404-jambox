@@ -1,0 +1,38 @@
+PACK NAME: Pre-existing MusicRadar SampleRadar packs (already in ~/Downloads)
+SOURCE URL: https://www.musicradar.com/news/tech/free-music-samples-royalty-free-loops-hits-and-multis-to-download-sampleradar
+LICENSE: Royalty-free (all MusicRadar SampleRadar packs share the same license — free to use in your music, do not re-distribute)
+FORMAT: WAV (24-bit)
+AUTHOR: MusicRadar / Future Publishing (Computer Music, Future Music magazines)
+
+These packs were found already downloaded in ~/Downloads, likely from a previous browsing session. They follow the same MusicRadar SampleRadar format.
+
+FILES FOUND:
+1. musicradar-idm-samples.zip (292MB) — IDM (Intelligent Dance Music) samples
+   Genre: IDM, glitch, experimental electronic
+   Think: Aphex Twin, Autechre, Squarepusher, Boards of Canada
+   CDN: https://cdn.mos.musicradar.com/audio/samples/musicradar-idm-samples.zip
+
+2. musicradar-drum-samples.zip (255MB) — Drum samples
+   Genre: Multi-genre drum hits, loops, construction kits
+   CDN: https://cdn.mos.musicradar.com/audio/samples/musicradar-drum-samples.zip
+
+3. musicradar-soul-funk-samples.zip (214MB) — Soul & funk samples
+   Genre: Soul, funk — likely includes bass, keys, drums, guitar, horn loops
+   Think: Motown, Stax, James Brown, Curtis Mayfield production style
+   CDN: https://cdn.mos.musicradar.com/audio/samples/musicradar-soul-funk-samples.zip
+
+4. musicradar-lofi-samples.zip (169MB) — Lo-fi samples (+ 3 duplicate downloads)
+   Genre: Lo-fi, tape-warped, vintage, dusty
+   CDN: https://cdn.mos.musicradar.com/audio/samples/musicradar-lofi-samples.zip
+
+5. musicradar-funk-samples.zip (164MB) — Funk samples
+   Genre: Funk — bass grooves, wah guitar, drum breaks, horn stabs
+   CDN: https://cdn.mos.musicradar.com/audio/samples/musicradar-funk-samples.zip
+
+6. musicradar-synth-percussion-samples.zip (115MB) — Synth percussion
+   Genre: Synthetic percussion, electronic drums, drum machine sounds
+   CDN: https://cdn.mos.musicradar.com/audio/samples/musicradar-synth-percussion-samples.zip
+
+TOTAL PRE-EXISTING: 6 unique packs (~1.2GB)
+
+NOTE: The soul-funk and funk packs are especially relevant for the DISCO bank. The IDM pack fills the electroclash/glitch gap. The synth-percussion and drum packs are utility gold.

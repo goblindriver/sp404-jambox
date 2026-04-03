@@ -1,0 +1,30 @@
+name: 'Vibe: lofi hiphop electro funk'
+slug: lofi-hiphop-electro-funk
+author: jambox-vibe
+bpm: 120
+key: e
+vibe: lofi hiphop electro funk
+notes: combines lofi's atmospheric textures with hiphop's rhythmic foundations, electro's
+  synth elements, and funk's groove-driven patterns, all layered for a smooth, chopped
+  loop vibe.
+source: vibe-generated
+tags:
+- lofi
+- hiphop
+- electro
+- funk
+- lofi hiphop electro funk
+- chill
+pads:
+  1: KIK lofi hiphop electro funk chill one-shot
+  2: SNR chill sampled one-shot
+  3: HAT sampled analog one-shot
+  4: CLP analog lofi one-shot
+  5: BRK lofi hiphop loop
+  6: BAS hiphop electro loop
+  7: SYN synth electro lofi hiphop electro funk loop
+  8: KEY keys lofi hiphop electro funk chill loop
+  9: PAD chill sampled loop
+  10: FX sampled analog one-shot
+  11: SMP analog lofi loop
+  12: VOX lofi hiphop chop-ready

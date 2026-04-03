@@ -1,0 +1,274 @@
+SP-404 GENRE KIT TEMPLATES — PAD LAYOUT RESEARCH
+SOURCE: Compiled from multiple production tutorial sites, forums, and interviews
+DATE COMPILED: April 2, 2026
+PURPOSE: Organizational intelligence for SP-404 MK2 bank layouts — how to lay out 16 pads for each genre
+
+=== BOOM-BAP (Hip-Hop) ===
+TEMPO: 80–95 BPM
+CORE PHILOSOPHY: Punchy, sample-heavy, vinyl-sourced. The MPC/SP tradition.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick (main)
+  Pad 2: Snare (main, snappy)
+  Pad 3: Closed hi-hat
+  Pad 4: Open hi-hat
+  Pad 5: Kick (alt/soft)
+  Pad 6: Snare (ghost/rimshot)
+  Pad 7: Crash/ride
+  Pad 8: Shaker/tambourine
+  Pad 9: Chopped sample 1 (melodic loop or chord stab)
+  Pad 10: Chopped sample 2
+  Pad 11: Chopped sample 3
+  Pad 12: Chopped sample 4
+  Pad 13: Bass hit/one-shot
+  Pad 14: Vocal chop/ad-lib
+  Pad 15: FX (vinyl crackle, reverse cymbal)
+  Pad 16: Transition FX (tape stop, filter sweep)
+
+KEY TECHNIQUE: Micro-chopping — slice a sample into 4–8 pieces across pads 9–16, then replay them in new order to create new melodies from old records. J Dilla pioneered this on MPC3000.
+
+SWING: 55–62% (the Dilla swing — slightly behind the beat, humanized)
+
+=== TRAP ===
+TEMPO: 130–170 BPM (half-time feel = 65–85 BPM effective)
+CORE PHILOSOPHY: 808-driven, hi-hat rolls, minimal melodic elements.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick (808 boom, long decay)
+  Pad 2: Snare (hard clap)
+  Pad 3: Closed hi-hat (tight)
+  Pad 4: Open hi-hat
+  Pad 5: 808 bass (tuned, long sustain — THE defining element)
+  Pad 6: Snare (alt/rim)
+  Pad 7: Hi-hat (alt for rolls)
+  Pad 8: Crash cymbal
+  Pad 9: Perc 1 (snap, click)
+  Pad 10: Perc 2 (woodblock, bell)
+  Pad 11: Melodic loop/arp
+  Pad 12: Pad/atmosphere
+  Pad 13: Vocal tag/ad-lib
+  Pad 14: FX (gun cock, siren, cash register)
+  Pad 15: 808 bass (alt pitch)
+  Pad 16: Transition riser/sweep
+
+KEY TECHNIQUE: Hi-hat rolls — triplet patterns at 1/32 notes with velocity variation. The 808 bass IS the bassline, not just a drum hit. Pitch it chromatically.
+
+=== HOUSE (Four-on-the-Floor) ===
+TEMPO: 120–130 BPM
+CORE PHILOSOPHY: 909-based, steady kick, syncopated hats, claps on 2 and 4. Less is more.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick (909-style, punchy, short)
+  Pad 2: Clap (on 2 and 4)
+  Pad 3: Closed hi-hat (8th notes or 16ths)
+  Pad 4: Open hi-hat (offbeats — THE house sound)
+  Pad 5: Snare (for builds/fills)
+  Pad 6: Ride cymbal
+  Pad 7: Shaker (16th notes, low velocity)
+  Pad 8: Percussion (conga, bongo, cowbell)
+  Pad 9: Bass loop or one-shot
+  Pad 10: Chord stab (disco sample, piano, organ)
+  Pad 11: Vocal chop ("yeah!", "house!", "feel it")
+  Pad 12: Pad/string swell
+  Pad 13: FX riser
+  Pad 14: FX downlifter
+  Pad 15: Breakdown element (filtered loop)
+  Pad 16: Transition (reverse crash, white noise sweep)
+
+KEY TECHNIQUE: Open hi-hat on EVERY offbeat 8th note between kicks. Ghost snares slightly ahead of the kick give a driving feel. Roland 909 sounds are canonical. Velocity variation on closed hats creates groove.
+
+SUBGENRES:
+- Deep House: Slower (118–122 BPM), more spacious, jazzy chords, minimal percussion
+- Tech House: Tighter (124–128 BPM), more percussion layers, less melodic, groove-focused
+- Acid House: Add 303 bassline pad, squelchy filter sweeps, raw/hypnotic
+- Disco House: Sample-heavy, chopped disco loops, filtered funk
+
+=== TECHNO ===
+TEMPO: 125–140 BPM
+CORE PHILOSOPHY: Repetition as hypnosis. Industrial edge. Minimal melodic content.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick (heavy, industrial, long tail)
+  Pad 2: Clap/snare (layered, reverbed)
+  Pad 3: Closed hi-hat (mechanical, tight)
+  Pad 4: Open hi-hat / ride
+  Pad 5: Kick (alt — different texture/pitch)
+  Pad 6: Rim shot
+  Pad 7: Tom (high)
+  Pad 8: Tom (low)
+  Pad 9: Percussion loop
+  Pad 10: Synth stab (one-shot, atonal)
+  Pad 11: Noise texture/atmosphere
+  Pad 12: Sub bass drone
+  Pad 13: FX (industrial clang, metal hit)
+  Pad 14: Vocal snippet (processed, alien)
+  Pad 15: Sweep/riser
+  Pad 16: Impact/drop FX
+
+KEY TECHNIQUE: Warehouse techno = stripped-down percussion focus. Layers of percussion at different velocities. The kick IS the track. Reverb on clap only on certain hits (dub techno influence).
+
+=== JUNGLE / DRUM & BASS ===
+TEMPO: 160–180 BPM
+CORE PHILOSOPHY: Chopped breakbeats at speed. The Amen break is the foundation of everything.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Amen break chop 1 (kick pattern)
+  Pad 2: Amen break chop 2 (snare hit)
+  Pad 3: Amen break chop 3 (hat/ride pattern)
+  Pad 4: Amen break chop 4 (ghost notes)
+  Pad 5: Amen break chop 5 (fill/roll)
+  Pad 6: Amen break chop 6 (reverse)
+  Pad 7: Sub bass (reese bass — detuned saw waves)
+  Pad 8: Sub bass (alt pitch)
+  Pad 9: Think break chop (or Apache, Funky Drummer)
+  Pad 10: Pad/string sample (soul sample, ambient pad)
+  Pad 11: Vocal sample (ragga MC, diva vocal)
+  Pad 12: FX (siren, air horn, laser)
+  Pad 13: Stab (orchestral hit, horn stab)
+  Pad 14: Atmosphere/texture
+  Pad 15: Full break loop (timestretched)
+  Pad 16: Transition (reverse reverb, snare roll)
+
+KEY TECHNIQUE: Chop the Amen break by EAR, not by transient — a little looseness adds groove. Time-stretch individual chops. Layer multiple breaks. The sub bass and the breaks exist in separate frequency worlds — they don't compete. Classic breaks to know: Amen Break (The Winstons), Think Break (Lyn Collins), Apache (Incredible Bongo Band), Funky Drummer (James Brown), Hot Pants (James Brown), Skull Snaps (It's a New Day).
+
+HISTORICAL NOTE: The Amen break comes from a 6-second drum solo in "Amen, Brother" by The Winstons (1969). It became the most sampled loop in history, defining jungle, drum & bass, and hardcore in the early 90s UK rave scene.
+
+=== DUB / REGGAE ===
+TEMPO: 60–80 BPM (half-time), or 120–140 BPM (dancehall)
+CORE PHILOSOPHY: Space is the instrument. Heavy bass, sparse drums, EFFECTS ARE PLAYED LIVE as instruments.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick (heavy, round, deep)
+  Pad 2: Snare/rimshot (on beat 3 — the "one drop")
+  Pad 3: Hi-hat (closed)
+  Pad 4: Hi-hat (open)
+  Pad 5: Percussion (shaker, guiro)
+  Pad 6: Percussion (nyabinghi hand drum)
+  Pad 7: Bass (heavy sub, melodic)
+  Pad 8: Bass (alt note/octave)
+  Pad 9: Organ/skank chord (offbeat — THE reggae rhythm)
+  Pad 10: Guitar skank (muted upstroke)
+  Pad 11: Horn stab (trombone, trumpet)
+  Pad 12: Melodica phrase
+  Pad 13: Vocal snippet (toasting, echo'd)
+  Pad 14: FX (spring reverb splash, tape echo throw)
+  Pad 15: Siren/sound effect
+  Pad 16: Dub FX (filtered noise, phaser sweep)
+
+KEY TECHNIQUE: DUB MIXING IS PERFORMANCE. The producer plays the effects live — sending individual hits to reverb/delay via aux sends, then pulling them back. A single snare hit gets a long reverb tail while the next one stays dry. The SP-404's real-time effects are PERFECT for this. King Tubby, Lee "Scratch" Perry, and Scientist invented this approach using analog mixing desks.
+
+EFFECTS PHILOSOPHY:
+- Spring reverb on snare (intermittent, not constant)
+- Tape echo/delay set to triplet subdivision (creates rhythmic echo patterns)
+- High-pass filter sweeps on entire mix
+- Muting/unmuting individual elements = the "dub mix"
+
+=== UK GARAGE / 2-STEP ===
+TEMPO: 130–140 BPM
+CORE PHILOSOPHY: Syncopation. The kick SKIPS beats. Shuffled hats. Pitched-up vocals.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick (punchy, tight)
+  Pad 2: Snare (main, on beat 2)
+  Pad 3: Ghost snare (quiet, syncopated — drives the 2-step feel)
+  Pad 4: Closed hi-hat (offbeat, swung 54–56%)
+  Pad 5: Open hi-hat
+  Pad 6: Percussion (shaker, tambourine)
+  Pad 7: Bass (sub, deep, sometimes 808)
+  Pad 8: Bass (alt/wobble)
+  Pad 9: Vocal chop (pitched up, chopped R&B vocal)
+  Pad 10: Chord stab (garage organ, saw chord)
+  Pad 11: Pad (warm, lush)
+  Pad 12: Arp/synth line
+  Pad 13: FX (vinyl scratch, record stop)
+  Pad 14: FX (reverb swell, white noise)
+  Pad 15: Vocal phrase ("oh yeah", "come on")
+  Pad 16: Transition (build, filter sweep)
+
+KEY TECHNIQUE: The kick pattern is everything — it falls on beat 1 and the "and" of beat 3, with the ghost snare filling the gaps. Swing at 54–56% is critical. The shuffle gives UK garage its distinctive "skippy" feel that separates it from house.
+
+=== REGGAETON ===
+TEMPO: 85–100 BPM
+CORE PHILOSOPHY: The "dembow" riddim is the foundation — a specific kick-snare pattern that defines the entire genre.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick (punchy, round)
+  Pad 2: Snare (tight, metallic)
+  Pad 3: Hi-hat (closed, 16ths)
+  Pad 4: Hi-hat (open)
+  Pad 5: Kick (ghost/accent)
+  Pad 6: Snare (ghost)
+  Pad 7: 808 bass (tuned, sustained)
+  Pad 8: Percussion (clave, guira, bongo)
+  Pad 9: Synth lead (reggaeton melody)
+  Pad 10: Chord/pad
+  Pad 11: Vocal chop/ad-lib
+  Pad 12: Perreo FX (airhorn, siren)
+  Pad 13: Dembow pattern loop (full)
+  Pad 14: Breakdown element
+  Pad 15: Riser/build
+  Pad 16: Drop FX
+
+THE DEMBOW PATTERN: Kick on 1, snare on the "and" of 1, kick on "and" of 2, snare on 3, kick on "and" of 3, snare on 4. This pattern is derived from Shabba Ranks' "Dem Bow" (1991) and forms the rhythmic DNA of reggaeton.
+
+=== AFROBEATS ===
+TEMPO: 100–120 BPM
+CORE PHILOSOPHY: Polyrhythmic, percussion-heavy, call-and-response. Log drum is the signature sound.
+
+RECOMMENDED 16-PAD LAYOUT:
+  Pad 1: Kick
+  Pad 2: Snare (often a rimshot or cross-stick)
+  Pad 3: Hi-hat (closed)
+  Pad 4: Hi-hat (open)
+  Pad 5: Shaker (constant 16ths — the engine)
+  Pad 6: Log drum / talking drum (THE afrobeats signature)
+  Pad 7: Conga/djembe hit
+  Pad 8: Bell pattern (agogo, cowbell)
+  Pad 9: Bass (guitar-like, melodic)
+  Pad 10: Guitar lick (clean, palm-muted)
+  Pad 11: Synth pad/keys
+  Pad 12: Horn stab
+  Pad 13: Vocal chop
+  Pad 14: Percussion fill
+  Pad 15: FX (afro-tech riser)
+  Pad 16: Transition
+
+KEY TECHNIQUE: The shaker pattern runs constant 16th notes as the rhythmic backbone. The log drum provides the iconic afrobeats melodic percussion. Multiple percussion layers create polyrhythmic complexity — each element has its own rhythmic cycle that interlocks with the others.
+
+=== GENERAL SP-404 MK2 BANK ORGANIZATION STRATEGY ===
+
+The SP-404 MK2 has 16 pads × 10 banks (A–J) = 160 samples per project.
+
+STRATEGY 1: GENRE-PER-BANK (Studio/Collection)
+  Bank A: Drums (universal kit)
+  Bank B: Bass sounds
+  Bank C: Melodic samples (chops, loops)
+  Bank D: Vocal samples
+  Bank E: FX and transitions
+  Bank F–J: Genre-specific full kits
+
+STRATEGY 2: TRACK-PER-BANK (Performance)
+  Bank A: Track 1 (all elements for one song)
+  Bank B: Track 2
+  ...
+  Bank J: Track 10
+  — Each bank contains everything needed for one complete performance piece
+
+STRATEGY 3: HYBRID (Recommended for SP-404 Jam Box)
+  Bank A: Universal drum kit (kicks, snares, hats from multiple genres)
+  Bank B: Bass and sub sounds
+  Bank C: Transition FX, risers, drops, sweeps
+  Bank D–J: Complete genre kits (one genre per bank, self-contained)
+
+RESAMPLING WORKFLOW:
+1. Build a beat using pads from multiple banks
+2. Record the performance to a pattern
+3. Resample the pattern to a single pad (captures effects)
+4. Use the resampled pad as a foundation, layer more on top
+5. Repeat — this is how you build complex arrangements from simple elements
+
+DJ MODE:
+- Assign two full tracks/loops to CH1 and CH2
+- Crossfade between them
+- Apply effects in real time
+- Perfect for transitions between different genre banks during a live set

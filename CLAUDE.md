@@ -1,12 +1,12 @@
 # SP-404 Jam Box
 
 ## Project Context
-SP-404A/SX sampler SD card builder. Curates royalty-free samples into genre-themed banks for instant live jamming. Built with Python scripts, ffmpeg for audio conversion, and numpy for synthesis.
+SP-404A/SX sampler SD card builder. Curates royalty-free samples into genre-themed banks for instant live jamming. Built with Python scripts, ffmpeg for audio conversion, numpy for synthesis, and a local LLM pipeline for intelligent tagging and vibe-driven bank generation.
 
 ## Multi-Agent Workflow
 This project is worked on by multiple Claude agents coordinated by the user:
 - **Claude Code** (this agent): writes code, manages the repo, runs pipelines, builds the web UI
-- **Chat** (Claude chat): taste-driven creative direction, bank curation, genre research, tag vocabulary design
+- **Chat** (Claude chat): taste-driven creative direction, bank curation, genre research, tag vocabulary design, documentation, orchestrating between agents
 - **Cowork** (Claude background agent): scrapes sample sources, downloads to watchfolders, leaves instructions
 
 ### How to coordinate
@@ -22,7 +22,7 @@ This project is worked on by multiple Claude agents coordinated by the user:
 ## Key Paths
 - **Repo**: `/Users/jasongronvold/Desktop/SP-404SX/sp404-jambox/`
 - **SD card mount**: `/Volumes/SP-404SX`
-- **Sample library**: `~/Music/SP404-Sample-Library/` (~9,600+ WAVs)
+- **Sample library**: `~/Music/SP404-Sample-Library/` (~20,925 FLACs, 15 GB)
 - **Tag database**: `~/Music/SP404-Sample-Library/_tags.json`
 - **Raw downloads archive**: `~/Music/SP404-Sample-Library/_RAW-DOWNLOADS/`
 - **Bank config**: `bank_config.yaml` (defines all banks, pads, BPM, key)
@@ -32,11 +32,20 @@ This project is worked on by multiple Claude agents coordinated by the user:
 - **Plex client**: `scripts/plex_client.py` (read-only SQLite queries for moods, styles, art, play counts)
 - **Ingest log**: `~/Music/SP404-Sample-Library/_ingest_log.json`
 - **Web UI**: `web/` (Flask app on http://localhost:5404)
+- **Vibe sessions DB**: `data/vibe_sessions.sqlite` (runtime, gitignored)
+- **Eval suite**: `data/evals/` (prompt_to_parse, prompt_to_draft, prompt_to_ranking)
+- **Training scripts**: `training/vibe/` (prepare_dataset, train_lora, eval_model, compare_modes, serve_model)
+- **Training configs**: `training/vibe/configs/` (QLoRA YAML configs)
+- **Pattern training gates**: `training/pattern/` (readiness checks, requirements)
+- **Scoring config**: `config/scoring.yaml` (tunable fetch scoring weights)
+- **Vibe mappings**: `config/vibe_mappings.yaml` (genre→instrument, keyword aliases)
 
 ## Audio Format (CRITICAL)
 All output WAVs MUST be: 16-bit / 44.1kHz / Mono / PCM (uncompressed)
 Convert with: `ffmpeg -y -i input -ar 44100 -ac 1 -sample_fmt s16 -c:a pcm_s16le output.WAV`
 WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silence trimmed — handled by `scripts/wav_utils.py`.
+
+**Library storage format**: FLAC (lossless, ~50-60% smaller than WAV). Ingest converts to FLAC on arrival. Output to SD card is always WAV per the SP-404 spec.
 
 ## SP-404 SD Card File Naming
 - Path on card: `ROLAND/SP-404SX/SMPL/`
@@ -45,6 +54,8 @@ WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silenc
 - Example: `G0000007.WAV` = Bank G, Pad 7
 
 ## Current Bank Layout
+
+### Default Set (v3)
 | Bank | Name | BPM | Key | Purpose |
 |------|------|-----|-----|---------|
 | A | Your Space | — | — | User's own sounds (empty) |
@@ -58,7 +69,23 @@ WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silenc
 | I | Textures & Transitions | 120 | Am | Pads, risers, ambient glue |
 | J | Utility & Fun | 120 | any | Speeches, gunshots, cash registers, iconic SFX |
 
-**Harmonic design**: All keys (Am, Dm, Em, F) are diatonic to C major — everything harmonizes across banks.
+### Available Genre Presets
+| Preset | BPM | Key | Vibe |
+|--------|-----|-----|------|
+| big-beat-blowout | 130 | Em | Chemical Brothers warehouse energy |
+| synth-pop-dreams | 110 | Fm | Airy melancholy, Postal Service intimacy |
+| brat-mode | 128 | Gm | Buzzy detuned synths, Charli XCX attitude |
+| riot-mode | 160 | E | Punk/riot grrrl/ska-punk |
+| minneapolis-machine | 90 | Db | P.O.S/Doomtree experimental hip-hop |
+| outlaw-country-kitchen | 95 | G | Country/Americana |
+| karaoke-metal | 140 | Em | Heavy metal |
+| french-filter-house | 122 | Dm | Modjo/electroclash filter house |
+| purity-ring-dreams | 108 | Ab | Synth-pop, #1 reference artist |
+| crystal-chaos | 135 | Fm | Brat Mode dark wing |
+| ween-machine | 110 | C | Genre-chameleon |
+| azealia-mode | 130 | Bbm | Art-pop/house-rap |
+
+**Harmonic design**: Default set keys (Am, Dm, Em, F) are diatonic to C major — everything harmonizes across banks.
 **Tempo design**: 112/120/128/130 BPM cluster — all mix cleanly.
 **Pad convention**: Pads 1-4 = drum hits (one-shots), Pads 5-12 = loops & melodic content
 
@@ -92,6 +119,7 @@ Example: `KIK hard aggressive one-shot` — finds a hard aggressive kick
 3. Type code match = +10 points (mismatch = -8), playability = +5, BPM/key = +3-4, keywords = +3 each
 4. Global deduplication: no file used twice across any pad
 5. Falls back to Freesound.org API if no local match (needs `FREESOUND_API_KEY` in `.env`)
+6. Scoring weights are tunable via `config/scoring.yaml`
 
 ### Tag Cloud API
 - `GET /api/library/tags` — dimension-grouped tag frequencies
@@ -111,6 +139,8 @@ Example: `KIK hard aggressive one-shot` — finds a hard aggressive kick
 - After ingest, auto-runs `tag_library.py --update` on new files
 - Logs to `~/Music/SP404-Sample-Library/_ingest_log.json`
 - Reads `_SOURCE.txt` files left by Cowork and stores context in `_tags.json`
+- Reads `_DELIVERY.yaml` manifests from Chat delivery zips and auto-installs presets
+- Converts to FLAC on ingest for storage efficiency
 - Web UI has a Watch toggle button to start/stop the watcher, and an activity feed
 
 ## Plex Integration (Personal Music)
@@ -151,6 +181,65 @@ When stem-splitting a personal track, all Plex metadata flows through:
 - Texture inferred from moods (raw/warm/airy)
 - Source marked as `personal` with artist/album/title provenance
 
+## Personalized Vibe Intelligence (NEW — shipped April 2026)
+
+### Overview
+A full LLM-powered pipeline for turning natural language vibe prompts into SP-404 bank presets. Three parser modes, persistent session logging, editable tag review, and a training pipeline for fine-tuning.
+
+### Parser Modes
+- **base**: Keyword fallback parser. No LLM required. Extracts type codes, playability, and dimensional keywords from the prompt text. Always available.
+- **rag**: Retrieval-grounded parsing. Calls the LLM with context retrieved from prior sessions, matching presets, and library tag statistics. Requires `SP404_LLM_ENDPOINT`.
+- **fine_tuned**: Uses a QLoRA-adapted model endpoint. Requires `SP404_FINE_TUNED_LLM_ENDPOINT`. Falls back to base on failure.
+
+Set mode via `SP404_VIBE_PARSER_MODE=base|rag|fine_tuned`.
+
+### Session Logging
+Every vibe generation creates a session in `data/vibe_sessions.sqlite` tracking:
+- Prompt, BPM, key, bank
+- Parser mode and model label
+- Parsed tags (original and user-reviewed)
+- Draft preset (original and user-reviewed)
+- Applied preset and fetch results
+- Dataset status (raw → reviewed → exported) for training data curation
+
+### Retrieval Grounding (RAG mode)
+`scripts/vibe_retrieval.py` builds context from three sources:
+1. **Historical sessions**: Past vibe sessions with matching keywords (prefers reviewed ones)
+2. **Preset examples**: Existing presets with matching tags/vibes
+3. **Library hints**: Tag frequency statistics from the sample library for matching keywords
+
+### Training Pipeline
+Located in `training/vibe/`:
+- `prepare_dataset.py` — Extracts reviewed sessions into JSONL training data (parse + draft tasks)
+- `train_lora.py` — QLoRA fine-tuning using transformers + peft + bitsandbytes
+- `eval_model.py` — Offline evaluation: parse accuracy, draft quality, ranking correctness
+- `compare_modes.py` — Run eval suite across base/rag/fine_tuned and compare
+- `serve_model.py` — Serve a GGUF model via llama.cpp's OpenAI-compatible server
+- `configs/` — QLoRA training configs (LoRA r=16, α=32, lr=2e-4, 3 epochs)
+
+### Eval Suite
+Seed evals in `data/evals/`:
+- `prompt_to_parse.jsonl` — 12 prompts with expected type_code, playability, keywords
+- `prompt_to_draft.jsonl` — 6 prompts with expected pad prefixes and keyword presence
+- `prompt_to_ranking.jsonl` + `ranking_fixture.json` — 6 prompts with expected top-1 ranking against a fixture library
+
+Run: `python training/vibe/eval_model.py --mode base`
+
+### Pattern Training Readiness
+`training/pattern/readiness.py` gates pattern-model training behind:
+- Curated MIDI corpus (≥50 files in `data/midi/`)
+- Style labels (`data/pattern_labels.jsonl`)
+- Eval prompts (`data/pattern_evals.jsonl`)
+- Configured checkpoint output directory
+
+Pattern training is intentionally separate from vibe training. No MIDI corpus exists yet.
+
+### Vibe API Endpoints (web/api/vibe.py)
+- `POST /api/vibe/generate` — Parse prompt, return suggestions + session_id
+- `POST /api/vibe/apply-bank` — Apply reviewed draft to a bank (with optional auto-fetch)
+- `POST /api/vibe/populate-bank` — End-to-end: LLM parse → preset → load → fetch
+- `GET /api/vibe/populate-status/<job_id>` — Poll background populate job
+
 ## Sample Library Structure
 ```
 ~/Music/SP404-Sample-Library/
@@ -160,11 +249,15 @@ When stem-splitting a personal track, all Plex metadata flows through:
 ├── Melodic/{Bass, Guitar, Keys-Piano, Synths-Pads}
 ├── SFX/Stabs-Hits
 ├── Vocals/Chops
-├── Freesound/{bank-name}/  (API downloads with attribution)
-├── _RAW-DOWNLOADS/          (original packs, ingested packs moved here)
-├── _GOLD/Bank-A/            (saved Bank A sessions)
-└── _tags.json               (tag database, ~9,600 entries)
+├── Stems/{source-name}/           (Demucs stem splits)
+├── Freesound/{bank-name}/         (API downloads with attribution)
+├── _RAW-DOWNLOADS/                (original packs, ingested packs moved here)
+├── _GOLD/Bank-A/                  (saved Bank A sessions)
+├── _tags.json                     (tag database, ~20,925 entries)
+└── _ingest_log.json               (watcher activity log)
 ```
+
+**Format**: All library files are FLAC (lossless). Output to SD card converts to 16-bit WAV.
 
 ## Web UI
 Launch: `cd web && python app.py` (runs on http://localhost:5404)
@@ -175,6 +268,97 @@ Launch: `cd web && python app.py` (runs on http://localhost:5404)
 - Bank edit modal (pencil button): name, BPM, key, notes
 - Pipeline controls: Fetch All, Ingest Downloads, Build, Deploy
 - SD card status indicator with auto-polling
+- **Vibe prompt bar**: describe a mood/genre, review parsed tags, edit draft pads, apply to bank
+- **Editable parsed-tag review**: correct LLM output before applying
+- Preset browser: browse, search, filter, preview, drag presets onto bank tabs
+- Set selector: switch entire bank configurations instantly
+- My Music: browse personal library by artist, mood, style (Plex-powered)
+- Daily Bank button: generate a fresh auto preset for the current bank
+- File watcher toggle with activity feed
+- Disk usage panel with cleanup controls
+
+## Bank Preset Library
+
+Bank configurations are standalone YAML files in `presets/`, organized by category. Presets can be browsed, searched, previewed, and dragged onto bank tabs in the web UI. Sets group 10 presets into saved configurations for different session types. The existing `bank_config.yaml` remains fully expanded for backward compatibility.
+
+### Preset Categories
+`genre/`, `utility/`, `song-kits/`, `palette/`, `community/`, `auto/`
+
+### Preset API
+- `GET /api/presets` — list/search presets (filter by category, query, tag, bpm, key)
+- `GET /api/presets/<ref>` — full preset detail
+- `POST /api/presets/load` — load preset into a bank
+- `POST /api/presets/from-bank/<letter>` — save current bank as preset
+- `POST /api/presets/daily` — generate daily auto preset
+- `GET /api/sets` — list sets
+- `POST /api/sets/<slug>/apply` — apply a set
+- `POST /api/sets/save-current` — save current config as set
+
+## Smart Features
+
+Optional local-first creative tools gated by environment variables. When the relevant env var is unset, the feature is silently disabled.
+
+### Natural Language Vibe Prompts
+Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Requires `SP404_LLM_ENDPOINT`. See "Personalized Vibe Intelligence" section above for full details.
+
+### Pattern Generation (Magenta)
+Generate drum patterns and melodic sequences with human-feel swing using MusicVAE/GrooVAE. Outputs SP-404 .PTN pattern files. Requires Magenta checkpoints. Falls back to starter patterns if Magenta unavailable.
+
+### Audio Deduplication
+Chromaprint fingerprint-based duplicate detection. Runs on demand or during ingest via `--dedupe` flag. Install `fpcalc` via `brew install chromaprint`. Falls back to Python cosine similarity if fpcalc unavailable.
+
+### Daily Bank
+Auto-generates a fresh preset each day from recent/trending library activity. Presets land in `presets/auto/`.
+
+### Centralized Configuration
+All paths and service endpoints managed through `scripts/jambox_config.py` with environment variable overrides.
+
+## Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SP404_LLM_ENDPOINT` | Local LLM endpoint for vibe prompts | (disabled) |
+| `SP404_LLM_MODEL` | LLM model name | `qwen3` |
+| `SP404_LLM_TIMEOUT` | LLM request timeout (seconds) | `30` |
+| `SP404_VIBE_PARSER_MODE` | Parser mode: base, rag, fine_tuned | `base` |
+| `SP404_FINE_TUNED_LLM_ENDPOINT` | Endpoint for fine-tuned model | (disabled) |
+| `SP404_FINE_TUNED_LLM_MODEL` | Fine-tuned model name | (disabled) |
+| `SP404_VIBE_RETRIEVAL_LIMIT` | Max retrieval examples per query | `4` |
+| `SP404_MUSICVAE_CHECKPOINT_DIR` | MusicVAE model checkpoints | (disabled) |
+| `SP404_MAGENTA_COMMAND` | Magenta pattern generation command | `music_vae_generate` |
+| `SP404_FINGERPRINT_TOOL` | Audio fingerprint tool | `fpcalc` |
+| `SP404_DAILY_BANK_SOURCE` | Daily bank source (`recent` or `trending`) | `recent` |
+| `SP404_TRENDING_FILE` | Path to trending.json | `$REPO/trending.json` |
+| `SP404_SAMPLE_LIBRARY` | Sample library root | `~/Music/SP404-Sample-Library` |
+| `SP404_FFMPEG` | ffmpeg binary path | `/opt/homebrew/bin/ffmpeg` |
+
+## Key Paths (All Features)
+
+```
+scripts/jambox_config.py           # Centralized configuration
+scripts/vibe_generate.py           # NL vibe -> fetch parameters (parser modes)
+scripts/vibe_retrieval.py          # RAG retrieval for vibe parsing
+scripts/vibe_training_store.py     # Persistent vibe session store (SQLite)
+scripts/generate_patterns.py       # Magenta pattern generation
+scripts/deduplicate_samples.py     # Audio deduplication
+scripts/daily_bank.py              # Daily preset generator
+scripts/plex_client.py             # Plex DB client (read-only)
+scripts/preset_utils.py            # Preset/set resolution and management
+config/scoring.yaml                # Tunable scoring weights
+config/vibe_mappings.yaml          # Genre→instrument mappings, keyword aliases
+training/vibe/eval_model.py        # Offline eval runner
+training/vibe/prepare_dataset.py   # Session → training data
+training/vibe/train_lora.py        # QLoRA training script
+training/vibe/compare_modes.py     # Cross-mode eval comparison
+training/vibe/serve_model.py       # Local GGUF model server
+training/vibe/configs/             # Training hyperparameter configs
+training/pattern/readiness.py      # Pattern training readiness gates
+data/evals/                        # Seed eval suite
+data/vibe_sessions.sqlite          # Runtime session store (gitignored)
+web/api/vibe.py                    # POST /api/vibe/generate, apply-bank, populate-bank
+web/api/pattern.py                 # POST /api/pattern/generate
+trending.json                      # Tag trend data
+```
 
 ## Pattern Files
 Pattern files (.PTN) in `ROLAND/SP-404SX/PTN/` are proprietary binary format.
@@ -193,3 +377,5 @@ Injected by `scripts/wav_utils.py:inject_rlnd()` during sample conversion.
 - FAT32 filesystem required on SD card
 - Always safely eject the SD card before removing from computer
 - ffmpeg is at `/opt/homebrew/bin/ffmpeg` (all scripts use absolute paths)
+- Library is FLAC for storage; output to SD card is always WAV
+- Vibe sessions DB is runtime-only (gitignored) — training data is exported via prepare_dataset.py

@@ -1,136 +1,117 @@
-# Sample Sources
+# Sample Source Catalog
+> Curated links for: witch house, glitch, punk, black metal, dictator speeches, nu-rave, indie sleaze, IDM, trance, house, aggressive basslines, dirty party horns
 
-All samples are royalty-free, sourced from MusicRadar SampleRadar and the Freesound API.
+---
 
-## Primary Source: MusicRadar SampleRadar
+## WITCH HOUSE / GLITCH
 
-Direct download links:
+| Source | Description | URL |
+|--------|-------------|-----|
+| Looperman - Witch House | Free user-uploaded witch house loops & one-shots (WAV) | https://www.looperman.com/loops/tags/free-witch-house-loops-samples-sounds-wavs-download |
+| Sample Focus - Witch House | Royalty-free witch house tagged samples | https://samplefocus.com/tag/witch-house |
+| KVASS Lab - Witch House Pack | 420 dark, distorted sounds — heavy atmosphere | https://rekkerd.org/kvass-lab-releases-witch-house-sample-pack/ |
+| GowlerMusic - Experimental Witch House | 173-track royalty-free pack (Bandcamp) | https://gowlermusic.bandcamp.com/album/experimental-witch-house-royalty-free-sample-pack-gm0073 |
+| Samplephonics - Glitch Technology Freebie | Free glitch loops and FX | https://www.samplephonics.com/products/free/sound-effects/glitch-technology-freebie |
+| MusicRadar - 269 Glitch Kit Samples | Free WAV glitch drums and textures | https://www.musicradar.com/news/sampleradar-free-glitch-kit-samples-1 |
+| Mixkit - Glitch Sound Effects | 36 royalty-free glitch SFX | https://mixkit.co/free-sound-effects/glitch/ |
+| Looperman - Glitch Loops | Free glitch loops, user-uploaded | https://www.looperman.com/loops/genres/free-glitch-loops-samples-sounds-wavs-download |
+| Noiiz - Glitch Drums Freebie | Free glitch drum one-shots and loops | https://www.noiiz.com/sounds/free_packs/1444 |
+| Sample Focus - Glitch | Royalty-free glitch sounds | https://samplefocus.com/tag/glitch |
 
-| Pack | Size | Contents |
-|------|------|----------|
-| [80s Synths](https://cdn.mos.musicradar.com/audio/samples/musicradar-80s-synth-samples.zip) | ~200MB | Polys, pads, bass, arps, leads |
-| [Drum Samples](https://cdn.mos.musicradar.com/audio/samples/musicradar-drum-samples.zip) | ~250MB | Kicks, snares, hats, cymbals, kits |
-| [Funk Samples](https://cdn.mos.musicradar.com/audio/samples/musicradar-funk-samples.zip) | ~150MB | Bass, guitar, organ, clavinet, piano |
-| [Hip-Hop Essentials](https://cdn.mos.musicradar.com/audio/samples/musicradar-hiphop-essentials.zip) | ~300MB | Drum hits, Oberheim DX, beats, loops |
-| [IDM Samples](https://cdn.mos.musicradar.com/audio/samples/musicradar-idm-samples.zip) | ~180MB | 5 kits at 100–165 BPM |
-| [Lo-Fi Samples](https://cdn.mos.musicradar.com/audio/samples/musicradar-lofi-samples.zip) | ~200MB | Construction kits, drum loops, SFX |
-| [Soul-Funk Samples](https://cdn.mos.musicradar.com/audio/samples/musicradar-soul-funk-samples.zip) | ~150MB | Construction kits at 100–120 BPM |
-| [Synth Percussion](https://cdn.mos.musicradar.com/audio/samples/musicradar-synth-percussion-samples.zip) | ~80MB | Vermona DRM1, WaveDrum loops |
+---
 
-**MusicRadar total: ~1.5GB compressed, ~2.9GB uncompressed, 4,886 WAV files**
+## PUNK / BLACK METAL
 
-### License
-MusicRadar SampleRadar samples are royalty-free for use in music production. From their site: these samples are provided free of charge and can be used in your music productions without restriction.
+| Source | Description | URL |
+|--------|-------------|-----|
+| Looperman - Black Metal Loops | Free black metal loops and sounds (WAV) | https://www.looperman.com/loops/tags/free-black-metal-loops-samples-sounds-wavs-download |
+| Looperman - Black Metal Drum Loops | Blast beats, double kick patterns | https://www.looperman.com/loops/tags/free-black-metal-drum-loop-loops-samples-sounds-wavs-download |
+| Looperman - Punk Drums | Free punk drum loops | https://www.looperman.com/loops/tags/free-punk-drums-loops-samples-sounds-wavs-download |
+| Looperman - Punk Loops | Full punk loops — guitars, bass, drums | https://www.looperman.com/loops/genres/free-punk-loops-samples-sounds-wavs-download |
+| Freesound - Cavernous Black Metal Loops | Hewn.Marrow's harsh, reverb-drenched BM loops | https://freesound.org/people/Hewn.Marrow/packs/38659/ |
+| Archive.org - 377 Drum Loops | Hardcore drum loop sample pack | https://archive.org/details/377DrumLoopsSamplePack |
+| Prosonic Studios - Metal & Punk MIDI | Free MIDI drum patterns for metal/punk | https://www.prosonic-studios.com/midi-drum-beats/heavy-metal-and-punk-odd |
 
-### Browse More Packs
-https://www.musicradar.com/news/tech/free-music-samples-royalty-free-loops-hits-and-multis-702616
+---
 
-## Secondary Source: Freesound API
+## ARCHIVED DICTATOR SPEECHES
 
-When `fetch_samples.py` can't find a good local match for a pad description, it falls back to the Freesound API.
+| Source | Description | URL |
+|--------|-------------|-----|
+| Archive.org - Hitler Speeches (English Audio) | Extensive MP3 collection, 1920s-1930s | https://archive.org/details/HitlersSpeechesInEnglishAudio |
+| Archive.org - Mussolini Addressing Crowd in Rome | Newsreel audio, Universal News | https://archive.org/details/CEP535 |
+| Archive.org - Rare Mussolini Speech in English | Fox Movietone newsreel | https://archive.org/details/ExtremelyRareMussoliniSpeechInEnglish |
+| Archive.org - Mussolini Racial Laws Speech (1938) | Trieste speech with English subs | https://archive.org/details/mussolini-speech-on-the-racial-laws-in-trieste-sep-18-of-1938-english-subs |
+| Archive.org - Mussolini Political Speeches | LibriVox reading of speeches 1914-1923 | https://archive.org/details/mussolini_political_speeches_2007_librivox |
+| Archive.org - Stalin War Speeches (1941) | Generalissimo Stalin wartime addresses | https://archive.org/details/in.ernet.dli.2015.183559 |
+| Archive.org - Hitler/Stalin/Mussolini | Combined collection | https://archive.org/details/HitlerStalinMussolini |
+| Archive.org - Chaplin Great Dictator Speech | The iconic satirical speech (great for sampling) | https://archive.org/details/the-final-speech-from-the-great-dictator |
 
-**Setup:** Add `FREESOUND_API_KEY=your_key_here` to `.env` in the project root.
+---
 
-**How it works:**
-1. Fetcher builds a search query from the pad description keywords
-2. Hits Freesound API, filters for Creative Commons licensed samples
-3. Downloads the best match to `~/Music/SP404-Sample-Library/Freesound/{bank-name}/`
-4. Converts to SP-404 format (16-bit/44.1kHz/mono)
-5. Stores attribution metadata alongside the file
+## NU-RAVE / INDIE SLEAZE
 
-**Get an API key:** https://freesound.org/apiv2/apply/
+| Source | Description | URL |
+|--------|-------------|-----|
+| MusicRadar - 505 Rave Synth Samples | Free WAVs: acid 303s, rave pianos, pads, stabs | https://www.musicradar.com/news/sampleradar-rave-synths-samples |
+| Looperman - Rave Loops | 165+ free rave loops, user-uploaded | https://www.looperman.com/loops/genres/free-rave-loops-samples-sounds-wavs-download |
+| Looperman - Rave Synth Loops | Rave synth-specific loops | https://www.looperman.com/loops?gid=20&cid=4 |
+| Sample Focus - Rave | Royalty-free rave sounds and loops | https://samplefocus.com/tag/rave |
+| Free Sample Packs - Rave | Curated list of free rave packs | https://free-sample-packs.com/tag/rave/ |
+| Riemann Kollektion - Techno Starter 2025 | Free pack: sweeps, crashes, glitches, stabs — works for nu-rave | https://riemannkollektion.com/products/riemann-techno-starter-sample-pack-for-ableton-and-fl-studio |
 
-Freesound downloads are stored separately from the MusicRadar library so attribution requirements stay clear.
+---
 
-## Plex Metadata Enrichment
+## IDM / TRANCE / HOUSE
 
-Plex is not a sample source — it's a **metadata enrichment layer** that enhances everything else in the pipeline.
+| Source | Description | URL |
+|--------|-------------|-----|
+| Myloops - 1GB+ Free Trance Samples | Synths, basslines, atmospheres, 137-140 BPM WAVs | https://www.myloops.net/download-free-trance-samples |
+| Free-Sample-Packs - Trance | Curated free trance packs, royalty-free | https://free-sample-packs.com/trance/ |
+| Ancore Sounds - Free Trance & EDM | Free demo packs, construction kits, MIDI | https://ancoresounds.com/free-sounds/free-samples/ |
+| Samplephonics - Free Trance | Free trance sample pack downloads | https://www.samplephonics.com/products/free/trance |
+| Samplesound - Free Tech House | Free tech house samples collection | https://www.samplesoundmusic.com/collections/free-tech-house-samples |
+| Lucid Samples - Trance Packs | Trance sample packs and loops | https://www.lucidsamples.com/34-trance-samples-packs |
+| Musicians HQ - 3,457 Free Trance Packs | Massive curated list of free trance samples | https://musicianshq.com/free-trance-sample-packs/ |
 
-**What it provides:**
-- **298 mood tags** mapped to our 15 internal vibes via `MOOD_TO_VIBE` in `plex_client.py`
-- **412 style tags** mapped to our genre categories via `STYLE_TO_GENRE` in `plex_client.py`
-- BPM, key, play count, artist bios, album art, playlist membership
-- Country/origin data for artists
+---
 
-**How it affects sample scoring:**
-- Stems split from Plex-sourced tracks inherit all Plex metadata in `_tags.json`
-- `fetch_samples.py` gives a small scoring boost to Plex-tagged samples (richer metadata = higher confidence)
-- Play count acts as a relevance signal — frequently played tracks score higher
+## AGGRESSIVE BASSLINES
 
-**Library stats:** 33,408 tracks, 1,005 artists at `/Volumes/Jansen's FL Drobo/Multimedia/Music`
+| Source | Description | URL |
+|--------|-------------|-----|
+| Free Sample Packs - 100 Bass One-Shots | 100 bass samples, 24-bit WAV, no signup | https://free-sample-packs.com/100-free-bass-samples/ |
+| Sample Focus - Aggressive Bass | Tagged aggressive bass one-shots | https://samplefocus.com/samples/bass-aggressive |
+| Sample Focus - Heavy Bass | Heavy/aggressive bass hits | https://samplefocus.com/samples/heavy-bass-aggressive-bass |
+| WAVS - Free Bass Samples | Range from deep to gritty/aggressive | https://wavs.com/free-samples/instruments/bass |
+| Noiiz - Bass Loops & One-Shots | 10,383+ royalty-free bass samples | https://www.noiiz.com/sounds/instruments/13 |
+| Looperman - Bass Loops | Free user-uploaded bass loops | https://www.looperman.com/loops/tags/free-bass-loops-samples-sounds-wavs-download |
+| Free Sample Packs - Rogue Collection | Raw reverse basses, gritty psy basses, distorted screeches for hard dance/neorave | https://free-sample-packs.com/bass/ |
 
-## Adding New Packs
+---
 
-1. Download ZIPs to `~/Downloads/`
-2. Run `python scripts/ingest_downloads.py` — extracts, categorizes, and archives
-3. Run `python scripts/tag_library.py --update` — tags new files only
-4. New samples are immediately available to `fetch_samples.py`
+## DIRTY PARTY HORNS / BRASS STABS
 
-## Current Library Stats
+| Source | Description | URL |
+|--------|-------------|-----|
+| W.A. Production - Free EDM Brass Shots & Stabs | 31 key-labelled brass stabs, royalty-free | https://www.waproduction.com/sounds/view/free-edm-drop-brass-shots-and-stabs |
+| W.A. Production - Free Epic Horns | Epic horn hits and stabs | https://www.waproduction.com/sounds/view/free-epic-horns |
+| Sample Focus - Brass Stab | Trombone/brass stab one-shots | https://samplefocus.com/samples/brass-stab |
+| Sample Focus - Hard Trap Brass Stab | Synth brass stabs for trap/party | https://samplefocus.com/samples/hard-trap-brass-stab |
+| Looperman - Brass Stabs | Free brass stab loops and one-shots | https://www.looperman.com/loops/tags/free-brass-stabs-loops-samples-sounds-wavs-download |
+| Samplephonics - Free Horns & Wind | Free horn loops and samples | https://www.samplephonics.com/products/free/horns-wind |
+| Digit Sounds - Free Brass Samples | Funk horns, reggae horns, hip-hop horns | https://www.digitsounds.com/products/digit-12s-free-brass-samples |
+| SampleSwap - Horns & Brass | Individual horn/brass instrument samples | https://sampleswap.org/filebrowser-new.php?d=INSTRUMENTS+(SINGLE+SAMPLES)/Horns+and+Brass/ |
 
-~9,600+ WAVs across all categories, tagged in `_tags.json`.
+---
 
-## AI-Generated Content
+## DOWNLOAD PRIORITY (best free, no-signup sources)
 
-### Pattern Generation (Magenta)
-
-`scripts/generate_patterns.py` uses a Magenta-compatible external generator (MusicVAE/GrooVAE) to create drum patterns and melodic sequences. These are **not audio samples** -- they are SP-404 .PTN pattern files written via the vendored spEdit404 library. Pattern files live in `sd-card-template/ROLAND/SP-404SX/PTN/` and do not go through the sample ingest pipeline.
-
-Requires `SP404_MUSICVAE_CHECKPOINT_DIR` and `SP404_MAGENTA_COMMAND` environment variables.
-
-### Vibe-Prompted Fetching
-
-`scripts/vibe_generate.py` translates natural-language sound descriptions into structured fetch parameters via a local LLM. This does not create new samples -- it scores and ranks existing library entries. Results include Plex metadata bonuses when available.
-
-Requires `SP404_LLM_ENDPOINT` environment variable.
-
-## Deduplication
-
-The sample library can accumulate duplicates across packs and sources. `scripts/deduplicate_samples.py` detects them using:
-
-1. **Chromaprint fingerprints** (via `fpcalc`) -- acoustic fingerprint comparison, preferred method
-2. **Python cosine similarity fallback** -- used when `fpcalc` is not installed
-
-**Usage:**
-```bash
-python scripts/deduplicate_samples.py --report-json   # Generate duplicate report
-python scripts/deduplicate_samples.py --clean          # Remove duplicates interactively
-python scripts/ingest_downloads.py --dedupe            # Run dedup after ingest
-```
-
-Install `fpcalc` via `brew install chromaprint` for best results.
-
-## Pack Contents Detail
-
-### 80s-synths (932 WAVs)
-- Polys and Pads — Lush analog pad recordings at various BPMs
-- Bass Loops — Synth bass loops
-- Arps and Leads — Sequenced arpeggios and lead lines
-- BPMs: 80, 95, 100, 105, 110, 120, 125, 130
-
-### drum-samples (934 WAVs)
-- Assorted Hits — Kicks, Snares, Hi Hats, Cymbals (one-shots)
-- Drum Kits — Electro Kit, Vinyl Kit, IDM Kit, etc. (loops per kit)
-
-### funk-samples (376 WAVs)
-- Organized by instrument: Bass, Guitar, Organ, Clavinet, Piano, Electric Piano, Monosynth
-- BPMs: 90, 110
-
-### hiphop-essentials (974 WAVs)
-- Drum Hits — Kicks, Snares, Hats, Claps, Percussion, Oberheim DX
-- Beats — Full drum loops
-- Loops — Instrument loops
-
-### idm-samples (500 WAVs)
-- 5 kits organized by BPM: 100, 120, 140, 160, 165
-- Each kit has Base Kit and Alternate folders
-
-### lofi-samples (587 WAVs)
-- Lo-Fi Drum Loops, Construction Kits at 70/90/100/120 BPM, SFX
-
-### soul-funk-samples (393 WAVs)
-- Construction kits at 100, 110, 120 BPM
-- Per-instrument: Bass, Guitar, Organ, Beats
-
-### synth-percussion (190 WAVs)
-- Misc Synth Perc Loops, Vermona DRM1 MK3 Loops, WaveDrum Loops
+1. **Looperman** — huge library, no account needed to browse, free WAVs
+2. **Archive.org** — dictator speeches + hardcore drum loops, direct download
+3. **MusicRadar/SampleRadar** — curated free packs (rave synths, glitch kits)
+4. **Mixkit** — clean free SFX downloads
+5. **Free-Sample-Packs.com** — aggregator with direct links
+6. **W.A. Production** — free brass/horn packs (may need email)
+7. **Sample Focus** — individual one-shots, free tier available
+8. **Freesound.org** — Creative Commons samples (free account required)

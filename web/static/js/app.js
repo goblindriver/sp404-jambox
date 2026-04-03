@@ -125,7 +125,17 @@ function renderBankTabs() {
         tab.className = 'bank-tab';
         tab.dataset.letter = bank.letter;
         tab.style.setProperty('--bank-color', bank.color);
-        tab.innerHTML = `<span class="tab-dot" style="background:${bank.color}"></span>${bank.letter.toUpperCase()}`;
+
+        // Show card fill count badge if SD data available
+        const cardBank = state.sdCardData?.banks?.[bank.letter.toUpperCase()];
+        const badge = cardBank && cardBank.filled_count > 0
+            ? `<span class="tab-card-badge">${cardBank.filled_count}</span>`
+            : '';
+        tab.innerHTML = `<span class="tab-dot" style="background:${bank.color}"></span>${bank.letter.toUpperCase()}${badge}`;
+
+        if (state.currentBank && state.currentBank.letter === bank.letter) {
+            tab.classList.add('active');
+        }
         tab.onclick = () => switchBank(bank);
         nav.appendChild(tab);
     }
@@ -164,6 +174,10 @@ function switchBank(bank) {
 function renderPadGrid(bank) {
     const grid = document.getElementById('pad-grid');
     grid.innerHTML = '';
+
+    // Get card data for this bank if available
+    const cardBank = state.sdCardData?.banks?.[bank.letter.toUpperCase()];
+
     for (const pad of bank.pads) {
         const el = document.createElement('button');
         el.className = `pad ${pad.status}`;
@@ -173,8 +187,24 @@ function renderPadGrid(bank) {
         el.style.setProperty('--bank-color-glow', bank.color + '55');
 
         const statusIcon = pad.status === 'filled' ? '●' : pad.status === 'staged' ? '◐' : '○';
+
+        // Card indicator — show what's physically on the SD card
+        let cardIndicator = '';
+        if (cardBank) {
+            const cardPad = cardBank.pads.find(p => p.num === pad.num);
+            if (cardPad && cardPad.on_card) {
+                const kb = Math.round(cardPad.size / 1024);
+                const mode = cardPad.loop ? 'LP' : cardPad.gate ? 'GT' : '';
+                const bpmStr = cardPad.bpm ? `${cardPad.bpm}` : '';
+                const parts = [mode, bpmStr].filter(Boolean).join(' ');
+                cardIndicator = `<span class="pad-card-badge" title="On SD: ${kb}KB ${parts}">${mode || '●'}</span>`;
+                el.classList.add('on-card');
+            }
+        }
+
         el.innerHTML = `
             <span class="pad-num">${pad.num}</span>
+            ${cardIndicator}
             <span class="pad-status-icon">${statusIcon}</span>
             <div class="pad-waveform" id="waveform-${pad.num}"></div>
             <span class="pad-label">${pad.description || 'empty'}</span>
@@ -242,6 +272,26 @@ function selectPad(pad) {
     } else {
         statusEl.textContent = '○ Empty';
         statusEl.className = 'detail-status empty';
+    }
+
+    // Show SD card pad info if available
+    const cardInfoEl = document.getElementById('detail-card-info');
+    if (cardInfoEl) {
+        const cardBank = state.sdCardData?.banks?.[bank.letter.toUpperCase()];
+        const cardPad = cardBank?.pads?.find(p => p.num === pad.num);
+        if (cardPad && cardPad.on_card) {
+            const kb = Math.round(cardPad.size / 1024);
+            const mode = cardPad.loop ? 'Loop' : cardPad.gate ? 'Gate' : 'Off';
+            const bpm = cardPad.bpm ? `${cardPad.bpm} BPM` : '';
+            const rev = cardPad.reverse ? ' · Reverse' : '';
+            cardInfoEl.textContent = `SD: ${kb}KB · ${mode}${bpm ? ' · ' + bpm : ''}${rev}`;
+            cardInfoEl.classList.remove('hidden');
+        } else if (cardBank) {
+            cardInfoEl.textContent = 'SD: not on card';
+            cardInfoEl.classList.remove('hidden');
+        } else {
+            cardInfoEl.classList.add('hidden');
+        }
     }
 
     document.getElementById('detail-desc').value = pad.description;
@@ -328,13 +378,46 @@ async function checkSDCard() {
             dot.className = 'sd-dot mounted';
             text.textContent = `SD: ${data.sample_count || 0} samples · ${data.free_mb || '?'}MB free`;
             deployBtn.disabled = false;
+
+            // Auto-scan on mount transition (card just inserted)
+            if (!state.sdMounted) {
+                state.sdMounted = true;
+                scanSDCard();
+            }
         } else {
             dot.className = 'sd-dot unmounted';
             text.textContent = 'SD: not connected';
             deployBtn.disabled = true;
+
+            if (state.sdMounted) {
+                state.sdMounted = false;
+                state.sdCardData = null;
+                // Re-render current bank to clear card indicators
+                if (state.currentBank) renderPadGrid(state.currentBank);
+            }
         }
     } catch (e) {
         // Server not running or error
+    }
+}
+
+async function scanSDCard() {
+    try {
+        const data = await api('/api/sdcard/scan');
+        if (!data.ok) return;
+
+        state.sdCardData = data;
+
+        const text = document.querySelector('.sd-text');
+        text.textContent = `SD: ${data.total_samples} samples · ${data.pattern_count} patterns · ${data.free_mb}MB free`;
+
+        toast(`SD card scanned: ${data.total_samples} samples across ${Object.values(data.banks).filter(b => b.filled_count > 0).length} banks`, 'success');
+
+        // Re-render to show card indicators
+        if (state.currentBank) renderPadGrid(state.currentBank);
+        renderBankTabs();
+    } catch (e) {
+        // Scan failed silently
     }
 }
 
@@ -411,6 +494,17 @@ async function buildAll() {
 
 async function generatePattern() {
     if (!state.currentBank) return;
+
+    // Check if current bank has a preset with scale patterns
+    const presetRef = state.currentBank.preset;
+    if (presetRef) {
+        const presetData = await api(`/api/presets/${presetRef}`);
+        if (presetData && presetData.patterns && presetData.patterns.length > 0) {
+            return generateScalePatterns(presetRef);
+        }
+    }
+
+    // Fallback: Magenta-based generation
     const variant = prompt('Pattern variant (drum, melody, trio):', 'drum');
     if (!variant) return;
     const bars = parseInt(prompt('Bars:', '2') || '2', 10);
@@ -442,12 +536,36 @@ async function generatePattern() {
     }
 }
 
+async function generateScalePatterns(presetRef) {
+    if (!state.currentBank) return;
+    const bank = state.currentBank.letter;
+    toast(`Generating scale patterns for Bank ${bank.toUpperCase()}...`);
+
+    const result = await api('/api/pattern/scale-generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            preset_ref: presetRef,
+            bank: bank,
+            bars: 2,
+        }),
+    });
+
+    if (result.ok && result.patterns) {
+        const names = result.patterns.map(p => p.name).join(', ');
+        toast(`Generated ${result.patterns.length} patterns: ${names}`, 'success');
+    } else {
+        toast(result.error || 'Scale pattern generation failed', 'error');
+    }
+}
+
 async function deploy() {
     toast('Deploying to SD card...');
     const result = await api('/api/pipeline/deploy', {method: 'POST'});
     if (result.ok) {
         toast('Deployed to SD card', 'success');
         checkSDCard();
+        scanSDCard();
     } else {
         toast(result.error || 'Deploy failed', 'error');
     }
@@ -512,6 +630,7 @@ async function exportToSD() {
         btn.textContent = 'Done!';
         toast('Exported to SD card', 'success');
         checkSDCard();
+        scanSDCard();
         setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
     } else {
         toast(result.error || 'Deploy failed', 'error');
@@ -1634,17 +1753,43 @@ async function previewPreset(ref) {
         ${data.tags?.length ? `<div style="margin-top:6px">${data.tags.map(t => `<span class="preset-tag">${t}</span>`).join(' ')}</div>` : ''}
     `;
 
-    // Pad grid
+    // Pad grid — show scale mapping note if available
     const padsEl = document.getElementById('preset-preview-pads');
+    const scaleMap = data.scale_mapping?.pads || {};
     let html = '';
     for (let i = 1; i <= 12; i++) {
         const desc = data.pads?.[i] || data.pads?.[String(i)] || '';
+        const note = scaleMap[i] || scaleMap[String(i)] || '';
         html += `<div class="preset-preview-pad">
-            <div class="preset-preview-pad-num">${i}</div>
+            <div class="preset-preview-pad-num">${i}${note ? ` <span style="color:var(--accent);font-size:10px">${note}</span>` : ''}</div>
             <div class="preset-preview-pad-desc">${desc || '—'}</div>
         </div>`;
     }
+
+    // Show patterns info if available
+    if (data.patterns?.length) {
+        html += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Patterns:</div>
+            ${data.patterns.map(p => `<span class="preset-tag">${p.name} (${p.type})</span>`).join(' ')}
+        </div>`;
+    }
     padsEl.innerHTML = html;
+
+    // Show/update generate patterns button
+    const loadBtn = document.getElementById('btn-load-preset');
+    if (data.patterns?.length && loadBtn) {
+        // Add generate patterns button after load button if not already there
+        if (!document.getElementById('btn-gen-preset-patterns')) {
+            const genBtn = document.createElement('button');
+            genBtn.id = 'btn-gen-preset-patterns';
+            genBtn.className = 'btn';
+            genBtn.textContent = 'Generate Patterns';
+            genBtn.onclick = () => generateScalePatterns(ref);
+            loadBtn.parentNode.appendChild(genBtn);
+        }
+    } else {
+        document.getElementById('btn-gen-preset-patterns')?.remove();
+    }
 }
 
 function closePresetPreview() {

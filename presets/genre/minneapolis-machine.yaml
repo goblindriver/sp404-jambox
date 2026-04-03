@@ -1,0 +1,32 @@
+name: Minneapolis Machine
+slug: minneapolis-machine
+author: jambox
+bpm: 90
+key: Db
+vibe: P.O.S production — odd-meter drums, noise layers, boom-bap meets Doomtree collective
+notes: 'Built from Tiger Dust Minneapolis hip-hop cluster. P.O.S (7x), Doomtree (2x),
+  SHREDDERS (2x) = 11 combined appearances. Complex drum layering, odd-meter experiments,
+  crew-based production. Nobody else is building SP-404 presets around this sound.
+
+  '
+source: curated
+tags:
+- hip-hop
+- minneapolis
+- boom-bap
+- experimental
+- doomtree
+- noise
+pads:
+  1: KIK deep boomy compressed one-shot
+  2: SNR cracked layered dusty one-shot
+  3: HHT crisp tight programmed one-shot
+  4: PRC shaker metallic textured one-shot
+  5: BAS synth gritty sub growl loop
+  6: VOX chopped rapid-fire rap vocal loop
+  7: DRM boom-bap swing dusty break loop
+  8: SYN noise glitch texture ambient loop
+  9: BAS distorted mid-range fuzz bass loop
+  10: DRM odd-meter complex polyrhythm loop
+  11: SYN dark pad atmospheric drone loop
+  12: FX vinyl crackle tape hiss texture loop

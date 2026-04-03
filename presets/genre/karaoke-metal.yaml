@@ -1,0 +1,33 @@
+name: Karaoke Metal
+slug: karaoke-metal
+author: jambox
+bpm: 140
+key: Em
+vibe: DOPE WIZARDS energy — epic, singable, power chord fury
+notes: 'Built from DOPE WIZARDS playlist (34 tracks) + karaoke metal crossover. Power
+  metal, symphonic, singable. References: Rhapsody, Blind Guardian, Manowar, Sabaton,
+  Battle Beast. Epic chord progressions, blast beats, choir stabs, melodic vocal spaces.
+  Metal for performing, not just headbanging.
+
+  '
+source: curated
+tags:
+- metal
+- power-metal
+- epic
+- symphonic
+- singable
+- heavy
+pads:
+  1: KIK metal tight double-kick one-shot
+  2: SNR crack sharp ringy metal one-shot
+  3: HHT bright open crash cymbal one-shot
+  4: TOM floor deep thunder roll one-shot
+  5: GTR power chord chugging palm-mute loop
+  6: GTR lead melody harmonized twin loop
+  7: CHR epic choir symphonic stab loop
+  8: STR orchestral sweep cinematic rise loop
+  9: BAS galloping eighth-note metal bass loop
+  10: DRM blast beat double-kick fury loop
+  11: GTR clean arpeggio ballad intro loop
+  12: FX crowd roar arena chant anthem loop

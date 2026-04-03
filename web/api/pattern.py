@@ -1,4 +1,4 @@
-"""Pattern generation API."""
+"""Pattern generation API — Magenta-based and scale-mapped algorithmic patterns."""
 
 import json
 import os

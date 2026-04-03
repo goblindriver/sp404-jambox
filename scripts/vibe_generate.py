@@ -100,7 +100,7 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
     if not endpoint:
         raise IntegrationFailure("llm_not_configured", "SP404_LLM_ENDPOINT is required for vibe generation")
 
-    system_prompt = (
+    system_prompt = get_system_prompt(
         "You convert creative music prompts into SP-404 sample search tags. "
         "Return JSON only with keys: keywords, type_code, playability, vibe, genre, texture, energy, rationale. "
         "keywords should be a short list of lower-case search terms. "

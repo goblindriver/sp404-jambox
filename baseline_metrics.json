@@ -1,0 +1,278 @@
+[
+  {
+    "prompt": "dusty funk drums",
+    "time": 40.4,
+    "result": {
+      "keywords": [
+        "dusty",
+        "funk",
+        "drums",
+        "grit",
+        "analog"
+      ],
+      "type_code": "DRM",
+      "playability": "loop",
+      "vibe": [
+        "gritty groove"
+      ],
+      "genre": [
+        "funk/soul"
+      ],
+      "texture": [
+        "vinyl crackle"
+      ],
+      "energy": [
+        "high"
+      ],
+      "rationale": "Dusty funk drums with analog grit, channeling P.O.S.'s experimental hip-hop drum complexity and the rawness of Chris Stapleton's country soul. Use SP-404's loop function to sustain the groove with tape hiss and syncopated breaks."
+    }
+  },
+  {
+    "prompt": "dark industrial bass",
+    "time": 34.5,
+    "result": {
+      "keywords": [
+        "crushed industrial bass",
+        "distorted synth bass",
+        "bitcrushed low end"
+      ],
+      "type_code": "BAS",
+      "playability": "loop",
+      "vibe": [
+        "crystal castles darkness"
+      ],
+      "genre": [
+        "industrial techno"
+      ],
+      "texture": [
+        "gritty distorted"
+      ],
+      "energy": [
+        "high-intensity"
+      ],
+      "rationale": "Combines Crystal Castles' bitcrushed aggression with industrial bass fundamentals, using SP-404's granular processing to create a raw, distorted low-end that sustains energy through layers of noise and synthetic grit."
+    }
+  },
+  {
+    "prompt": "dreamy synth pad",
+    "time": 41.5,
+    "result": {
+      "keywords": [
+        "dreamy",
+        "granular",
+        "synth",
+        "pad"
+      ],
+      "type_code": "PAD",
+      "playability": "loop",
+      "vibe": [
+        "purity ring granular shimmer"
+      ],
+      "genre": [
+        "synth-pop/ambient"
+      ],
+      "texture": [
+        "smooth",
+        "ethereal",
+        "slightly detuned"
+      ],
+      "energy": [
+        "high"
+      ],
+      "rationale": "Combines Purity Ring's granular synth techniques with Crystal Castles' bitcrushed distortion for a dreamy, immersive pad that sustains energy over hours. The loop playability ensures it can be layered with aggressive elements from the CHVRCHES/Prodigy palette."
+    }
+  },
+  {
+    "prompt": "aggressive punk guitar",
+    "time": 45.0,
+    "result": {
+      "keywords": [
+        "le_tigre_raw",
+        "punk_distortion",
+        "crystal_castles_crushed",
+        "pos_chaos",
+        "guitar_chaos"
+      ],
+      "type_code": "GTR",
+      "playability": "chop-ready",
+      "vibe": [
+        "riot grrr\u043b"
+      ],
+      "genre": [
+        "punk"
+      ],
+      "texture": [
+        "raw distortion + bitcrush"
+      ],
+      "energy": [
+        "high"
+      ],
+      "rationale": "Combines Le Tigre's feminist punk energy with Crystal Castles' bitcrushed aggression, layered over P.O.S-style chaotic rhythms. The SP-404's chopping capabilities let you slice through distorted guitar tones like a weapon, maintaining the DIY intensity required for sustained performance energy."
+    }
+  },
+  {
+    "prompt": "lo-fi hip hop beat",
+    "time": 41.7,
+    "result": {
+      "keywords": [
+        "vinyl crackle",
+        "tape hiss",
+        "broken beats",
+        "lo-fi vinyl",
+        "tape saturation"
+      ],
+      "type_code": "DRM",
+      "playability": "chop-ready",
+      "vibe": [
+        "relaxed grit"
+      ],
+      "genre": [
+        "lo-fi hip hop"
+      ],
+      "texture": [
+        "warm analog decay"
+      ],
+      "energy": [
+        "low-mid with intensity"
+      ],
+      "rationale": "Combines P.O.S. experimental hip-hop drum complexity with lo-fi vinyl textures. Emulates the raw, tape-saturated feel of DIY recordings while maintaining the rhythmic unpredictability of Minneapolis beatmaking. SP-404's granular capabilities add the necessary grit to sustain energy over hours."
+    }
+  },
+  {
+    "prompt": "neon rave stab",
+    "time": 53.8,
+    "result": {
+      "keywords": [
+        "neon rave stab",
+        "bitcrushed synth",
+        "acid bass stab",
+        "crystal castles",
+        "chemical brothers"
+      ],
+      "type_code": "SYN",
+      "playability": "one-shot",
+      "vibe": [
+        "high-energy neon glow"
+      ],
+      "genre": [
+        "rave/big beat"
+      ],
+      "texture": [
+        "sharp",
+        "bitcrushed",
+        "cutting"
+      ],
+      "energy": [
+        "maximum"
+      ],
+      "rationale": "Combines Crystal Castles' bitcrushed darkness with Chemical Brothers' rave aggression. The 'stab' should be a bright, high-contrast synth hit with heavy saturation and reverb, designed for live manipulation on SP-404. Prioritizes intensity over subtlety, aligning with the neon rave aesthetic."
+    }
+  },
+  {
+    "prompt": "warm disco strings",
+    "time": 49.9,
+    "result": {
+      "keywords": [
+        "disco strings",
+        "warm sultry",
+        "gritty"
+      ],
+      "type_code": "STR",
+      "playability": "layer,loop",
+      "vibe": [
+        "disco sultry"
+      ],
+      "genre": [
+        "disco",
+        "string groove"
+      ],
+      "texture": [
+        "warm gritty"
+      ],
+      "energy": [
+        "high"
+      ],
+      "rationale": "Lush, sultry string arrangements with a gritty edge to match the intensity of disco. Layer for depth and loop for continuous groove, avoiding safe subtlety in favor of committed texture."
+    }
+  },
+  {
+    "prompt": "bitcrushed Crystal Castles lead",
+    "time": 48.1,
+    "result": {
+      "keywords": [
+        "bitcrush",
+        "crystal castles lead",
+        "crushed synth"
+      ],
+      "type_code": "SYN",
+      "playability": "loop",
+      "vibe": [
+        "crushed"
+      ],
+      "genre": [
+        "hyperpop"
+      ],
+      "texture": [
+        "bitcrushed gritty"
+      ],
+      "energy": [
+        "aggressive"
+      ],
+      "rationale": "Crystal Castles' signature bitcrushed leads demand a SYN type_code with heavy processing. Loop playability sustains the chaotic energy over hours, matching the aggressive vibe of their industrial lo-fi sound. Prioritizing intensity over subtlety aligns with the 'nothing timid' principle."
+    }
+  },
+  {
+    "prompt": "Purity Ring granular texture",
+    "time": 54.8,
+    "result": {
+      "keywords": [
+        "granular synth",
+        "lush pad",
+        "processed granular"
+      ],
+      "type_code": "SYN",
+      "playability": "loop, layer",
+      "vibe": [
+        "lush intensity"
+      ],
+      "genre": [
+        "synth-pop"
+      ],
+      "texture": [
+        "granular shimmer"
+      ],
+      "energy": [
+        "high intensity"
+      ],
+      "rationale": "Granular synth textures from Purity Ring's lush pads combined with processed granular effects. Layered for depth and looped for sustained energy, aligning with synth-pop's aggressive warmth and experimental edge."
+    }
+  },
+  {
+    "prompt": "Chris Stapleton blues slide",
+    "time": 50.8,
+    "result": {
+      "keywords": [
+        "stapleton",
+        "slide",
+        "blues",
+        "raw",
+        "conviction"
+      ],
+      "type_code": "GTR",
+      "playability": "loop",
+      "vibe": [
+        "raw conviction"
+      ],
+      "genre": [
+        "blues country"
+      ],
+      "texture": [
+        "raw guitar"
+      ],
+      "energy": [
+        "high"
+      ],
+      "rationale": "Chris Stapleton's blues slide requires a guitar sample with gritty distortion and slide effect, layered with vocal chops. The SP-404's granular capabilities can warp the slide into a howling vocal-like texture, merging country soul with the rawness of P.O.S. noise layers."
+    }
+  }
+]

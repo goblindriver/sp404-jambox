@@ -1,0 +1,10 @@
+name: Metal Hour
+slug: metal-hour
+author: jambox
+description: >
+  DOPE WIZARDS energy. Power metal, sludge, thrash — heavy
+  and singable. Pair with Minneapolis Machine for contrast.
+presets:
+  - genre/karaoke-metal
+  - genre/minneapolis-machine
+  - genre/crystal-chaos

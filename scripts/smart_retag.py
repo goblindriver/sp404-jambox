@@ -23,6 +23,7 @@ import urllib.error
 import urllib.request
 
 from jambox_config import ConfigError, load_settings_for_script
+from taste_engine import get_system_prompt
 
 SETTINGS = load_settings_for_script(__file__)
 TAGS_FILE = SETTINGS["TAGS_FILE"]
@@ -65,22 +66,21 @@ VALID_PLAYABILITIES = {"one-shot", "loop", "chop-ready", "chromatic", "layer", "
 # LLM interface
 # ═══════════════════════════════════════════════════════════
 
-SYSTEM_PROMPT = """You are a music production expert who classifies audio samples for an SP-404 sampler library.
-
-Given a sample's filename, directory path, and current auto-generated tags, return improved tags.
-You understand music production terminology, genre conventions, and sample naming patterns.
-
-Rules:
-- Return ONLY valid JSON, no markdown fences, no explanation
-- type_code: use ONLY from the valid list. Correct misclassifications (e.g., a spoken word file tagged SFX should be VOX)
-- vibe: 1-2 tags from the valid list. Use your knowledge of the genre/context
-- texture: 1-2 tags from the valid list
-- genre: 1-2 tags from the valid list. Infer from pack name, artist references, style cues
-- energy: one of low/mid/high
-- playability: one of the valid options
-- rationale: one short sentence explaining your classification
-- If the existing tags are already good, return them unchanged
-- NEVER invent tags outside the valid lists"""
+SYSTEM_PROMPT = get_system_prompt(
+    "You classify audio samples for an SP-404 sampler library. "
+    "Given a sample's filename, directory path, and current auto-generated tags, return improved tags.\n\n"
+    "Rules:\n"
+    "- Return ONLY valid JSON, no markdown fences, no explanation\n"
+    "- type_code: use ONLY from the valid list. Correct misclassifications (e.g., a spoken word file tagged SFX should be VOX)\n"
+    "- vibe: 1-2 tags from the valid list. Use your knowledge of the genre/context\n"
+    "- texture: 1-2 tags from the valid list\n"
+    "- genre: 1-2 tags from the valid list. Infer from pack name, artist references, style cues\n"
+    "- energy: one of low/mid/high\n"
+    "- playability: one of the valid options\n"
+    "- rationale: one short sentence explaining your classification\n"
+    "- If the existing tags are already good, return them unchanged\n"
+    "- NEVER invent tags outside the valid lists"
+)
 
 BATCH_SIZE = 1  # one sample per LLM call — local models are too slow for batches
 

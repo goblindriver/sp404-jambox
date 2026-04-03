@@ -1,0 +1,71 @@
+name: Jam Session Songwriter
+slug: jam-session-songwriter
+author: jasongronvold
+bpm: 120
+key: Am
+vibe: Wobbly delay textures from live jam — stems as foundation, scale-mapped pads for melodic writing
+notes: Pads 1-4 are stems from a live jam session with BPM drift and delay effects.
+  Pads 5-12 are melodic content in Am for writing over the jam grooves. Embrace the
+  wobbly living feel — swing patterns match the loose timing of the original recording.
+source: jam-derived
+tags:
+- songwriting
+- jam-session
+- a-minor
+- stems
+- arpeggiation
+- delay
+- wobbly
+- live-recording
+scale_mapping:
+  root: A3
+  scale: minor
+  pads:
+    5: A3
+    6: B3
+    7: C4
+    8: D4
+    9: E4
+    10: F4
+    11: G4
+    12: A4
+pads:
+  1: BRK jam-stem groovy clean loop
+  2: BAS jam-stem warm Am loop
+  3: SYN jam-stem wobbly delay Am loop
+  4: FX jam-stem compressed lo-fi loop
+  5: PAD ambient dreamy Am loop
+  6: BAS warm deep Am loop
+  7: KEY piano mellow Am loop
+  8: SYN arp dreamy Am loop
+  9: PAD warm ambient Am loop
+  10: SYN lead warm Am loop
+  11: SMP jam-stem full groovy Am loop
+  12: VOX atmospheric Am chop-ready
+patterns:
+- name: Wobbly Arp
+  type: arpeggio
+  direction: up
+  pads: [5, 6, 7, 8, 9, 10]
+  rate: 1/8
+  swing: 0.62
+  velocity: 90
+- name: Pendulum Drift
+  type: arpeggio
+  direction: updown
+  pads: [5, 6, 7, 8, 9, 10]
+  rate: 1/16
+  swing: 0.65
+  velocity: 80
+- name: Bass Pulse
+  type: sequence
+  pads: [6, 6, 5, 6]
+  rate: 1/4
+  swing: 0.58
+  velocity: 110
+- name: Am Drone
+  type: progression
+  pads: [5, 9, 5, 7]
+  rate: 1bar
+  swing: 0.5
+  velocity: 95

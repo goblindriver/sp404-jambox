@@ -679,6 +679,46 @@ main {
 .detail-status.filled { color: #4CAF50; }
 .detail-status.empty { color: var(--text-muted); }
 
+.detail-card-info {
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(0, 188, 212, 0.1);
+    color: #00BCD4;
+    border: 1px solid rgba(0, 188, 212, 0.2);
+}
+
+/* SD card indicators on pads */
+.pad-card-badge {
+    position: absolute;
+    top: 4px;
+    right: 22px;
+    font-size: 8px;
+    font-family: 'Space Mono', monospace;
+    color: #00BCD4;
+    background: rgba(0, 188, 212, 0.15);
+    padding: 1px 4px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+}
+
+.pad.on-card {
+    border-color: rgba(0, 188, 212, 0.25);
+}
+
+/* Bank tab card badge */
+.tab-card-badge {
+    font-size: 9px;
+    font-family: 'Space Mono', monospace;
+    color: #00BCD4;
+    background: rgba(0, 188, 212, 0.15);
+    padding: 0 4px;
+    border-radius: 3px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
 .detail-desc {
     font-family: 'Inter', sans-serif;
     font-size: 13px;
