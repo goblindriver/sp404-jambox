@@ -37,7 +37,7 @@ def write_hex(f, hex_string):
 def write_note(note, next_note_start_tick):
     velocity = add_padding(str(hex(note.velocity))[2:], 2)
     next_note = next_note_start_tick - note.start_tick
-    next_note_hex = add_padding(str(hex(next_note))[2:], 2)
+    next_note_hex = add_padding(str(hex(next_note))[2:], 4)
     pad_code, bank_switch = gen_pad_code_bank_switch(note.bank, note.pad)
     length_hex = get_hex_length(note.length)
     return f'{next_note_hex}{pad_code}0{bank_switch}00{velocity}40{length_hex}\n'

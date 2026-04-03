@@ -64,6 +64,13 @@ _watcher_thread = None
 _watcher_stop = threading.Event()
 
 
+def _download_entries():
+    try:
+        return sorted(os.listdir(DOWNLOADS))
+    except OSError:
+        return []
+
+
 def get_watcher_state():
     """Get current watcher state (thread-safe)."""
     with _watcher_lock:
@@ -124,7 +131,10 @@ def is_sample_pack(dirname):
 
 def has_rar_files(folder):
     """Check if folder contains RAR archives."""
-    return any(f.endswith('.rar') for f in os.listdir(folder))
+    try:
+        return any(f.endswith('.rar') for f in os.listdir(folder))
+    except OSError:
+        return False
 
 
 def archive_has_audio(filepath):
@@ -276,23 +286,23 @@ def extract_archive(filepath, dest):
 
     if ext == '.zip':
         print(f"  Extracting ZIP: {os.path.basename(filepath)}...")
-        result = subprocess.run(
-            ['unzip', '-o', '-q', filepath, '-d', dest],
-            capture_output=True, text=True
-        )
+        command = ['unzip', '-o', '-q', filepath, '-d', dest]
     elif ext == '.rar':
         print(f"  Extracting RAR: {os.path.basename(filepath)}...")
-        result = subprocess.run(
-            [SETTINGS["UNAR_BIN"], '-o', dest, '-f', filepath],
-            capture_output=True, text=True
-        )
+        command = [SETTINGS["UNAR_BIN"], '-o', dest, '-f', filepath]
     elif ext == '.7z':
         print(f"  Extracting 7z: {os.path.basename(filepath)}...")
-        result = subprocess.run(
-            ['7z', 'x', filepath, f'-o{dest}', '-y'],
-            capture_output=True, text=True
-        )
+        command = ['7z', 'x', filepath, f'-o{dest}', '-y']
     else:
+        return False
+
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    except FileNotFoundError:
+        print(f"  Extract failed: command not found for {ext} archives")
+        return False
+    except subprocess.TimeoutExpired:
+        print(f"  Extract failed: timed out for {os.path.basename(filepath)}")
         return False
 
     if result.returncode != 0:
@@ -698,7 +708,7 @@ def ingest_archive_file(filepath, dry_run=False):
 def find_sample_packs():
     """Find sample pack folders in Downloads."""
     packs = []
-    for item in sorted(os.listdir(DOWNLOADS)):
+    for item in _download_entries():
         full_path = os.path.join(DOWNLOADS, item)
         if not os.path.isdir(full_path):
             continue
@@ -813,6 +823,9 @@ def should_ignore(filepath):
 def start_watcher(dedupe=False):
     """Start the background file watcher daemon."""
     global _watcher_thread
+    if not os.path.isdir(DOWNLOADS):
+        print(f"ERROR: downloads path not found: {DOWNLOADS}")
+        return False
     try:
         from watchdog.observers import Observer
         from watchdog.events import FileSystemEventHandler
@@ -963,6 +976,9 @@ def one_shot_ingest(dry_run=False, dedupe=False):
     """Run a single ingest pass (original behavior)."""
     os.makedirs(LIBRARY, exist_ok=True)
     os.makedirs(RAW_ARCHIVE, exist_ok=True)
+    if not os.path.isdir(DOWNLOADS):
+        print(f"Downloads path not found: {DOWNLOADS}")
+        return 0
 
     # Process sample pack folders
     packs = find_sample_packs()
@@ -977,7 +993,7 @@ def one_shot_ingest(dry_run=False, dedupe=False):
                 pack_count += 1
 
     # Also check for standalone audio files and archives in Downloads
-    for item in sorted(os.listdir(DOWNLOADS)):
+    for item in _download_entries():
         filepath = os.path.join(DOWNLOADS, item)
         if os.path.isdir(filepath):
             continue
@@ -1018,8 +1034,11 @@ def cleanup_downloads(dry_run=False):
     removed = 0
 
     print(f"Scanning {DOWNLOADS} for already-ingested items...")
+    if not os.path.isdir(DOWNLOADS):
+        print("Downloads path not found.")
+        return 0, 0
 
-    for item in sorted(os.listdir(DOWNLOADS)):
+    for item in _download_entries():
         full_path = os.path.join(DOWNLOADS, item)
 
         # Skip non-directories and non-archives at top level
@@ -1087,7 +1106,7 @@ def disk_usage_report():
     # Count cleanable items in Downloads
     cleanable = 0
     cleanable_count = 0
-    for item in os.listdir(DOWNLOADS):
+    for item in _download_entries():
         full = os.path.join(DOWNLOADS, item)
         if os.path.isdir(full) and os.path.exists(os.path.join(full, MARKER)):
             cleanable += _dir_size(full)

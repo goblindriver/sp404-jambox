@@ -32,6 +32,20 @@ def _stems_dir():
     return current_app.config['STEMS_DIR']
 
 
+def _json_object_body():
+    data = request.get_json() or {}
+    if not isinstance(data, dict):
+        raise ValueError('Request body must be a JSON object')
+    return data
+
+
+def _parse_track_id(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('track_id must be an integer') from exc
+
+
 def _get_plex():
     """Lazy-init Plex client, returns None if unavailable. Retries every 60s."""
     global _plex, _plex_last_check
@@ -513,17 +527,23 @@ def _run_split(job_id, track_data):
 @music_bp.route('/music/split', methods=['POST'])
 def split_track():
     """Split a track into stems via Demucs. Accepts Plex track ID."""
-    data = request.get_json()
-    track_id = data.get('track_id') or data.get('id')
-
-    if not track_id:
-        return jsonify({'error': 'No track ID provided'}), 400
+    try:
+        data = _json_object_body()
+        raw_track_id = data.get('track_id') or data.get('id')
+        if raw_track_id in (None, ''):
+            return jsonify({'error': 'No track ID provided'}), 400
+        track_id = _parse_track_id(raw_track_id)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
     plex = _get_plex()
     if not plex:
         return jsonify({'error': 'Plex not available'}), 500
 
-    track_data = plex.track(int(track_id))
+    try:
+        track_data = plex.track(track_id)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     if not track_data:
         return jsonify({'error': 'Track not found'}), 404
 
@@ -533,17 +553,17 @@ def split_track():
     # Check if already splitting
     with _split_lock:
         for j in _split_jobs.values():
-            if j['status'] == 'splitting' and j.get('track_id') == track_id:
+            if j['status'] in {'starting', 'splitting'} and j.get('track_id') == track_id:
                 return jsonify({'error': 'Already splitting', 'job_id': j['id']}), 409
 
-    job_id = str(uuid.uuid4())[:8]
-    _split_jobs[job_id] = {
-        'id': job_id,
-        'status': 'starting',
-        'track_id': track_id,
-        'track': f"{track_data.get('artist', '?')} — {track_data.get('title', '?')}",
-        'result': None,
-    }
+        job_id = str(uuid.uuid4())[:8]
+        _split_jobs[job_id] = {
+            'id': job_id,
+            'status': 'starting',
+            'track_id': track_id,
+            'track': f"{track_data.get('artist', '?')} — {track_data.get('title', '?')}",
+            'result': None,
+        }
 
     t = threading.Thread(target=_run_split, args=(job_id, track_data))
     t.daemon = True

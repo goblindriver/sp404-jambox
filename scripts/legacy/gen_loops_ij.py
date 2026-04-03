@@ -1,9 +1,10 @@
-exec(open('/sessions/happy-intelligent-edison/loop_core.py').read())
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'loop_core.py')).read())
 
 # ============================================
 # BANK I: AMBIENT/TEXTURAL LOOPS (free tempo, ~80bpm reference)
 # ============================================
-OUT_I = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/I-AmbientTextural'
+OUT_I = os.path.join(STAGING_BASE, 'I-AmbientTextural')
 BPM = 80
 n = bar_samples(BPM, 4)  # 4 bars for ambient (longer loops)
 bps = beat_samples(BPM)
@@ -150,7 +151,7 @@ print("=== BANK I LOOPS COMPLETE ===\n")
 # ============================================
 # BANK J: UTILITY/FX LOOPS
 # ============================================
-OUT_J = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/J-UtilityFX'
+OUT_J = os.path.join(STAGING_BASE, 'J-UtilityFX')
 BPM = 120  # Reference tempo for utility loops
 n = bar_samples(BPM, 2)
 bps = beat_samples(BPM)

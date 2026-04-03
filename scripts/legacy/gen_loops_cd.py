@@ -1,9 +1,10 @@
-exec(open('/sessions/happy-intelligent-edison/loop_core.py').read())
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'loop_core.py')).read())
 
 # ============================================
 # BANK C: LO-FI HIP-HOP LOOPS (88bpm)
 # ============================================
-OUT_C = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/C-LofiHipHop'
+OUT_C = os.path.join(STAGING_BASE, 'C-LofiHipHop')
 BPM = 88
 
 # --- Make quick drum sounds for loops ---
@@ -164,7 +165,7 @@ print("=== BANK C LOOPS COMPLETE ===\n")
 # ============================================
 # BANK D: WITCH HOUSE LOOPS (70bpm)
 # ============================================
-OUT_D = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/D-WitchHouse'
+OUT_D = os.path.join(STAGING_BASE, 'D-WitchHouse')
 BPM = 70
 n = bar_samples(BPM, 2)
 

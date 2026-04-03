@@ -26,6 +26,10 @@ AUDIO_EXTS = {'.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wma',
               '.wav', '.aif', '.aiff', '.alac', '.ape', '.wv'}
 
 
+def _normalize_index_data(payload):
+    return payload if isinstance(payload, dict) else {}
+
+
 def read_tags(filepath):
     """Read ID3/metadata tags from an audio file using mutagen.
 
@@ -85,7 +89,10 @@ def read_tags(filepath):
 
         # Duration
         if hasattr(audio, 'info') and audio.info:
-            tags['duration'] = round(audio.info.length, 1)
+            try:
+                tags['duration'] = round(float(audio.info.length), 1)
+            except (TypeError, ValueError):
+                tags['duration'] = 0
 
         return tags
 
@@ -124,7 +131,7 @@ def scan_library(music_root, existing_index=None, update_only=False):
 
     Returns dict: { relative_path: { artist, album, title, genre, year, ... } }
     """
-    index = existing_index or {}
+    index = _normalize_index_data(existing_index)
     scanned = 0
     new = 0
     errors = 0
@@ -199,11 +206,14 @@ def scan_library(music_root, existing_index=None, update_only=False):
 
 def build_browse_index(index):
     """Build aggregated browse data: artists, albums, genres, decades."""
+    index = _normalize_index_data(index)
     artists = {}  # artist -> { albums: {album: [tracks]}, track_count }
     genres = {}   # genre -> count
     decades = {}  # decade -> count
 
     for rel_path, entry in index.items():
+        if not isinstance(entry, dict):
+            continue
         artist = entry.get('artist', 'Unknown')
         album = entry.get('album', 'Unknown')
         genre = entry.get('genre', 'Unknown')
@@ -253,7 +263,7 @@ def main():
     if args.update or args.stats:
         try:
             with open(INDEX_FILE) as f:
-                existing = json.load(f)
+                existing = _normalize_index_data(json.load(f))
             print(f"Loaded existing index: {len(existing)} tracks")
         except (FileNotFoundError, json.JSONDecodeError):
             pass
@@ -277,6 +287,7 @@ def main():
     index = scan_library(args.path, existing, args.update)
 
     # Save
+    os.makedirs(os.path.dirname(INDEX_FILE), exist_ok=True)
     with open(INDEX_FILE, 'w') as f:
         json.dump(index, f, indent=1, sort_keys=True)
     print(f"Saved index to {INDEX_FILE}")

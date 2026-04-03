@@ -46,6 +46,10 @@ def main():
     for letter in BANK_LETTERS:
         bank_key = f'bank_{letter}'
         bank = config.get(bank_key, {})
+        if not isinstance(bank, dict):
+            print(f"  Bank {letter.upper()}: invalid config entry, skipping")
+            set_banks[letter] = None
+            continue
         name = bank.get('name', f'Bank {letter.upper()}')
 
         if not bank.get('pads'):
@@ -53,7 +57,12 @@ def main():
             set_banks[letter] = None
             continue
 
-        preset = bank_to_preset(letter, config)
+        try:
+            preset = bank_to_preset(letter, config)
+        except (TypeError, ValueError) as exc:
+            print(f"  Bank {letter.upper()}: {name} — migration failed ({exc})")
+            set_banks[letter] = None
+            continue
         if not preset:
             print(f"  Bank {letter.upper()}: {name} — could not extract preset")
             set_banks[letter] = None
@@ -96,7 +105,11 @@ def main():
             bank_key = f'bank_{letter}'
             ref = set_banks.get(letter)
             if ref:
-                config[bank_key]['preset'] = ref
+                bank = config.get(bank_key)
+                if not isinstance(bank, dict):
+                    bank = {}
+                    config[bank_key] = bank
+                bank['preset'] = ref
         config['active_set'] = 'default'
         _save_config(config)
         print(f"\n  → bank_config.yaml updated (active_set: default, preset refs added)")

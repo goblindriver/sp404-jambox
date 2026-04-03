@@ -23,6 +23,7 @@ REPO_DIR = SETTINGS["REPO_DIR"]
 DEFAULT_PTN_DIR = os.path.join(REPO_DIR, "sd-card-template", "ROLAND", "SP-404SX", "PTN")
 TICKS_PER_QUARTER = 96
 SUPPORTED_VARIANTS = {"drum", "melody", "trio"}
+MAGENTA_TIMEOUT = 60
 
 
 def _read_input():
@@ -38,6 +39,8 @@ def _read_input():
 def _read_vlq(data, offset):
     value = 0
     while True:
+        if offset >= len(data):
+            raise ValueError("Truncated MIDI data")
         byte = data[offset]
         offset += 1
         value = (value << 7) | (byte & 0x7F)
@@ -52,17 +55,29 @@ def _parse_midi_file(path):
 
     if data[:4] != b"MThd":
         raise ValueError("Generated file is not a MIDI file")
+    if len(data) < 14:
+        raise ValueError("Truncated MIDI header")
 
     header_length = struct.unpack(">I", data[4:8])[0]
+    if header_length < 6 or 8 + header_length > len(data):
+        raise ValueError("Invalid MIDI header")
     header = data[8:8 + header_length]
     _, ntracks, division = struct.unpack(">HHH", header[:6])
+    if division == 0:
+        raise ValueError("MIDI ticks per quarter must be positive")
+    if division & 0x8000:
+        raise ValueError("SMPTE MIDI time division is not supported")
     offset = 8 + header_length
     note_events = []
 
     for _ in range(ntracks):
+        if offset + 8 > len(data):
+            raise ValueError("Truncated MIDI track chunk")
         if data[offset:offset + 4] != b"MTrk":
             raise ValueError("Invalid MIDI track chunk")
         track_length = struct.unpack(">I", data[offset + 4:offset + 8])[0]
+        if offset + 8 + track_length > len(data):
+            raise ValueError("Truncated MIDI track data")
         track = data[offset + 8:offset + 8 + track_length]
         offset += 8 + track_length
 
@@ -75,6 +90,8 @@ def _parse_midi_file(path):
             delta, cursor = _read_vlq(track, cursor)
             abs_tick += delta
 
+            if cursor >= len(track):
+                raise ValueError("Truncated MIDI event")
             status = track[cursor]
             if status < 0x80:
                 if running_status is None:
@@ -85,19 +102,27 @@ def _parse_midi_file(path):
                 running_status = status
 
             if status == 0xFF:
+                if cursor >= len(track):
+                    raise ValueError("Truncated MIDI meta event")
                 meta_type = track[cursor]
                 cursor += 1
                 meta_length, cursor = _read_vlq(track, cursor)
+                if cursor + meta_length > len(track):
+                    raise ValueError("Truncated MIDI meta event data")
                 cursor += meta_length
                 continue
             if status in (0xF0, 0xF7):
                 sysex_length, cursor = _read_vlq(track, cursor)
+                if cursor + sysex_length > len(track):
+                    raise ValueError("Truncated MIDI sysex event")
                 cursor += sysex_length
                 continue
 
             event_type = status & 0xF0
             channel = status & 0x0F
             if event_type in (0x80, 0x90):
+                if cursor + 2 > len(track):
+                    raise ValueError("Truncated MIDI note event")
                 pitch = track[cursor]
                 velocity = track[cursor + 1]
                 cursor += 2
@@ -116,8 +141,12 @@ def _parse_midi_file(path):
                             "velocity": start_velocity,
                         })
             elif event_type in (0xA0, 0xB0, 0xE0):
+                if cursor + 2 > len(track):
+                    raise ValueError("Truncated MIDI channel event")
                 cursor += 2
             elif event_type in (0xC0, 0xD0):
+                if cursor + 1 > len(track):
+                    raise ValueError("Truncated MIDI channel event")
                 cursor += 1
             else:
                 raise ValueError(f"Unsupported MIDI event: 0x{status:02x}")
@@ -193,15 +222,46 @@ def _resolve_checkpoint(payload):
     return variant, path
 
 
+def _coerce_int(value, default, *, minimum=None, maximum=None, field_name="value"):
+    try:
+        parsed = int(value if value is not None else default)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer") from exc
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"{field_name} must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"{field_name} must be <= {maximum}")
+    return parsed
+
+
+def _coerce_float(value, default, *, minimum=None, maximum=None, field_name="value"):
+    try:
+        parsed = float(value if value is not None else default)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a number") from exc
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"{field_name} must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"{field_name} must be <= {maximum}")
+    return parsed
+
+
+def _normalize_bank(value):
+    bank = str(value or "c").strip().lower()
+    if len(bank) != 1 or bank < "a" or bank > "j":
+        raise ValueError("bank must be a single letter from A to J")
+    return bank
+
+
 def _build_magenta_command(payload, checkpoint_path, output_dir):
     command = SETTINGS.get("MAGENTA_COMMAND", "").strip()
     if not command:
         raise ConfigError("SP404_MAGENTA_COMMAND is required for pattern generation")
 
     variant = payload.get("variant", "drum").lower()
-    bars = int(payload.get("bars", 2))
-    bpm = int(payload.get("bpm", 120))
-    temperature = float(payload.get("temperature", 0.8))
+    bars = _coerce_int(payload.get("bars"), 2, minimum=1, maximum=16, field_name="bars")
+    bpm = _coerce_int(payload.get("bpm"), 120, minimum=20, maximum=300, field_name="bpm")
+    temperature = _coerce_float(payload.get("temperature"), 0.8, minimum=0.0, maximum=2.0, field_name="temperature")
     output_file = os.path.join(output_dir, "generated.mid")
 
     executable = os.path.basename(command)
@@ -211,6 +271,8 @@ def _build_magenta_command(payload, checkpoint_path, output_dir):
             "melody": "cat-mel_2bar_big",
             "trio": "hierdec-trio_16bar",
         }[variant]
+        if variant == "trio" and bars != 16:
+            raise ValueError("trio variant requires 16 bars when using music_vae_generate")
         return [
             command,
             f"--config={config_name}",
@@ -245,9 +307,9 @@ def _find_generated_midi(output_dir, preferred_output):
 
 
 def generate_pattern(payload):
-    bank = str(payload.get("bank", "c")).lower()
-    pad = int(payload.get("pad", 1))
-    bars = int(payload.get("bars", 2))
+    bank = _normalize_bank(payload.get("bank", "c"))
+    pad = _coerce_int(payload.get("pad"), 1, minimum=1, maximum=12, field_name="pad")
+    bars = _coerce_int(payload.get("bars"), 2, minimum=1, maximum=16, field_name="bars")
     output_dir = payload.get("output_dir") or DEFAULT_PTN_DIR
     output_dir = os.path.abspath(output_dir)
 
@@ -256,7 +318,10 @@ def generate_pattern(payload):
 
     with tempfile.TemporaryDirectory(prefix="jambox_magenta_") as tmpdir:
         command, preferred_output = _build_magenta_command(payload, checkpoint_path, tmpdir)
-        result = subprocess.run(command, capture_output=True, text=True, cwd=REPO_DIR, timeout=120)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, cwd=REPO_DIR, timeout=MAGENTA_TIMEOUT)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Pattern generation timed out") from exc
         if result.returncode != 0:
             stderr = (result.stderr or result.stdout or "Magenta command failed").strip()
             raise RuntimeError(stderr)

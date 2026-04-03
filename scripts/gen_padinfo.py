@@ -6,25 +6,15 @@ Sets per-pad metadata: loop mode, gate, volume, BPM, sample boundaries.
 Based on the binary format reverse-engineered by @uttori/audio-padinfo.
 Format: 120 pads x 32 bytes = 3,840 bytes, big-endian throughout.
 """
-import struct, os, glob
+import os
+import struct
+
+import yaml
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 SMPL_DIR = os.path.join(REPO_DIR, "sd-card-template", "ROLAND", "SP-404SX", "SMPL")
-
-# Bank config: letter -> BPM
-BANK_BPM = {
-    'A': 120.0,  # user bank, default
-    'B': 120.0,  # novelty FX
-    'C': 88.0,   # lo-fi hip-hop
-    'D': 70.0,   # witch house
-    'E': 130.0,  # nu-rave
-    'F': 120.0,  # electroclash
-    'G': 110.0,  # funk & horns
-    'H': 140.0,  # IDM
-    'I': 105.0,  # ambient
-    'J': 120.0,  # utility/FX
-}
+CONFIG_PATH = os.path.join(REPO_DIR, "bank_config.yaml")
 
 BANKS = 'ABCDEFGHIJ'
 
@@ -62,32 +52,64 @@ def get_sample_path(bank, pad, smpl_dir):
     return None
 
 
+def _load_bank_bpms():
+    bpms = {bank: 120.0 for bank in BANKS}
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
+            payload = yaml.safe_load(handle) or {}
+    except (FileNotFoundError, OSError, yaml.YAMLError):
+        return bpms
+
+    if not isinstance(payload, dict):
+        return bpms
+
+    for bank in BANKS:
+        entry = payload.get(f"bank_{bank.lower()}")
+        if not isinstance(entry, dict):
+            continue
+        bpm = entry.get("bpm")
+        try:
+            if bpm is not None:
+                bpms[bank] = float(bpm)
+        except (TypeError, ValueError):
+            continue
+    return bpms
+
+
 def generate_padinfo(smpl_dir=None):
     """Generate a complete PAD_INFO.BIN (3,840 bytes)."""
     if smpl_dir is None:
         smpl_dir = SMPL_DIR
+    os.makedirs(smpl_dir, exist_ok=True)
 
     pad_records = []
     occupied = 0
+    bank_bpms = _load_bank_bpms()
 
     for bank_idx, bank in enumerate(BANKS):
-        bpm = BANK_BPM.get(bank, 120.0)
+        bpm = bank_bpms.get(bank, 120.0)
         for pad_num in range(1, 13):
             wav_path = get_sample_path(bank, pad_num, smpl_dir)
 
             if wav_path:
-                file_size = os.path.getsize(wav_path)
-                is_loop = pad_num >= 5  # pads 5-12 are loops
-                record = encode_pad(
-                    sample_end=file_size,
-                    volume=127,
-                    loop=is_loop,
-                    gate=not is_loop,  # gate for one-shots (pads 1-4)
-                    channels=1,        # our pipeline outputs mono
-                    tempo_mode=0,      # off (let user control)
-                    bpm=bpm,
-                )
-                occupied += 1
+                try:
+                    file_size = os.path.getsize(wav_path)
+                except OSError:
+                    file_size = 0
+                if file_size > 0:
+                    is_loop = pad_num >= 5  # pads 5-12 are loops
+                    record = encode_pad(
+                        sample_end=file_size,
+                        volume=127,
+                        loop=is_loop,
+                        gate=not is_loop,  # gate for one-shots (pads 1-4)
+                        channels=1,        # our pipeline outputs mono
+                        tempo_mode=0,      # off (let user control)
+                        bpm=bpm,
+                    )
+                    occupied += 1
+                else:
+                    record = encode_pad()
             else:
                 # Empty pad — default values
                 record = encode_pad()

@@ -1,6 +1,7 @@
 # Bank J: Utility/Transitions/FX
-exec(open('/sessions/happy-intelligent-edison/synth_core.py').read())
-OUT = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/J-UtilityFX'
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'synth_core.py')).read())
+OUT = os.path.join(STAGING_BASE, 'J-UtilityFX')
 
 # Pad 1: Riser (pitch sweep up, dramatic)
 dur = 3.0

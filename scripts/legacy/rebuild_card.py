@@ -1,7 +1,18 @@
-import os, shutil
+import os
+import shutil
+import sys
 
-BASE = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING'
-SMPL_DIR = '/sessions/happy-intelligent-edison/mnt/SP-404SX/ROLAND/SP-404SX/SMPL'
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPTS_DIR = os.path.dirname(SCRIPT_DIR)
+REPO_DIR = os.path.dirname(SCRIPTS_DIR)
+sys.path.insert(0, SCRIPTS_DIR)
+
+from jambox_config import load_settings
+
+
+SETTINGS = load_settings(REPO_DIR)
+BASE = os.path.join(REPO_DIR, '_BANK-STAGING')
+SMPL_DIR = SETTINGS["SD_SMPL_DIR"]
 
 # File selection per bank: pads 1-4 = drum one-shots, pads 5-12 = loops
 # For each bank, map pad number -> filename
@@ -54,48 +65,65 @@ folder_map = {
     'G': 'G-FunkHorns', 'H': 'H-IDM', 'I': 'I-AmbientTextural', 'J': 'J-UtilityFX',
 }
 
-# Clear existing WAVs from card
-print("Clearing existing WAV files from card...")
-removed = 0
-for f in os.listdir(SMPL_DIR):
-    if f.endswith('.WAV'):
-        os.remove(os.path.join(SMPL_DIR, f))
-        removed += 1
-print(f"  Removed {removed} files")
+def main():
+    if not os.path.isdir(SMPL_DIR):
+        print(f"ERROR: SD card sample directory not found at {SMPL_DIR}")
+        return 1
+    if not os.path.isdir(BASE):
+        print(f"ERROR: Staging directory not found at {BASE}")
+        return 1
 
-# Copy selected files with proper naming
-total = 0
-errors = []
-for bank_letter in 'CDEFGHIJ':
-    folder_name = folder_map[bank_letter]
-    src_dir = os.path.join(BASE, folder_name)
-    files = bank_files[bank_letter]
-    
-    print(f"\nBank {bank_letter} ({folder_name}):")
-    for pad_num, filename in sorted(files.items()):
-        src_path = os.path.join(src_dir, filename)
-        dest_name = f"{bank_letter}{pad_num:07d}.WAV"
-        dest_path = os.path.join(SMPL_DIR, dest_name)
-        
-        if not os.path.exists(src_path):
-            errors.append(f"  MISSING: {src_path}")
-            print(f"  ✗ Pad {pad_num}: {filename} NOT FOUND")
+    missing_sources = []
+    for bank_letter in 'CDEFGHIJ':
+        folder_name = folder_map[bank_letter]
+        src_dir = os.path.join(BASE, folder_name)
+        if not os.path.isdir(src_dir):
+            missing_sources.append(f"  MISSING DIR: {src_dir}")
             continue
-        
-        shutil.copy2(src_path, dest_path)
-        size_kb = os.path.getsize(dest_path) / 1024
-        print(f"  ✓ Pad {pad_num:2d}: {filename:30s} -> {dest_name} ({size_kb:.0f}KB)")
-        total += 1
+        for filename in bank_files[bank_letter].values():
+            src_path = os.path.join(src_dir, filename)
+            if not os.path.exists(src_path):
+                missing_sources.append(f"  MISSING: {src_path}")
 
-print(f"\n{'='*60}")
-print(f"TOTAL: {total} files copied to card")
-if errors:
-    print(f"\nERRORS ({len(errors)}):")
-    for e in errors:
-        print(e)
-else:
+    if missing_sources:
+        print("ERROR: Refusing to clear card because some staging files are missing:")
+        for entry in missing_sources:
+            print(entry)
+        return 1
+
+    print("Clearing existing WAV files from card...")
+    removed = 0
+    for f in os.listdir(SMPL_DIR):
+        if f.upper().endswith('.WAV'):
+            os.remove(os.path.join(SMPL_DIR, f))
+            removed += 1
+    print(f"  Removed {removed} files")
+
+    total = 0
+    for bank_letter in 'CDEFGHIJ':
+        folder_name = folder_map[bank_letter]
+        src_dir = os.path.join(BASE, folder_name)
+        files = bank_files[bank_letter]
+
+        print(f"\nBank {bank_letter} ({folder_name}):")
+        for pad_num, filename in sorted(files.items()):
+            src_path = os.path.join(src_dir, filename)
+            dest_name = f"{bank_letter}{pad_num:07d}.WAV"
+            dest_path = os.path.join(SMPL_DIR, dest_name)
+
+            shutil.copy2(src_path, dest_path)
+            size_kb = os.path.getsize(dest_path) / 1024
+            print(f"  ✓ Pad {pad_num:2d}: {filename:30s} -> {dest_name} ({size_kb:.0f}KB)")
+            total += 1
+
+    print(f"\n{'='*60}")
+    print(f"TOTAL: {total} files copied to card")
     print("NO ERRORS - all files found and copied")
 
-# Total size
-total_size = sum(os.path.getsize(os.path.join(SMPL_DIR, f)) for f in os.listdir(SMPL_DIR))
-print(f"TOTAL CARD SIZE: {total_size/1024/1024:.1f} MB")
+    total_size = sum(os.path.getsize(os.path.join(SMPL_DIR, f)) for f in os.listdir(SMPL_DIR))
+    print(f"TOTAL CARD SIZE: {total_size/1024/1024:.1f} MB")
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

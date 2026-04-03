@@ -12,26 +12,32 @@ Bank layout:
   I: Ambient (80 bpm) - textural, atmospheric
   J: Utility/FX (120 bpm) - transitions, tools
 """
+import json
 import os, glob, subprocess, shutil, random, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jambox_config import load_settings_for_script
 from wav_utils import convert_and_tag
 
-SRC = os.path.expanduser("~/Music/SP404-Sample-Library/_RAW-DOWNLOADS")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
+SETTINGS = load_settings_for_script(__file__)
+SRC = SETTINGS["RAW_ARCHIVE"]
 CARD = os.path.join(REPO_DIR, "sd-card-template", "ROLAND", "SP-404SX", "SMPL")
 STAGING = os.path.join(REPO_DIR, "_CARD_STAGING")
+FFPROBE = SETTINGS["FFPROBE_BIN"]
+FFMPEG = SETTINGS["FFMPEG_BIN"]
 os.makedirs(STAGING, exist_ok=True)
 
 def get_wav_info(path):
     """Get duration and sample rate of a WAV file"""
     try:
         result = subprocess.run(
-            ['/opt/homebrew/bin/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', path],
+            [FFPROBE, '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', path],
             capture_output=True, text=True, timeout=5
         )
-        import json
+        if result.returncode != 0:
+            return None
         data = json.loads(result.stdout)
         duration = float(data.get('format', {}).get('duration', 0))
         streams = data.get('streams', [{}])
@@ -44,12 +50,12 @@ def get_wav_info(path):
 
 def convert_for_sp404(src, dst):
     """Convert any WAV to SP-404 compatible format: 16-bit, 44.1kHz, mono"""
-    subprocess.run([
-        '/opt/homebrew/bin/ffmpeg', '-y', '-i', src,
+    result = subprocess.run([
+        FFMPEG, '-y', '-i', src,
         '-ar', '44100', '-ac', '1', '-sample_fmt', 's16', '-c:a', 'pcm_s16le',
         dst
     ], capture_output=True, timeout=30)
-    return os.path.exists(dst)
+    return result.returncode == 0 and os.path.exists(dst)
 
 def find_wavs(base_path, pattern="**/*.wav"):
     """Find all WAV files recursively"""

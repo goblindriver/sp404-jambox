@@ -78,12 +78,12 @@ def gen_nu_rave(bank='e'):
         # Kick: four on the floor
         for beat in range(4):
             notes.append((1, bank, b + beat * Q, HIT, 120))
-        # Clap: beats 2 and 4
-        notes += [(3, bank, b + Q, HIT, 100), (3, bank, b + Q*3, HIT, 100)]
+        # Snare: beats 2 and 4
+        notes += [(2, bank, b + Q, HIT, 100), (2, bank, b + Q*3, HIT, 100)]
         # Hat: 16th notes, accented on offbeats
         for i in range(16):
             vel = 70 if i % 2 == 0 else 90
-            notes.append((2, bank, b + i * S, S - 2, vel))
+            notes.append((3, bank, b + i * S, S - 2, vel))
         # Extra FX hit on beat 4 "and" in bar 2
         if bar == 1:
             notes.append((4, bank, b + Q*3 + E, HIT, 80))

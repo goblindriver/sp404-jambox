@@ -36,6 +36,7 @@ TAGS_FILE = SETTINGS["TAGS_FILE"]
 DUPES_DIR = os.path.join(LIBRARY, "_DUPES")
 FFMPEG = SETTINGS["FFMPEG_BIN"]
 SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES"}
+MAX_DECODE_SECONDS = 30
 
 
 def compute_fingerprint(filepath):
@@ -52,6 +53,7 @@ def compute_fingerprint(filepath):
         # Decode to raw PCM via ffmpeg (fast, works with any format)
         result = subprocess.run([
             FFMPEG, '-y', '-i', filepath,
+            '-t', str(MAX_DECODE_SECONDS),
             '-ar', '22050', '-ac', '1', '-sample_fmt', 's16',
             '-f', 's16le', '-'
         ], capture_output=True, timeout=10)
@@ -109,9 +111,10 @@ def cosine_similarity(a, b):
 def load_tag_db():
     try:
         with open(TAGS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+            payload = json.load(f)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
         return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def main():

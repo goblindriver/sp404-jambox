@@ -3,7 +3,10 @@
 # Run from inside the sp404-jambox folder:
 #   cd ~/path-to/sp404-jambox && bash setup_repo.sh
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "=== SP-404 Jam Box — GitHub Setup ==="
 
@@ -27,7 +30,10 @@ fi
 
 # Stage all files
 git add -A
-git commit -m "Initial commit: SP-404 Jam Box
+if git diff --cached --quiet; then
+    echo "No changes to commit"
+else
+    git commit -m "Initial commit: SP-404 Jam Box
 
 Complete SD card builder for SP-404A/SX sampler with:
 - 10-bank genre layout (lo-fi hip-hop, witch house, nu-rave, electroclash, funk, IDM, ambient, utility)
@@ -35,6 +41,7 @@ Complete SD card builder for SP-404A/SX sampler with:
 - Numpy-synthesized novelty FX bank
 - Comprehensive documentation and Claude Code integration guide
 - All samples sourced from MusicRadar SampleRadar (royalty-free)"
+fi
 
 # Create GitHub repo
 echo ""

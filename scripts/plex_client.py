@@ -178,8 +178,10 @@ class PlexMusicDB:
         uri = f"file:{self.db_path}?mode=ro"
         conn = sqlite3.connect(uri, uri=True)
         conn.row_factory = sqlite3.Row
-        # WAL mode lets us read while Plex writes
-        conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            conn.execute("PRAGMA busy_timeout=3000")
+        except sqlite3.DatabaseError:
+            pass
         return conn
 
     def _get_tags(self, conn, metadata_item_id, tag_type):
@@ -189,7 +191,7 @@ class PlexMusicDB:
             JOIN taggings tg ON t.id = tg.tag_id
             WHERE tg.metadata_item_id = ? AND t.tag_type = ?
         """, (metadata_item_id, tag_type)).fetchall()
-        return [r['tag'] for r in rows]
+        return [r['tag'] for r in rows if isinstance(r['tag'], str) and r['tag']]
 
     def _get_tags_bulk(self, conn, item_ids, tag_type):
         """Get tags for multiple items at once. Returns {item_id: [tags]}.
@@ -208,13 +210,16 @@ class PlexMusicDB:
                 WHERE tg.metadata_item_id IN ({placeholders}) AND t.tag_type = ?
             """, list(chunk) + [tag_type]).fetchall()
             for r in rows:
-                result[r['metadata_item_id']].append(r['tag'])
+                if isinstance(r['tag'], str) and r['tag']:
+                    result[r['metadata_item_id']].append(r['tag'])
         return dict(result)
 
     def _moods_to_vibes(self, moods):
         """Convert Plex mood tags to our vibe dimension tags."""
         vibes = set()
         for mood in moods:
+            if not isinstance(mood, str):
+                continue
             vibe = MOOD_TO_VIBE.get(mood.lower())
             if vibe:
                 vibes.add(vibe)
@@ -224,6 +229,8 @@ class PlexMusicDB:
         """Convert Plex style tags to our genre dimension tags."""
         genres = set()
         for style in styles:
+            if not isinstance(style, str):
+                continue
             genre = STYLE_TO_GENRE.get(style.lower())
             if genre:
                 genres.add(genre)
@@ -801,12 +808,17 @@ def _format_duration(ms):
     """Format milliseconds to M:SS string."""
     if not ms:
         return ''
-    s = ms // 1000
+    try:
+        s = int(float(ms) // 1000)
+    except (TypeError, ValueError):
+        return ''
     return f"{s // 60}:{s % 60:02d}"
 
 
 def _parse_loudness(extra_data_str, out):
     """Parse loudness data from media_stream extra_data JSON."""
+    if not isinstance(extra_data_str, str):
+        return
     try:
         if extra_data_str.startswith('{'):
             data = json.loads(extra_data_str)

@@ -56,6 +56,7 @@ def parse_pad_query(query):
       key: str or None
       keywords: set of remaining search words
     """
+    query = "" if query is None else str(query)
     words = query.strip().split()
     result = {
         "type_code": None,
@@ -227,10 +228,14 @@ def load_tag_db():
     """Load the tag database."""
     try:
         with open(TAGS_FILE) as f:
-            return json.load(f)
+            payload = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         print("  WARNING: No tag database found. Run: python scripts/tag_library.py")
         return {}
+    if not isinstance(payload, dict):
+        print("  WARNING: Tag database is not a JSON object. Run: python scripts/tag_library.py")
+        return {}
+    return payload
 
 
 def search_local(query, bank_config, tag_db, used_files, min_score=8):
@@ -246,6 +251,7 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8):
     Returns (filepath, score) or (None, 0).
     """
     parsed = parse_pad_query(query)
+    tag_db = tag_db if isinstance(tag_db, dict) else {}
     best_path = None
     best_score = 0
 
@@ -270,6 +276,7 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
     parsed = parse_pad_query(query)
     bank_config = bank_config or {}
     tag_db = tag_db if tag_db is not None else load_tag_db()
+    tag_db = tag_db if isinstance(tag_db, dict) else {}
     used_files = used_files or set()
     results = []
 
@@ -302,8 +309,18 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
 
 
 def load_config():
-    with open(CONFIG_PATH) as f:
-        return yaml.safe_load(f)
+    try:
+        with open(CONFIG_PATH) as f:
+            payload = yaml.safe_load(f)
+    except FileNotFoundError as exc:
+        raise ValueError(f"Config file not found: {CONFIG_PATH}") from exc
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Config file is invalid YAML: {CONFIG_PATH}") from exc
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        raise ValueError(f"Config file must contain a mapping: {CONFIG_PATH}")
+    return payload
 
 
 def clear_staging_wavs():
@@ -427,6 +444,10 @@ def main():
     parser.add_argument('--pad', '-p', type=int, help='Single pad number (use with --bank)')
     parser.add_argument('--freesound-only', action='store_true', help='Skip local library search')
     args = parser.parse_args()
+    if args.pad is not None and not args.bank:
+        parser.error('--pad requires --bank')
+    if args.pad is not None and not 1 <= args.pad <= 12:
+        parser.error('--pad must be between 1 and 12')
 
     config = load_config()
     os.makedirs(STAGING, exist_ok=True)

@@ -1,5 +1,7 @@
+import os
+
 # Loop generation utilities - extends synth_core
-exec(open('/sessions/happy-intelligent-edison/synth_core.py').read())
+exec(open(os.path.join(os.path.dirname(__file__), 'synth_core.py')).read())
 
 def bar_samples(bpm, bars=2, beats_per_bar=4):
     """Exact sample count for clean looping"""
@@ -170,5 +172,3 @@ NOTE = {
     'C4': 261.6, 'Db4': 277.2, 'D4': 293.7, 'Eb4': 311.1, 'E4': 329.6, 'F4': 349.2, 'Gb4': 370.0, 'G4': 392.0, 'Ab4': 415.3, 'A4': 440.0, 'Bb4': 466.2, 'B4': 493.9,
     'C5': 523.3, 'D5': 587.3, 'Eb5': 622.3, 'E5': 659.3, 'F5': 698.5, 'G5': 784.0, 'A5': 880.0,
 }
-
-print("Loop core loaded OK")

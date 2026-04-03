@@ -1,6 +1,7 @@
 # Bank D: Witch House Jam Kit
-exec(open('/sessions/happy-intelligent-edison/synth_core.py').read())
-OUT = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/D-WitchHouse'
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'synth_core.py')).read())
+OUT = os.path.join(STAGING_BASE, 'D-WitchHouse')
 
 # Pad 1: Deep 808-style Kick (long, subby, distorted)
 dur = 1.2

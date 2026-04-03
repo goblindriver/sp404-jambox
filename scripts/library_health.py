@@ -22,11 +22,13 @@ import subprocess
 import sys
 import time
 import numpy as np
+from jambox_config import load_settings_for_script
 
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-TAGS_FILE = os.path.join(LIBRARY, "_tags.json")
-FFPROBE = "/opt/homebrew/bin/ffprobe"
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
+SETTINGS = load_settings_for_script(__file__)
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+TAGS_FILE = SETTINGS["TAGS_FILE"]
+FFPROBE = SETTINGS["FFPROBE_BIN"]
+FFMPEG = SETTINGS["FFMPEG_BIN"]
 SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD"}
 
 
@@ -160,15 +162,19 @@ def load_tag_db():
     """Load tag database."""
     try:
         with open(TAGS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+            payload = json.load(f)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
         return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def save_tag_db(db):
     """Save tag database."""
-    with open(TAGS_FILE, 'w') as f:
+    os.makedirs(os.path.dirname(TAGS_FILE), exist_ok=True)
+    tmp_path = TAGS_FILE + '.tmp'
+    with open(tmp_path, 'w') as f:
         json.dump(db, f, indent=1, sort_keys=True)
+    os.replace(tmp_path, TAGS_FILE)
 
 
 def main():

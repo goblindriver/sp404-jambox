@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -22,6 +23,7 @@ from api.pattern import pattern_bp
 from api.presets import presets_bp
 import deduplicate_samples
 import daily_bank
+import generate_patterns
 import vibe_generate
 
 
@@ -62,6 +64,19 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.get_json()["error"], "checkpoint missing")
 
+    def test_pattern_route_rejects_non_object_json_body(self):
+        response = self.client.post("/api/pattern/generate", json=["drum"])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "Request body must be a JSON object")
+
+    def test_pattern_route_rejects_non_object_script_output(self):
+        with patch("api.pattern.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout='["not","an","object"]', stderr="")):
+            response = self.client.post("/api/pattern/generate", json={"variant": "drum"})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("Script output must be a JSON object", response.get_json()["error"])
+
     def test_daily_preset_route_loads_into_bank(self):
         with patch("api.presets.db.build_daily_preset", return_value={"ref": "auto/daily-2026-04-02", "path": "/tmp/daily.yaml", "preset": {}}), patch("api.presets.pu.load_preset_to_bank") as load_mock:
             response = self.client.post("/api/presets/daily", json={"bank": "b"})
@@ -71,6 +86,44 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["loaded_bank"], "b")
         load_mock.assert_called_once_with("auto/daily-2026-04-02", "b")
+
+    def test_save_bank_as_preset_rejects_invalid_tags_payload(self):
+        with patch("api.presets.pu.bank_to_preset", return_value={"name": "Test", "slug": "test", "pads": {1: "BRK dusty loop"}}):
+            response = self.client.post("/api/presets/from-bank/b", json={"tags": 123})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "tags must be a comma-separated string or list of strings")
+
+    def test_load_preset_rejects_non_object_json_body(self):
+        response = self.client.post("/api/presets/load", json=["community/test", "b"])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "Request body must be a JSON object")
+
+    def test_create_set_rejects_invalid_banks_payload(self):
+        response = self.client.post("/api/sets", json={"name": "Weekend", "banks": []})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "banks must be an object")
+
+    def test_vibe_route_rejects_non_object_json_body(self):
+        response = self.client.post("/api/vibe/generate", json=["dusty funk drums"])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "Request body must be a JSON object")
+
+    def test_vibe_route_rejects_non_string_prompt(self):
+        response = self.client.post("/api/vibe/generate", json={"prompt": 123})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "prompt is required")
+
+    def test_vibe_route_rejects_non_object_script_output(self):
+        with patch("api.vibe.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout='["not","an","object"]', stderr="")):
+            response = self.client.post("/api/vibe/generate", json={"prompt": "dusty funk drums"})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("Script output must be a JSON object", response.get_json()["error"])
 
 
 class DailyBankTests(unittest.TestCase):
@@ -161,6 +214,49 @@ class VibeGenerateTests(unittest.TestCase):
 
         self.assertEqual(result["sample_suggestions"], [{"path": "Loops/foo.wav"}])
         self.assertEqual(result["bank_suggestions"], [])
+
+
+class PatternGeneratorTests(unittest.TestCase):
+    def test_parse_midi_file_rejects_truncated_header(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            midi_path = os.path.join(tempdir, "bad.mid")
+            with open(midi_path, "wb") as handle:
+                handle.write(b"MThd\x00\x00\x00\x06\x00\x01")
+
+            with self.assertRaisesRegex(ValueError, "Truncated MIDI header"):
+                generate_patterns._parse_midi_file(midi_path)
+
+    def test_parse_midi_file_rejects_smpte_division(self):
+        midi_bytes = (
+            b"MThd"
+            + b"\x00\x00\x00\x06"
+            + b"\x00\x00"
+            + b"\x00\x01"
+            + b"\xE7\x28"
+            + b"MTrk"
+            + b"\x00\x00\x00\x00"
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            midi_path = os.path.join(tempdir, "smpte.mid")
+            with open(midi_path, "wb") as handle:
+                handle.write(midi_bytes)
+
+            with self.assertRaisesRegex(ValueError, "SMPTE MIDI time division is not supported"):
+                generate_patterns._parse_midi_file(midi_path)
+
+    def test_build_magenta_command_rejects_short_trio_run(self):
+        with patch.dict(generate_patterns.SETTINGS, {"MAGENTA_COMMAND": "music_vae_generate"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "trio variant requires 16 bars"):
+                generate_patterns._build_magenta_command(
+                    {"variant": "trio", "bars": 2, "bpm": 120},
+                    "/tmp/trio.mag",
+                    "/tmp",
+                )
+
+    def test_generate_pattern_times_out_magenta_command(self):
+        with patch("generate_patterns._resolve_checkpoint", return_value=("drum", "/tmp/drum.mag")), patch("generate_patterns._build_magenta_command", return_value=(["magenta"], "/tmp/generated.mid")), patch("generate_patterns.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="magenta", timeout=1)):
+            with self.assertRaisesRegex(RuntimeError, "Pattern generation timed out"):
+                generate_patterns.generate_pattern({"variant": "drum"})
 
 
 class DedupeTests(unittest.TestCase):

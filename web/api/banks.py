@@ -14,8 +14,36 @@ def _smpl_dir():
 
 
 def _load_config():
-    with open(_config_path()) as f:
-        return yaml.safe_load(f)
+    try:
+        with open(_config_path()) as f:
+            payload = yaml.safe_load(f)
+    except (FileNotFoundError, yaml.YAMLError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _json_object_body():
+    data = request.get_json() or {}
+    if not isinstance(data, dict):
+        raise ValueError('Request body must be a JSON object')
+    return data
+
+
+def _normalize_letter(letter):
+    letter = str(letter or '').strip().lower()
+    if len(letter) != 1 or letter < 'a' or letter > 'j':
+        raise ValueError('Bank not found')
+    return letter
+
+
+def _normalize_pad_num(num):
+    try:
+        value = int(num)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('Pad must be between 1 and 12') from exc
+    if value < 1 or value > 12:
+        raise ValueError('Pad must be between 1 and 12')
+    return value
 
 
 def _get_pad_status(bank_letter, pad_num):
@@ -70,6 +98,10 @@ def get_banks():
 
 @banks_bp.route('/banks/<letter>')
 def get_bank(letter):
+    try:
+        letter = _normalize_letter(letter)
+    except ValueError:
+        return jsonify({'error': 'Bank not found'}), 404
     config = _load_config()
     bank_config = config.get(f'bank_{letter}')
     if not bank_config:
@@ -99,20 +131,37 @@ def get_bank(letter):
 
 @banks_bp.route('/banks/<letter>', methods=['PUT'])
 def update_bank(letter):
-    data = request.get_json()
+    try:
+        letter = _normalize_letter(letter)
+        data = _json_object_body()
+    except ValueError as e:
+        status = 404 if str(e) == 'Bank not found' else 400
+        return jsonify({'error': str(e)}), status
     config = _load_config()
     bank_key = f'bank_{letter}'
     if bank_key not in config or not config[bank_key]:
         config[bank_key] = {'name': letter.upper(), 'pads': {}}
 
     if 'name' in data:
-        config[bank_key]['name'] = data['name']
+        if data['name'] is not None and not isinstance(data['name'], str):
+            return jsonify({'error': 'name must be a string'}), 400
+        config[bank_key]['name'] = (data['name'] or '').strip() if data['name'] is not None else ''
     if 'bpm' in data:
-        config[bank_key]['bpm'] = int(data['bpm']) if data['bpm'] else None
+        if data['bpm'] in (None, ''):
+            config[bank_key]['bpm'] = None
+        else:
+            try:
+                config[bank_key]['bpm'] = int(data['bpm'])
+            except (TypeError, ValueError):
+                return jsonify({'error': 'bpm must be an integer'}), 400
     if 'key' in data:
-        config[bank_key]['key'] = data['key'] if data['key'] else None
+        if data['key'] is not None and not isinstance(data['key'], str):
+            return jsonify({'error': 'key must be a string'}), 400
+        config[bank_key]['key'] = data['key'].strip() if data['key'] else None
     if 'notes' in data:
-        config[bank_key]['notes'] = data['notes']
+        if data['notes'] is not None and not isinstance(data['notes'], str):
+            return jsonify({'error': 'notes must be a string'}), 400
+        config[bank_key]['notes'] = data['notes'] or ''
 
     with open(_config_path(), 'w') as f:
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
@@ -122,8 +171,16 @@ def update_bank(letter):
 
 @banks_bp.route('/banks/<letter>/pads/<int:num>', methods=['PUT'])
 def update_pad(letter, num):
-    data = request.get_json()
+    try:
+        letter = _normalize_letter(letter)
+        num = _normalize_pad_num(num)
+        data = _json_object_body()
+    except ValueError as e:
+        status = 404 if str(e) == 'Bank not found' else 400
+        return jsonify({'error': str(e)}), status
     desc = data.get('description', '')
+    if desc is not None and not isinstance(desc, str):
+        return jsonify({'error': 'description must be a string'}), 400
 
     config = _load_config()
     bank_key = f'bank_{letter}'
@@ -131,7 +188,7 @@ def update_pad(letter, num):
         config[bank_key] = {'name': letter.upper(), 'pads': {}}
     if 'pads' not in config[bank_key]:
         config[bank_key]['pads'] = {}
-    config[bank_key]['pads'][num] = desc
+    config[bank_key]['pads'][num] = desc or ''
 
     with open(_config_path(), 'w') as f:
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)

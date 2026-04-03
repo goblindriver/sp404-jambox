@@ -14,76 +14,103 @@ const audio = document.getElementById('audio-player');
 
 // ── Init ──
 async function init() {
-    const data = await api('/api/banks');
-    state.banks = data;
-
-    renderBankTabs();
-    setupBankTabDropZones();
-    // Default to Bank B (A is empty/creative)
-    switchBank(state.banks.find(b => b.letter === 'b') || state.banks[0]);
-
-    checkSDCard();
-    setInterval(checkSDCard, 10000);
-
-    // Wire up footer buttons
-    document.getElementById('btn-help').onclick = showTutorial;
-    document.getElementById('btn-library').onclick = toggleLibrary;
-    document.getElementById('btn-ingest').onclick = ingestDownloads;
-    document.getElementById('btn-fetch-all').onclick = () => fetchSamples();
-    document.getElementById('btn-build').onclick = buildAll;
-    document.getElementById('btn-deploy').onclick = deploy;
-    document.getElementById('btn-generate-pattern').onclick = generatePattern;
-    document.getElementById('btn-watcher').onclick = toggleWatcher;
-    document.getElementById('btn-presets').onclick = togglePresetSidebar;
-    document.getElementById('btn-vibe-generate').onclick = generateVibeSuggestions;
-    document.getElementById('btn-vibe-populate').onclick = populateBankFromVibe;
-    document.getElementById('btn-daily-bank').onclick = generateDailyBank;
-
-    // Load sets and check watcher on startup
-    loadSets();
-    checkWatcherStatus();
-
-    // Bank edit
-    document.getElementById('btn-edit-bank').onclick = openBankEdit;
-    document.getElementById('bank-edit-close').onclick = closeBankEdit;
-    document.getElementById('btn-save-bank').onclick = saveBankEdit;
-
-    // Tutorial
-    document.getElementById('tutorial-close').onclick = hideTutorial;
-    document.getElementById('tutorial-go').onclick = hideTutorial;
-
-    // Show tutorial on first visit
-    if (!localStorage.getItem('jambox-tutorial-seen')) {
-        showTutorial();
-    }
-
-    // Sidebar close
-    document.getElementById('sidebar-close').onclick = () => toggleLibrary(false);
-
-    // Library search
-    let searchTimer;
-    document.getElementById('library-search').oninput = (e) => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => searchLibrary(e.target.value), 300);
-    };
-    document.getElementById('vibe-prompt').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') generateVibeSuggestions();
-    });
-
-    // Audio ended
-    audio.onended = () => {
-        if (state.playingPad !== null) {
-            const el = document.querySelector(`.pad[data-num="${state.playingPad}"]`);
-            if (el) el.classList.remove('playing');
-            state.playingPad = null;
+    try {
+        const data = await api('/api/banks');
+        if (!Array.isArray(data)) {
+            throw new Error(data.error || 'Failed to load banks');
         }
-    };
+        state.banks = data;
+
+        renderBankTabs();
+        setupBankTabDropZones();
+        // Default to Bank B (A is empty/creative)
+        switchBank(state.banks.find(b => b.letter === 'b') || state.banks[0]);
+
+        checkSDCard();
+        setInterval(checkSDCard, 10000);
+
+        // Wire up footer buttons
+        document.getElementById('btn-help').onclick = showTutorial;
+        document.getElementById('btn-library').onclick = toggleLibrary;
+        document.getElementById('btn-ingest').onclick = ingestDownloads;
+        document.getElementById('btn-fetch-all').onclick = () => fetchSamples();
+        document.getElementById('btn-build').onclick = buildAll;
+        document.getElementById('btn-deploy').onclick = deploy;
+        document.getElementById('btn-generate-pattern').onclick = generatePattern;
+        document.getElementById('btn-watcher').onclick = toggleWatcher;
+        document.getElementById('btn-presets').onclick = togglePresetSidebar;
+        document.getElementById('btn-vibe-generate').onclick = generateVibeSuggestions;
+        document.getElementById('btn-vibe-populate').onclick = populateBankFromVibe;
+        document.getElementById('btn-daily-bank').onclick = generateDailyBank;
+
+        // Load sets and check watcher on startup
+        loadSets();
+        checkWatcherStatus();
+
+        // Bank edit
+        document.getElementById('btn-edit-bank').onclick = openBankEdit;
+        document.getElementById('bank-edit-close').onclick = closeBankEdit;
+        document.getElementById('btn-save-bank').onclick = saveBankEdit;
+
+        // Tutorial
+        document.getElementById('tutorial-close').onclick = hideTutorial;
+        document.getElementById('tutorial-go').onclick = hideTutorial;
+
+        // Show tutorial on first visit
+        if (!localStorage.getItem('jambox-tutorial-seen')) {
+            showTutorial();
+        }
+
+        // Sidebar close
+        document.getElementById('sidebar-close').onclick = () => toggleLibrary(false);
+
+        // Library search
+        let searchTimer;
+        document.getElementById('library-search').oninput = (e) => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => searchLibrary(e.target.value), 300);
+        };
+        document.getElementById('vibe-prompt').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') generateVibeSuggestions();
+        });
+
+        // Audio ended
+        audio.onended = () => {
+            if (state.playingPad !== null) {
+                const el = document.querySelector(`.pad[data-num="${state.playingPad}"]`);
+                if (el) el.classList.remove('playing');
+                state.playingPad = null;
+            }
+        };
+    } catch (e) {
+        toast(`Failed to initialize UI: ${e.message}`, 'error');
+        console.error(e);
+    }
 }
 
 // ── API Helper ──
 async function api(url, opts) {
     const resp = await fetch(url, opts);
-    return resp.json();
+    const text = await resp.text();
+    let data = {};
+
+    if (text) {
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            throw new Error(`Request failed (${resp.status}): non-JSON response`);
+        }
+    }
+
+    if (data === null || typeof data !== 'object') {
+        throw new Error('Request returned an invalid response');
+    }
+
+    if (!resp.ok && !data.error) {
+        data.error = `Request failed (${resp.status})`;
+    }
+
+    return data;
 }
 
 // ── Bank Tabs ──
@@ -231,20 +258,33 @@ function selectPad(pad) {
 
 async function saveDescription(bankLetter, padNum) {
     const desc = document.getElementById('detail-desc').value.trim();
-    await api(`/api/banks/${bankLetter}/pads/${padNum}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({description: desc}),
-    });
-    // Refresh bank data
-    const updated = await api(`/api/banks/${bankLetter}`);
-    const bankIdx = state.banks.findIndex(b => b.letter === bankLetter);
-    if (bankIdx >= 0) state.banks[bankIdx] = updated;
-    if (state.currentBank.letter === bankLetter) {
-        state.currentBank = updated;
-        renderPadGrid(updated);
+    try {
+        const result = await api(`/api/banks/${bankLetter}/pads/${padNum}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({description: desc}),
+        });
+        if (!result.ok) {
+            toast(result.error || 'Failed to save description', 'error');
+            return;
+        }
+
+        // Refresh bank data
+        const updated = await api(`/api/banks/${bankLetter}`);
+        if (updated.error) {
+            toast(updated.error, 'error');
+            return;
+        }
+        const bankIdx = state.banks.findIndex(b => b.letter === bankLetter);
+        if (bankIdx >= 0) state.banks[bankIdx] = updated;
+        if (state.currentBank.letter === bankLetter) {
+            state.currentBank = updated;
+            renderPadGrid(updated);
+        }
+        toast('Description saved', 'success');
+    } catch (e) {
+        toast(`Save failed: ${e.message}`, 'error');
     }
-    toast('Description saved', 'success');
 }
 
 // ── Audio Preview ──
@@ -262,7 +302,7 @@ function previewPad(bankLetter, padNum) {
     }
 
     audio.src = `/api/audio/preview/${bankLetter}/${padNum}`;
-    audio.play();
+    audio.play().catch(() => {});
     state.playingPad = padNum;
     const el = document.querySelector(`.pad[data-num="${padNum}"]`);
     if (el) el.classList.add('playing');
@@ -270,7 +310,7 @@ function previewPad(bankLetter, padNum) {
 
 function previewLibraryFile(path) {
     audio.src = `/api/audio/library/${encodeURIComponent(path)}`;
-    audio.play();
+    audio.play().catch(() => {});
 }
 
 // ── SD Card Status ──
@@ -321,26 +361,33 @@ async function fetchSamples(bank, pad) {
 }
 
 async function pollFetchStatus(jobId) {
-    const data = await api(`/api/pipeline/status/${jobId}`);
+    try {
+        const data = await api(`/api/pipeline/status/${jobId}`);
 
-    if (data.status === 'running' || data.status === 'starting') {
-        document.getElementById('progress-text').textContent = data.progress || 'Starting...';
-        document.getElementById('progress-fill').style.width = '50%';
-        setTimeout(() => pollFetchStatus(jobId), 2000);
-    } else {
-        hideProgress();
-        if (data.status === 'done') {
-            toast(`Fetch complete: ${data.result}`, 'success');
+        if (data.status === 'running' || data.status === 'starting') {
+            document.getElementById('progress-text').textContent = data.progress || 'Starting...';
+            document.getElementById('progress-fill').style.width = '50%';
+            setTimeout(() => pollFetchStatus(jobId), 2000);
         } else {
-            toast(`Fetch error: ${data.result}`, 'error');
+            hideProgress();
+            if (data.status === 'done') {
+                toast(`Fetch complete: ${data.result}`, 'success');
+            } else {
+                toast(`Fetch error: ${data.result || data.error || 'Unknown fetch failure'}`, 'error');
+            }
+            // Refresh bank data
+            const banks = await api('/api/banks');
+            if (Array.isArray(banks)) {
+                state.banks = banks;
+                if (state.currentBank) {
+                    const updated = banks.find(b => b.letter === state.currentBank.letter);
+                    if (updated) switchBank(updated);
+                }
+            }
         }
-        // Refresh bank data
-        const banks = await api('/api/banks');
-        state.banks = banks;
-        if (state.currentBank) {
-            const updated = banks.find(b => b.letter === state.currentBank.letter);
-            if (updated) switchBank(updated);
-        }
+    } catch (e) {
+        hideProgress();
+        toast(`Fetch status failed: ${e.message}`, 'error');
     }
 }
 
@@ -1105,18 +1152,30 @@ async function saveBankEdit() {
         notes: document.getElementById('edit-bank-notes').value.trim(),
     };
 
-    await api(`/api/banks/${letter}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data),
-    });
+    try {
+        const result = await api(`/api/banks/${letter}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        if (!result.ok) {
+            toast(result.error || 'Failed to save bank settings', 'error');
+            return;
+        }
 
-    closeBankEdit();
-    const updated = await api(`/api/banks/${letter}`);
-    const idx = state.banks.findIndex(b => b.letter === letter);
-    if (idx >= 0) state.banks[idx] = updated;
-    switchBank(updated);
-    toast('Bank settings saved', 'success');
+        closeBankEdit();
+        const updated = await api(`/api/banks/${letter}`);
+        if (updated.error) {
+            toast(updated.error, 'error');
+            return;
+        }
+        const idx = state.banks.findIndex(b => b.letter === letter);
+        if (idx >= 0) state.banks[idx] = updated;
+        switchBank(updated);
+        toast('Bank settings saved', 'success');
+    } catch (e) {
+        toast(`Bank save failed: ${e.message}`, 'error');
+    }
 }
 
 // ── Drag & Drop ──
@@ -1749,15 +1808,25 @@ async function splitTrack(trackId, btn) {
         toast(`Splitting: ${data.track}...`);
 
         const poll = setInterval(async () => {
-            const status = await api(`/api/music/split/status/${jobId}`);
-            if (status.status === 'done') {
+            try {
+                const status = await api(`/api/music/split/status/${jobId}`);
+                if (status.status === 'done') {
+                    clearInterval(poll);
+                    const stems = status.result.stems;
+                    toast(`Split into ${stems.length} stems (${status.result.source})`, 'success');
+                    if (btn) { btn.disabled = false; btn.textContent = 'Done'; }
+                } else if (status.status === 'error') {
+                    clearInterval(poll);
+                    toast(`Split error: ${status.result}`, 'error');
+                    if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
+                } else if (status.error || !status.status) {
+                    clearInterval(poll);
+                    toast(`Split error: ${status.error || 'Job not found'}`, 'error');
+                    if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
+                }
+            } catch (e) {
                 clearInterval(poll);
-                const stems = status.result.stems;
-                toast(`Split into ${stems.length} stems (${status.result.source})`, 'success');
-                if (btn) { btn.disabled = false; btn.textContent = 'Done'; }
-            } else if (status.status === 'error') {
-                clearInterval(poll);
-                toast(`Split error: ${status.result}`, 'error');
+                toast(`Split status failed: ${e.message}`, 'error');
                 if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
             }
         }, 2000);

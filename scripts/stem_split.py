@@ -94,11 +94,14 @@ def run_demucs(input_path, output_dir, model="htdemucs"):
         # that confuse torchaudio)
         import tempfile as _tf
         clean_wav = os.path.join(output_dir, "_input_clean.wav")
-        subprocess.run([
+        preconvert = subprocess.run([
             FFMPEG, "-y", "-i", input_path,
             "-ar", "44100", "-ac", "2", "-sample_fmt", "s16",
             "-c:a", "pcm_s16le", clean_wav,
         ], capture_output=True, timeout=30)
+        if preconvert.returncode != 0:
+            print(f"    Pre-convert failed")
+            return []
 
         if not os.path.exists(clean_wav):
             print(f"    Pre-convert failed")
@@ -142,6 +145,9 @@ def run_demucs(input_path, output_dir, model="htdemucs"):
     except subprocess.TimeoutExpired:
         print(f"    Demucs timed out (10min limit)")
         return []
+    except FileNotFoundError as e:
+        print(f"    Demucs failed: {e}")
+        return []
     except Exception as e:
         print(f"    Demucs failed: {e}")
         return []
@@ -150,9 +156,10 @@ def run_demucs(input_path, output_dir, model="htdemucs"):
 def load_tag_db():
     try:
         with open(TAGS_FILE) as f:
-            return json.load(f)
+            payload = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def save_tag_db(db):

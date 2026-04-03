@@ -39,8 +39,11 @@ def load_preset(ref):
         return None  # path traversal attempt
     if not os.path.exists(path):
         return None
-    with open(path) as f:
-        data = yaml.safe_load(f)
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        return None
     if not isinstance(data, dict):
         return None
     data['_ref'] = ref
@@ -94,16 +97,26 @@ def list_presets(category=None, query=None, tag=None, bpm=None, key=None):
                     data = yaml.safe_load(f) or {}
             except (yaml.YAMLError, IOError):
                 continue
+            if not isinstance(data, dict):
+                continue
 
             # Apply filters
             if query:
                 q = query.lower()
-                searchable = f"{data.get('name', '')} {data.get('vibe', '')} {data.get('notes', '')} {' '.join(data.get('tags', []))}".lower()
+                raw_tags = data.get('tags', [])
+                if isinstance(raw_tags, list):
+                    search_tags = ' '.join(str(tag) for tag in raw_tags)
+                else:
+                    search_tags = str(raw_tags or '')
+                searchable = f"{data.get('name', '')} {data.get('vibe', '')} {data.get('notes', '')} {search_tags}".lower()
                 if q not in searchable:
                     continue
 
             if tag:
-                if tag.lower() not in [t.lower() for t in data.get('tags', [])]:
+                raw_tags = data.get('tags', [])
+                if not isinstance(raw_tags, list):
+                    raw_tags = [raw_tags] if raw_tags else []
+                if tag.lower() not in [str(t).lower() for t in raw_tags]:
                     continue
 
             if bpm and data.get('bpm'):
@@ -149,6 +162,8 @@ def bank_to_preset(letter, config=None):
     """Extract a bank from config as a preset dict."""
     if config is None:
         config = _load_config()
+    if not isinstance(config, dict):
+        return None
 
     bank_key = f'bank_{letter.lower()}'
     bank = config.get(bank_key)
@@ -191,8 +206,13 @@ def load_set(slug):
     path = os.path.join(SETS_DIR, f"{slug}.yaml")
     if not os.path.exists(path):
         return None
-    with open(path) as f:
-        data = yaml.safe_load(f)
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(data, dict):
+        return None
     data['_slug'] = slug
     return data
 
@@ -226,7 +246,11 @@ def list_sets():
                 data = yaml.safe_load(f) or {}
         except (yaml.YAMLError, IOError):
             continue
+        if not isinstance(data, dict):
+            continue
         banks = data.get('banks', {})
+        if not isinstance(banks, dict):
+            banks = {}
         filled = sum(1 for v in banks.values() if v)
         results.append({
             'slug': slug,
@@ -347,8 +371,12 @@ def load_preset_to_bank(ref, bank_letter):
 
 def _load_config():
     """Load bank_config.yaml."""
-    with open(CONFIG_PATH) as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(CONFIG_PATH) as f:
+            payload = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _save_config(config):

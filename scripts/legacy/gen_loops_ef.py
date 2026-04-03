@@ -1,9 +1,10 @@
-exec(open('/sessions/happy-intelligent-edison/loop_core.py').read())
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'loop_core.py')).read())
 
 # ============================================
 # BANK E: NU-RAVE LOOPS (130bpm)
 # ============================================
-OUT_E = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/E-NuRave'
+OUT_E = os.path.join(STAGING_BASE, 'E-NuRave')
 BPM = 130
 n = bar_samples(BPM, 2)
 
@@ -191,7 +192,7 @@ print("=== BANK E LOOPS COMPLETE ===\n")
 # ============================================
 # BANK F: ELECTROCLASH LOOPS (120bpm)
 # ============================================
-OUT_F = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/F-Electroclash'
+OUT_F = os.path.join(STAGING_BASE, 'F-Electroclash')
 BPM = 120
 n = bar_samples(BPM, 2)
 

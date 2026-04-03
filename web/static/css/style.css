@@ -29,6 +29,12 @@ body {
     user-select: none;
 }
 
+input,
+textarea,
+select {
+    user-select: text;
+}
+
 /* Header */
 header {
     display: flex;

@@ -39,7 +39,11 @@ def get_bank_a_files():
     files = []
     if not is_card_mounted():
         return files
-    for f in os.listdir(SD_SMPL):
+    try:
+        entries = os.listdir(SD_SMPL)
+    except OSError:
+        return files
+    for f in entries:
         if f.startswith('A') and f.endswith('.WAV'):
             files.append(os.path.join(SD_SMPL, f))
     return sorted(files)
@@ -68,12 +72,20 @@ def pull_bank_a():
         dest = os.path.join(session_dir, f"A-pad{pad_num}_{fname}")
 
         # Check if file has actual audio (not just silence/empty)
-        size = os.path.getsize(filepath)
+        try:
+            size = os.path.getsize(filepath)
+        except OSError:
+            print(f"  Skip {fname} (unreadable)")
+            continue
         if size < 600:  # 512 header + minimal data
             print(f"  Skip {fname} (too small, likely empty)")
             continue
 
-        shutil.copy2(filepath, dest)
+        try:
+            shutil.copy2(filepath, dest)
+        except OSError:
+            print(f"  Skip {fname} (copy failed)")
+            continue
         size_kb = size / 1024
         print(f"  Saved: {fname} ({size_kb:.0f}KB) → {os.path.basename(dest)}")
         saved += 1
@@ -83,13 +95,19 @@ def pull_bank_a():
 
         # Also copy to flat "latest" folder for easy access
         latest_dir = os.path.join(GOLD_BANK_A, "latest")
-        if os.path.exists(latest_dir):
-            shutil.rmtree(latest_dir)
-        shutil.copytree(session_dir, latest_dir)
-        print(f"  Latest copies: {latest_dir}")
+        try:
+            if os.path.exists(latest_dir):
+                shutil.rmtree(latest_dir)
+            shutil.copytree(session_dir, latest_dir)
+            print(f"  Latest copies: {latest_dir}")
+        except OSError:
+            print(f"  Warning: could not refresh latest folder at {latest_dir}")
     else:
         # Clean up empty session dir
-        os.rmdir(session_dir)
+        try:
+            os.rmdir(session_dir)
+        except OSError:
+            pass
         print("  No samples to save (all empty/too small).")
 
     return saved
@@ -132,15 +150,24 @@ def main():
         files = get_bank_a_files()
         print(f"Bank A on card: {len(files)} samples")
         for f in files:
-            size = os.path.getsize(f) / 1024
+            try:
+                size = os.path.getsize(f) / 1024
+            except OSError:
+                size = 0
             print(f"  {os.path.basename(f)} ({size:.0f}KB)")
 
         # Show gold library
         if os.path.exists(GOLD_BANK_A):
-            sessions = [d for d in os.listdir(GOLD_BANK_A) if d.startswith('session-')]
+            try:
+                sessions = [d for d in os.listdir(GOLD_BANK_A) if d.startswith('session-')]
+            except OSError:
+                sessions = []
             print(f"\nGold library: {len(sessions)} saved sessions")
             for s in sorted(sessions)[-3:]:
-                files_in = os.listdir(os.path.join(GOLD_BANK_A, s))
+                try:
+                    files_in = os.listdir(os.path.join(GOLD_BANK_A, s))
+                except OSError:
+                    files_in = []
                 print(f"  {s}: {len(files_in)} files")
 
     elif args.action == 'pull':

@@ -3,10 +3,21 @@
 # Run this from Terminal on your Mac:
 #   bash ~/path-to/SP-404SX/copy_to_sd.sh
 
+set -euo pipefail
+
 SD_CARD="${SP404_SD_CARD:-/Volumes/SP-404SX}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/sd-card-template"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ -z "$SD_CARD" ] || [ "$SD_CARD" = "/" ]; then
+    echo "ERROR: Refusing to copy to unsafe SD card path: $SD_CARD"
+    exit 1
+fi
+if [ ! -d "$SOURCE_DIR/ROLAND" ]; then
+    echo "ERROR: Source card template not found at $SOURCE_DIR/ROLAND"
+    exit 1
+fi
 
 # Check SD card is mounted
 if [ ! -d "$SD_CARD" ]; then
@@ -52,7 +63,11 @@ fi
 echo ""
 echo "=== Done! ==="
 echo "Files on SD card:"
-ls -la "$SD_CARD/ROLAND/SP-404SX/SMPL/" | wc -l
+if [ -d "$SD_CARD/ROLAND/SP-404SX/SMPL" ]; then
+    find "$SD_CARD/ROLAND/SP-404SX/SMPL" -type f -name "*.WAV" | wc -l
+else
+    echo "0"
+fi
 echo "sample files copied."
 echo ""
 echo "Eject the card safely before removing!"

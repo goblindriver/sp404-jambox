@@ -21,6 +21,17 @@ def _tags_file():
     return current_app.config['TAGS_FILE']
 
 
+def _parse_limit_arg(name, default, maximum):
+    raw_value = request.args.get(name, default)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'{name} must be an integer') from exc
+    if value < 1:
+        raise ValueError(f'{name} must be >= 1')
+    return min(value, maximum)
+
+
 def _load_tag_db():
     """Load and cache the tag database from _tags.json."""
     global _tag_db_cache, _tag_db_mtime
@@ -138,11 +149,14 @@ def stats():
     # Check Downloads for pending packs
     import glob
     pending_packs = 0
-    for item in os.listdir(downloads):
-        if any(s in item for s in ['WAV-MASCHiNE', 'WAV-EXPANSION', 'WAV-SONiTUS', 'MULTiFORMAT', 'Prime Loops']):
-            marker = os.path.join(downloads, item, '.sp404-ingested')
-            if not os.path.exists(marker):
-                pending_packs += 1
+    try:
+        for item in os.listdir(downloads):
+            if any(s in item for s in ['WAV-MASCHiNE', 'WAV-EXPANSION', 'WAV-SONiTUS', 'MULTiFORMAT', 'Prime Loops']):
+                marker = os.path.join(downloads, item, '.sp404-ingested')
+                if not os.path.exists(marker):
+                    pending_packs += 1
+    except OSError:
+        pending_packs = 0
 
     return jsonify({
         'total': total,
@@ -228,7 +242,10 @@ def by_tag():
         return jsonify({'error': 'Provide at least one filter', 'results': []})
 
     tags_set = set(t.lower() for t in tags) if tags else set()
-    limit = min(int(request.args.get('limit', 100)), 500)
+    try:
+        limit = _parse_limit_arg('limit', 100, 500)
+    except ValueError as e:
+        return jsonify({'error': str(e), 'results': []}), 400
 
     db = _load_tag_db()
     if not db:

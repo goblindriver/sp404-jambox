@@ -1,9 +1,10 @@
-exec(open('/sessions/happy-intelligent-edison/loop_core.py').read())
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'loop_core.py')).read())
 
 # ============================================
 # BANK G: FUNK & HORNS LOOPS (105bpm)
 # ============================================
-OUT_G = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/G-FunkHorns'
+OUT_G = os.path.join(STAGING_BASE, 'G-FunkHorns')
 BPM = 105
 n = bar_samples(BPM, 2)
 bps = beat_samples(BPM)
@@ -266,7 +267,7 @@ print("=== BANK G LOOPS COMPLETE ===\n")
 # ============================================
 # BANK H: IDM LOOPS (140bpm)
 # ============================================
-OUT_H = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/H-IDM'
+OUT_H = os.path.join(STAGING_BASE, 'H-IDM')
 BPM = 140
 n = bar_samples(BPM, 2)
 bps = beat_samples(BPM)

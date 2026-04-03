@@ -19,11 +19,35 @@ _vibe_jobs = {}
 _vibe_lock = threading.Lock()
 
 
+def _json_object_body():
+    payload = request.get_json() or {}
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
+    return payload
+
+
+def _normalize_prompt(payload):
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("prompt is required")
+    payload = dict(payload)
+    payload["prompt"] = prompt.strip()
+    return payload
+
+
+def _parse_script_json(stdout):
+    payload = json.loads((stdout or "").strip())
+    if not isinstance(payload, dict):
+        raise ValueError("Script output must be a JSON object")
+    return payload
+
+
 @vibe_bp.route("/vibe/generate", methods=["POST"])
 def generate_vibe():
-    payload = request.get_json() or {}
-    if not payload.get("prompt"):
-        return jsonify({"ok": False, "error": "prompt is required"}), 400
+    try:
+        payload = _normalize_prompt(_json_object_body())
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     repo_dir = current_app.config["REPO_DIR"]
     script = os.path.join(repo_dir, "scripts", "vibe_generate.py")
@@ -40,11 +64,13 @@ def generate_vibe():
         if result.returncode != 0:
             error_message = (result.stderr or result.stdout or "Vibe generation failed").strip()
             return jsonify({"ok": False, "error": error_message}), 500
-        return jsonify({"ok": True, "result": json.loads(result.stdout)})
+        return jsonify({"ok": True, "result": _parse_script_json(result.stdout)})
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Vibe generation timed out"}), 500
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         return jsonify({"ok": False, "error": f"Invalid script output: {exc}"}), 500
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"Vibe generation failed to start: {exc}"}), 500
 
 
 def _run_populate_bank(job_id, repo_dir, settings, prompt_data):

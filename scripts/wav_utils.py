@@ -25,7 +25,13 @@ def _make_rlnd_chunk(bank_letter, pad_number):
     """Create RLND chunk (468 bytes: 8 header + 460 payload).
     Sized so data payload lands at offset 512 in the final WAV.
     """
-    bank_idx = BANKS.index(bank_letter.upper())
+    bank_letter = str(bank_letter).upper()
+    pad_number = int(pad_number)
+    if bank_letter not in BANKS:
+        raise ValueError(f"Invalid bank letter: {bank_letter}")
+    if pad_number < 1 or pad_number > 12:
+        raise ValueError(f"Invalid pad number: {pad_number}")
+    bank_idx = BANKS.index(bank_letter)
     sample_index = bank_idx * 12 + (pad_number - 1)
 
     payload = bytearray(RLND_PAYLOAD_SIZE)
@@ -102,11 +108,13 @@ def convert_and_tag(src, dst, bank_letter, pad_number, trim_silence=True):
     # Step 1: ffmpeg to temp WAV
     tmp = dst + '.tmp.wav'
     try:
-        subprocess.run([
+        result = subprocess.run([
             SETTINGS["FFMPEG_BIN"], '-y', '-i', src,
             '-ar', '44100', '-ac', '1', '-sample_fmt', 's16', '-c:a', 'pcm_s16le',
             tmp
         ], capture_output=True, timeout=30)
+        if result.returncode != 0:
+            return False
 
         if not os.path.exists(tmp):
             return False
@@ -128,6 +136,8 @@ def convert_and_tag(src, dst, bank_letter, pad_number, trim_silence=True):
             f.write(wav_data)
 
         return True
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError, wave.Error):
+        return False
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)

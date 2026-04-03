@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 API_BASE = "https://freesound.org/apiv2"
 AUTH_URL = "https://freesound.org/apiv2/oauth2/authorize/"
 TOKEN_URL = "https://freesound.org/apiv2/oauth2/access_token/"
+REQUEST_TIMEOUT = 30
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
@@ -96,20 +97,32 @@ def setup_oauth():
         return False
 
     # Exchange code for token
-    resp = requests.post(TOKEN_URL, data={
-        'client_id': client_id,
-        'client_secret': client_secret,
-        'grant_type': 'authorization_code',
-        'code': code,
-    })
+    try:
+        resp = requests.post(TOKEN_URL, data={
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'grant_type': 'authorization_code',
+            'code': code,
+        }, timeout=REQUEST_TIMEOUT)
+    except requests.RequestException as exc:
+        print(f"Token exchange failed: {exc}")
+        return False
 
     if resp.status_code != 200:
         print(f"Token exchange failed: {resp.status_code} {resp.text}")
         return False
 
-    token_data = resp.json()
+    try:
+        token_data = resp.json()
+    except ValueError:
+        print("Token exchange failed: invalid JSON response")
+        return False
+    access_token = token_data.get('access_token')
+    if not access_token:
+        print("Token exchange failed: response did not include access_token")
+        return False
     env = _load_env()
-    env['FREESOUND_OAUTH_TOKEN'] = token_data['access_token']
+    env['FREESOUND_OAUTH_TOKEN'] = access_token
     if 'refresh_token' in token_data:
         env['FREESOUND_OAUTH_REFRESH'] = token_data['refresh_token']
     _save_env(env)
@@ -131,12 +144,20 @@ def search(query, duration_min=0.1, duration_max=30, page_size=5):
         'sort': 'score',
         'token': api_key,
     }
-    resp = requests.get(f"{API_BASE}/search/text/", params=params)
+    try:
+        resp = requests.get(f"{API_BASE}/search/text/", params=params, timeout=REQUEST_TIMEOUT)
+    except requests.RequestException as exc:
+        print(f"  Search failed: {exc}")
+        return []
     if resp.status_code != 200:
         print(f"  Search failed: {resp.status_code}")
         return []
 
-    data = resp.json()
+    try:
+        data = resp.json()
+    except ValueError:
+        print("  Search failed: invalid JSON response")
+        return []
     return data.get('results', [])
 
 
@@ -148,30 +169,44 @@ def download(sound_id, dest_path):
     # Try OAuth2 download (full quality original)
     oauth_token = _get_oauth_token()
     if oauth_token:
-        resp = requests.get(
-            f"{API_BASE}/sounds/{sound_id}/download/",
-            headers={'Authorization': f'Bearer {oauth_token}'},
-            allow_redirects=True,
-            stream=True,
-        )
-        if resp.status_code == 200:
+        try:
+            resp = requests.get(
+                f"{API_BASE}/sounds/{sound_id}/download/",
+                headers={'Authorization': f'Bearer {oauth_token}'},
+                allow_redirects=True,
+                stream=True,
+                timeout=REQUEST_TIMEOUT,
+            )
+        except requests.RequestException:
+            resp = None
+        if resp is not None and resp.status_code == 200:
             with open(dest_path, 'wb') as f:
                 for chunk in resp.iter_content(chunk_size=8192):
-                    f.write(chunk)
+                    if chunk:
+                        f.write(chunk)
             return dest_path
 
     # Fall back to HQ preview (MP3, no OAuth needed)
     api_key = _get_api_key()
     # First get the sound details for preview URL
-    resp = requests.get(
-        f"{API_BASE}/sounds/{sound_id}/",
-        params={'token': api_key, 'fields': 'previews'},
-    )
+    try:
+        resp = requests.get(
+            f"{API_BASE}/sounds/{sound_id}/",
+            params={'token': api_key, 'fields': 'previews'},
+            timeout=REQUEST_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        print(f"  Failed to get sound {sound_id}: {exc}")
+        return None
     if resp.status_code != 200:
         print(f"  Failed to get sound {sound_id}: {resp.status_code}")
         return None
 
-    previews = resp.json().get('previews', {})
+    try:
+        previews = resp.json().get('previews', {})
+    except ValueError:
+        print(f"  Invalid preview response for sound {sound_id}")
+        return None
     preview_url = previews.get('preview-hq-mp3') or previews.get('preview-lq-mp3')
     if not preview_url:
         print(f"  No preview URL for sound {sound_id}")
@@ -179,11 +214,16 @@ def download(sound_id, dest_path):
 
     # Download preview
     preview_path = dest_path + '.mp3'
-    resp = requests.get(preview_url, stream=True)
+    try:
+        resp = requests.get(preview_url, stream=True, timeout=REQUEST_TIMEOUT)
+    except requests.RequestException as exc:
+        print(f"  Preview download failed: {exc}")
+        return None
     if resp.status_code == 200:
         with open(preview_path, 'wb') as f:
             for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
+                if chunk:
+                    f.write(chunk)
         return preview_path
 
     print(f"  Preview download failed: {resp.status_code}")

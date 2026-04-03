@@ -4,11 +4,15 @@ import struct
 import os
 
 SR = 44100  # sample rate
+LEGACY_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_DIR = os.path.dirname(os.path.dirname(LEGACY_DIR))
+STAGING_BASE = os.path.join(REPO_DIR, "_BANK-STAGING")
 
 def save_wav(filename, samples, sr=SR):
     """Save numpy array as 16-bit mono WAV"""
     samples = np.clip(samples, -1.0, 1.0)
     data = (samples * 32767).astype(np.int16)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     with wave.open(filename, 'w') as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
@@ -73,8 +77,12 @@ def env_adsr(dur, a=0.01, d=0.1, s=0.7, r=0.1):
 def env_perc(dur, a=0.001, decay=0.3):
     """Percussive envelope (fast attack, exponential decay)"""
     n = int(SR * dur)
+    if n <= 0:
+        return np.zeros(0)
     na = max(int(SR * a), 1)
-    nd = n - na
+    if na >= n:
+        return np.linspace(0, 1, n)
+    nd = max(n - na, 1)
     attack = np.linspace(0, 1, na)
     dec = np.exp(-np.linspace(0, decay * 10, nd))
     return np.concatenate([attack, dec])[:n]
@@ -180,5 +188,3 @@ def mix_signals(*signals_and_gains):
 def resample_env(env_array, target_len):
     """Resample an envelope to a target length"""
     return np.interp(np.linspace(0, 1, target_len), np.linspace(0, 1, len(env_array)), env_array)
-
-print("Synth core loaded OK")

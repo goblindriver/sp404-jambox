@@ -59,10 +59,19 @@ def gold_sessions():
     if not os.path.isdir(gold_dir):
         return jsonify({'sessions': []})
     sessions = []
-    for d in sorted(os.listdir(gold_dir)):
+    try:
+        entries = sorted(os.listdir(gold_dir))
+    except OSError:
+        return jsonify({'sessions': []})
+    for d in entries:
         if not d.startswith('session-'):
             continue
         path = os.path.join(gold_dir, d)
-        files = [f for f in os.listdir(path) if f.endswith('.WAV')]
+        if not os.path.isdir(path):
+            continue
+        try:
+            files = [f for f in os.listdir(path) if f.endswith('.WAV')]
+        except OSError:
+            continue
         sessions.append({'name': d, 'count': len(files)})
     return jsonify({'sessions': sessions})

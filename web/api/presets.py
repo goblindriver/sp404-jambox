@@ -14,6 +14,73 @@ import preset_utils as pu
 import daily_bank as db
 
 
+def _json_object_body():
+    data = request.get_json() or {}
+    if not isinstance(data, dict):
+        raise ValueError('Request body must be a JSON object')
+    return data
+
+
+def _normalize_string_field(data, field_name):
+    value = data.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f'{field_name} must be a string')
+    value = value.strip()
+    return value or None
+
+
+def _normalize_tags(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return [tag.strip() for tag in value.split(',') if tag.strip()]
+    if isinstance(value, list):
+        tags = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError('tags must contain only strings')
+            item = item.strip()
+            if item:
+                tags.append(item)
+        return tags
+    raise ValueError('tags must be a comma-separated string or list of strings')
+
+
+def _normalize_bank_name(value):
+    if not isinstance(value, str):
+        raise ValueError('bank must be a string')
+    bank = value.lower().strip()
+    if not bank:
+        return ''
+    if bank not in pu.BANK_LETTERS:
+        raise ValueError(f'Invalid bank: {bank}')
+    return bank
+
+
+def _normalize_banks_map(value):
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError('banks must be an object')
+    normalized = {}
+    for key, bank_value in value.items():
+        if not isinstance(key, str):
+            raise ValueError('banks keys must be strings')
+        if key in pu.BANK_LETTERS:
+            if bank_value is not None and not isinstance(bank_value, str):
+                raise ValueError(f'banks.{key} must be a preset ref string or null')
+            normalized[key] = bank_value
+        elif key.endswith('_meta') and key[:-5] in pu.BANK_LETTERS:
+            if not isinstance(bank_value, dict):
+                raise ValueError(f'banks.{key} must be an object')
+            normalized[key] = bank_value
+        else:
+            raise ValueError(f'Invalid bank slot: {key}')
+    return normalized
+
+
 # ── Presets ──
 
 @presets_bp.route('/presets')
@@ -50,23 +117,33 @@ def get_preset(ref):
 @presets_bp.route('/presets/from-bank/<letter>', methods=['POST'])
 def save_bank_as_preset(letter):
     """Save a bank's current config as a new preset."""
-    data = request.get_json() or {}
-    letter = letter.lower()
+    try:
+        data = _json_object_body()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    letter = letter.lower().strip()
 
     preset = pu.bank_to_preset(letter)
     if not preset:
         return jsonify({'error': f'Bank {letter.upper()} has no pads'}), 400
 
     # Override with user-provided values
-    if data.get('name'):
-        preset['name'] = data['name']
-        preset['slug'] = pu.slugify(data['name'])
-    if data.get('vibe'):
-        preset['vibe'] = data['vibe']
-    if data.get('tags'):
-        preset['tags'] = data['tags'] if isinstance(data['tags'], list) else [t.strip() for t in data['tags'].split(',')]
+    try:
+        name = _normalize_string_field(data, 'name')
+        vibe = _normalize_string_field(data, 'vibe')
+        tags = _normalize_tags(data.get('tags'))
+        category = _normalize_string_field(data, 'category') or 'community'
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
-    category = data.get('category', 'community')
+    if name:
+        preset['name'] = name
+        preset['slug'] = pu.slugify(name)
+    if vibe:
+        preset['vibe'] = vibe
+    if tags is not None:
+        preset['tags'] = tags
+
     ref = pu.save_preset(preset, category=category)
 
     return jsonify({'ok': True, 'ref': ref, 'slug': preset['slug']})
@@ -75,14 +152,15 @@ def save_bank_as_preset(letter):
 @presets_bp.route('/presets/load', methods=['POST'])
 def load_preset_to_bank():
     """Load a preset into a bank slot."""
-    data = request.get_json() or {}
-    ref = data.get('ref')
-    bank = data.get('bank', '').lower()
+    try:
+        data = _json_object_body()
+        ref = _normalize_string_field(data, 'ref')
+        bank = _normalize_bank_name(data.get('bank', ''))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
     if not ref or not bank:
         return jsonify({'error': 'ref and bank required'}), 400
-    if bank not in pu.BANK_LETTERS:
-        return jsonify({'error': f'Invalid bank: {bank}'}), 400
 
     try:
         result = pu.load_preset_to_bank(ref, bank)
@@ -94,14 +172,15 @@ def load_preset_to_bank():
 @presets_bp.route('/presets/daily', methods=['POST'])
 def generate_daily_preset():
     """Generate a daily preset and optionally load it to a bank."""
-    data = request.get_json() or {}
-    source = data.get('source')
-    bank = data.get('bank', '').lower().strip()
+    try:
+        data = _json_object_body()
+        source = _normalize_string_field(data, 'source')
+        bank = _normalize_bank_name(data.get('bank', ''))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     try:
         result = db.build_daily_preset(source=source)
         if bank:
-            if bank not in pu.BANK_LETTERS:
-                return jsonify({'error': f'Invalid bank: {bank}'}), 400
             pu.load_preset_to_bank(result['ref'], bank)
             result['loaded_bank'] = bank
         return jsonify({'ok': True, **result})
@@ -156,16 +235,20 @@ def get_set(slug):
 @presets_bp.route('/sets', methods=['POST'])
 def create_set():
     """Create a new set."""
-    data = request.get_json() or {}
-    name = data.get('name')
+    try:
+        data = _json_object_body()
+        name = _normalize_string_field(data, 'name')
+        notes = _normalize_string_field(data, 'notes') or ''
+        banks = _normalize_banks_map(data.get('banks', {}))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     if not name:
         return jsonify({'error': 'name required'}), 400
 
-    banks = data.get('banks', {})
     set_data = {
         'name': name,
         'slug': pu.slugify(name),
-        'notes': data.get('notes', ''),
+        'notes': notes,
         'banks': banks,
     }
     slug = pu.save_set(set_data)
@@ -175,9 +258,12 @@ def create_set():
 @presets_bp.route('/sets/save-current', methods=['POST'])
 def save_current_as_set():
     """Snapshot current bank config as a new set."""
-    data = request.get_json() or {}
-    name = data.get('name', 'Untitled Set')
-    notes = data.get('notes', '')
+    try:
+        data = _json_object_body()
+        name = _normalize_string_field(data, 'name') or 'Untitled Set'
+        notes = _normalize_string_field(data, 'notes') or ''
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
     try:
         slug = pu.save_current_as_set(name, notes)

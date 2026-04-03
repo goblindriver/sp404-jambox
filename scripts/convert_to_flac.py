@@ -17,11 +17,13 @@ import os
 import subprocess
 import sys
 import time
+from jambox_config import load_settings_for_script
 
-LIBRARY = os.path.expanduser("~/Music/SP404-Sample-Library")
-TAGS_FILE = os.path.join(LIBRARY, "_tags.json")
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
-FFPROBE = "/opt/homebrew/bin/ffprobe"
+SETTINGS = load_settings_for_script(__file__)
+LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+TAGS_FILE = SETTINGS["TAGS_FILE"]
+FFMPEG = SETTINGS["FFMPEG_BIN"]
+FFPROBE = SETTINGS["FFPROBE_BIN"]
 
 # Directories to skip (not samples)
 SKIP_DIRS = {'_RAW-DOWNLOADS', '_GOLD', '_DUPES', 'Stems', '.git'}
@@ -31,14 +33,21 @@ def load_tags():
     """Load _tags.json."""
     if not os.path.exists(TAGS_FILE):
         return {}
-    with open(TAGS_FILE) as f:
-        return json.load(f)
+    try:
+        with open(TAGS_FILE) as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def save_tags(tags):
     """Write _tags.json."""
-    with open(TAGS_FILE, 'w') as f:
+    os.makedirs(os.path.dirname(TAGS_FILE), exist_ok=True)
+    tmp_path = TAGS_FILE + '.tmp'
+    with open(tmp_path, 'w') as f:
         json.dump(tags, f, indent=2)
+    os.replace(tmp_path, TAGS_FILE)
 
 
 def convert_wav_to_flac(wav_path):
@@ -172,17 +181,29 @@ def batch_convert(subpath=None, dry_run=False, verify_only=False):
         saved = wav_size - flac_size
         bytes_saved += saved
 
-        # Update _tags.json — migrate the key from .wav to .flac
+        # Update _tags.json — persist before deleting the original WAV.
         if rel_path in tags:
             tags[flac_rel] = tags.pop(rel_path)
+            try:
+                save_tags(tags)
+            except OSError:
+                print(f"  TAG UPDATE FAILED: {rel_path}")
+                tags[rel_path] = tags.pop(flac_rel)
+                if os.path.exists(result_path):
+                    os.remove(result_path)
+                failed += 1
+                continue
 
         # Delete original WAV
-        os.remove(wav_path)
+        try:
+            os.remove(wav_path)
+        except OSError:
+            print(f"  DELETE FAILED: {rel_path}")
+            failed += 1
+            continue
         converted += 1
 
-    # Save updated tags
     if not dry_run and not verify_only and converted > 0:
-        save_tags(tags)
         print(f"\n  Updated _tags.json ({len(tags)} entries)")
 
     elapsed = time.time() - start_time

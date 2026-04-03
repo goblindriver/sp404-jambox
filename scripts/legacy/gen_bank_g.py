@@ -1,6 +1,7 @@
 # Bank G: Funk & Horns Jam Kit
-exec(open('/sessions/happy-intelligent-edison/synth_core.py').read())
-OUT = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/G-FunkHorns'
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'synth_core.py')).read())
+OUT = os.path.join(STAGING_BASE, 'G-FunkHorns')
 
 # Pad 1: Funky Kick (tight, punchy, James Brown style)
 dur = 0.25

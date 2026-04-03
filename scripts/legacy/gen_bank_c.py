@@ -1,7 +1,8 @@
 # Bank C: Lo-fi Hip-Hop Jam Kit
-exec(open('/sessions/happy-intelligent-edison/synth_core.py').read())
+import os
+exec(open(os.path.join(os.path.dirname(__file__), 'synth_core.py')).read())
 
-OUT = '/sessions/happy-intelligent-edison/SP-404A-Samples/_BANK-STAGING/C-LofiHipHop'
+OUT = os.path.join(STAGING_BASE, 'C-LofiHipHop')
 
 # Pad 1: Dusty Kick
 dur = 0.6

@@ -612,6 +612,11 @@ def tag_file(rel_path, full_path, get_dur=True):
     if bpm:
         tags.add(f"{bpm}bpm")
 
+    try:
+        mtime = os.path.getmtime(full_path)
+    except OSError:
+        mtime = 0.0
+
     entry = {
         "path": rel_path,
         "type_code": type_code,
@@ -625,7 +630,7 @@ def tag_file(rel_path, full_path, get_dur=True):
         "key": key,
         "duration": round(duration, 3),
         "tags": sorted(tags),
-        "mtime": os.path.getmtime(full_path),
+        "mtime": mtime,
     }
     return entry
 
@@ -655,9 +660,12 @@ def load_existing_tags():
     if os.path.exists(TAGS_FILE):
         try:
             with open(TAGS_FILE, "r") as fh:
-                return json.load(fh)
+                payload = json.load(fh)
         except (json.JSONDecodeError, IOError):
             pass
+        else:
+            if isinstance(payload, dict):
+                return payload
     return {}
 
 

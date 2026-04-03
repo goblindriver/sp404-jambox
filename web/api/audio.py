@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from flask import Blueprint, send_file, current_app, abort, request, jsonify
+from werkzeug.exceptions import HTTPException
 
 audio_bp = Blueprint('audio', __name__)
 
@@ -15,9 +16,38 @@ def _ffmpeg_bin():
     return current_app.config['FFMPEG_BIN']
 
 
+def _json_object_body():
+    data = request.get_json() or {}
+    if not isinstance(data, dict):
+        raise ValueError('Request body must be a JSON object')
+    return data
+
+
+def _normalize_bank(value):
+    bank = str(value or '').strip().lower()
+    if len(bank) != 1 or bank < 'a' or bank > 'j':
+        raise ValueError('bank must be a single letter from A to J')
+    return bank
+
+
+def _normalize_pad(value):
+    try:
+        pad = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('pad must be an integer') from exc
+    if pad < 1 or pad > 12:
+        raise ValueError('pad must be between 1 and 12')
+    return pad
+
+
 @audio_bp.route('/audio/preview/<bank>/<int:pad>')
 def preview_pad(bank, pad):
     """Serve a pad's WAV file for browser playback."""
+    try:
+        bank = _normalize_bank(bank)
+        pad = _normalize_pad(pad)
+    except ValueError:
+        abort(404)
     fname = f"{bank.upper()}{pad:07d}.WAV"
     smpl = os.path.join(current_app.config['REPO_DIR'], 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL', fname)
     if os.path.exists(smpl):
@@ -67,6 +97,8 @@ def _convert_to_pad(source, bank, pad):
         return None, f'Convert failed: {e.stderr[:200]}'
     except FileNotFoundError:
         return None, 'ffmpeg not found'
+    except subprocess.TimeoutExpired:
+        return None, 'Convert timed out'
 
     try:
         scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
@@ -90,6 +122,11 @@ def waveform_data(bank, pad):
     Returns JSON with 'peaks' (array of 0.0-1.0 values) and 'duration'.
     Uses raw PCM parsing for SP-404 WAVs (16-bit mono).
     """
+    try:
+        bank = _normalize_bank(bank)
+        pad = _normalize_pad(pad)
+    except ValueError:
+        abort(404)
     import struct
     fname = f"{bank.upper()}{pad:07d}.WAV"
     smpl = os.path.join(current_app.config['REPO_DIR'], 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL', fname)
@@ -133,6 +170,8 @@ def waveform_data(bank, pad):
         duration = num_samples / 44100.0
         return jsonify({'peaks': peaks, 'duration': round(duration, 2)})
 
+    except HTTPException:
+        raise
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -140,13 +179,16 @@ def waveform_data(bank, pad):
 @audio_bp.route('/audio/assign', methods=['POST'])
 def assign_to_pad():
     """Assign a library file to a pad: convert to SP-404 format and copy."""
-    data = request.get_json()
-    bank = data.get('bank', '').lower()
-    pad = data.get('pad')
+    try:
+        data = _json_object_body()
+        bank = _normalize_bank(data.get('bank'))
+        pad = _normalize_pad(data.get('pad'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     library_path = data.get('library_path', '')
-
-    if not bank or not pad or not library_path:
-        return jsonify({'error': 'Missing bank, pad, or library_path'}), 400
+    if not isinstance(library_path, str) or not library_path.strip():
+        return jsonify({'error': 'library_path is required'}), 400
+    library_path = library_path.strip()
 
     library_root = _library_root()
     source = os.path.join(library_root, library_path)
@@ -172,12 +214,17 @@ ALLOWED_AUDIO_EXTS = {'.wav', '.aif', '.aiff', '.mp3', '.flac', '.ogg', '.m4a'}
 @audio_bp.route('/audio/upload', methods=['POST'])
 def upload_to_pad():
     """Upload an audio file from the user's computer and assign to a pad."""
-    bank = request.form.get('bank', '').lower()
-    pad = request.form.get('pad')
+    try:
+        bank = _normalize_bank(request.form.get('bank'))
+        pad = _normalize_pad(request.form.get('pad'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     file = request.files.get('file')
 
-    if not bank or not pad or not file:
-        return jsonify({'error': 'Missing bank, pad, or file'}), 400
+    if not file:
+        return jsonify({'error': 'Missing file'}), 400
+    if not file.filename:
+        return jsonify({'error': 'Missing filename'}), 400
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_AUDIO_EXTS:
