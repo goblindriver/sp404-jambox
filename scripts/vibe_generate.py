@@ -108,14 +108,25 @@ def _call_llm(prompt, bpm=None, key=None):
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"LLM response was not valid JSON: {content[:200]}") from exc
 
+    def _to_list(val):
+        """Normalize LLM output to a list of strings.
+
+        Handles: list of strings, comma-separated string, or single string.
+        """
+        if isinstance(val, list):
+            return [str(item).strip().lower() for item in val if str(item).strip()]
+        if isinstance(val, str):
+            return [part.strip().lower() for part in val.split(",") if part.strip()]
+        return []
+
     return {
-        "keywords": [str(item).lower() for item in parsed.get("keywords", []) if str(item).strip()],
+        "keywords": _to_list(parsed.get("keywords", [])),
         "type_code": parsed.get("type_code") or None,
         "playability": parsed.get("playability") or None,
-        "vibe": [str(item).lower() for item in parsed.get("vibe", []) if str(item).strip()],
-        "genre": [str(item).lower() for item in parsed.get("genre", []) if str(item).strip()],
-        "texture": [str(item).lower() for item in parsed.get("texture", []) if str(item).strip()],
-        "energy": [str(item).lower() for item in parsed.get("energy", []) if str(item).strip()],
+        "vibe": _to_list(parsed.get("vibe", [])),
+        "genre": _to_list(parsed.get("genre", [])),
+        "texture": _to_list(parsed.get("texture", [])),
+        "energy": _to_list(parsed.get("energy", [])),
         "rationale": parsed.get("rationale", ""),
     }
 
