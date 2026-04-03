@@ -228,10 +228,23 @@ def watcher_start():
         if ingest.get_watcher_state()['running']:
             return jsonify({'ok': True, 'message': 'Watcher already running'})
 
-        # Run initial ingest pass in background, then start watching
+        # Run initial ingest in background, then start watching.
+        # Set watcher state active immediately so the UI stays lit.
+        with ingest._watcher_lock:
+            ingest._watcher_state['running'] = True
+            ingest._watcher_state['stats']['since'] = __import__('datetime').datetime.now().isoformat()
+
         def _start_with_ingest():
-            ingest.one_shot_ingest()
-            ingest.start_watcher()
+            try:
+                ingest.one_shot_ingest()
+            except Exception as e:
+                print("[WATCHER] Initial ingest error: %s" % e)
+            try:
+                ingest.start_watcher()
+            except Exception as e:
+                print("[WATCHER] Start error: %s" % e)
+                with ingest._watcher_lock:
+                    ingest._watcher_state['running'] = False
 
         t = threading.Thread(target=_start_with_ingest, daemon=True)
         t.start()

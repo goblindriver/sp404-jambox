@@ -1155,7 +1155,7 @@ def start_watcher(dedupe=False):
         print("ERROR: watchdog not installed. Run: pip install watchdog")
         return False
 
-    if _watcher_state['running']:
+    if _watcher_state.get('_observer_active'):
         print("Watcher already running")
         return True
 
@@ -1258,7 +1258,9 @@ def start_watcher(dedupe=False):
         observer.start()
         with _watcher_lock:
             _watcher_state['running'] = True
-            _watcher_state['stats']['since'] = datetime.now().isoformat()
+            _watcher_state['_observer_active'] = True
+            if not _watcher_state['stats'].get('since'):
+                _watcher_state['stats']['since'] = datetime.now().isoformat()
         print(f"[WATCHER] Monitoring {DOWNLOADS} for new samples...")
 
         try:
@@ -1272,6 +1274,7 @@ def start_watcher(dedupe=False):
             observer.join()
             with _watcher_lock:
                 _watcher_state['running'] = False
+                _watcher_state['_observer_active'] = False
             print("[WATCHER] Stopped")
 
     _watcher_thread = threading.Thread(target=watcher_loop, daemon=True)
@@ -1288,6 +1291,7 @@ def stop_watcher():
         _watcher_thread.join(timeout=10)
     with _watcher_lock:
         _watcher_state['running'] = False
+        _watcher_state['_observer_active'] = False
 
 
 def one_shot_ingest(dry_run=False, dedupe=False):
