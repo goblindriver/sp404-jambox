@@ -36,6 +36,7 @@ async function init() {
     document.getElementById('btn-watcher').onclick = toggleWatcher;
     document.getElementById('btn-presets').onclick = togglePresetSidebar;
     document.getElementById('btn-vibe-generate').onclick = generateVibeSuggestions;
+    document.getElementById('btn-vibe-populate').onclick = populateBankFromVibe;
     document.getElementById('btn-daily-bank').onclick = generateDailyBank;
 
     // Load sets and check watcher on startup
@@ -401,10 +402,13 @@ async function generateVibeSuggestions() {
         return;
     }
 
+    const bpmField = document.getElementById('vibe-bpm');
+    const keyField = document.getElementById('vibe-key');
+
     const payload = {
         prompt: promptValue,
-        bpm: state.currentBank?.bpm || null,
-        key: state.currentBank?.key || null,
+        bpm: parseInt(bpmField?.value) || state.currentBank?.bpm || null,
+        key: keyField?.value?.trim() || state.currentBank?.key || null,
         bank: state.currentBank?.letter || null,
     };
     toast('Generating vibe suggestions...');
@@ -418,7 +422,14 @@ async function generateVibeSuggestions() {
         return;
     }
     renderVibeResults(response.result);
-    toast('Suggestions ready', 'success');
+    // Show the populate button and bank selector
+    document.getElementById('btn-vibe-populate').style.display = '';
+    document.getElementById('vibe-bank-select').style.display = '';
+    // Default bank selector to current bank
+    if (state.currentBank?.letter) {
+        document.getElementById('vibe-bank-select').value = state.currentBank.letter;
+    }
+    toast('Suggestions ready — click Populate Bank to fill a bank!', 'success');
 }
 
 function renderVibeResults(result) {
@@ -426,23 +437,82 @@ function renderVibeResults(result) {
     const banks = (result.bank_suggestions || []).map(
         (bank) => `${bank.bank.toUpperCase()} ${bank.name} (${bank.score})`
     );
-    const samples = (result.sample_suggestions || []).slice(0, 4).map(
-        (sample) => `${sample.rel_path} [${sample.score}]`
+    const samples = (result.sample_suggestions || []).slice(0, 6).map(
+        (sample) => `${sample.rel_path.split('/').pop()} [${sample.score}]`
     );
+    const parsed = result.parsed || {};
+    const tagPills = [...(parsed.keywords || []), ...(parsed.vibe || []), ...(parsed.genre || [])].slice(0, 8)
+        .map(t => `<span class="vibe-tag-pill">${t}</span>`).join('');
     container.innerHTML = `
         <div class="vibe-result-card">
-            <strong>Query</strong><br>${result.query || 'No query generated'}
+            <strong>Parsed Tags</strong><br>${tagPills || 'No tags parsed'}
         </div>
         <div class="vibe-result-card">
-            <strong>Tags</strong><br>${(result.parsed?.keywords || []).join(', ') || 'No keywords'}
+            <strong>Best Banks</strong><br>${banks.join('<br>') || 'No matches'}
         </div>
-        <div class="vibe-result-card">
-            <strong>Suggested Banks</strong><br>${banks.join('<br>') || 'No bank suggestions'}
-        </div>
-        <div class="vibe-result-card">
-            <strong>Suggested Samples</strong><br>${samples.join('<br>') || 'No sample suggestions'}
+        <div class="vibe-result-card vibe-result-wide">
+            <strong>Top Samples</strong><br>${samples.join('<br>') || 'No sample matches'}
         </div>
     `;
+}
+
+async function populateBankFromVibe() {
+    const promptValue = document.getElementById('vibe-prompt').value.trim();
+    if (!promptValue) {
+        toast('Enter a vibe prompt first', 'error');
+        return;
+    }
+
+    const bank = document.getElementById('vibe-bank-select').value;
+    const bpmField = document.getElementById('vibe-bpm');
+    const keyField = document.getElementById('vibe-key');
+
+    const payload = {
+        prompt: promptValue,
+        bank: bank,
+        bpm: parseInt(bpmField?.value) || state.currentBank?.bpm || 120,
+        key: keyField?.value?.trim() || state.currentBank?.key || 'Am',
+        fetch: true,
+    };
+
+    toast(`Populating Bank ${bank.toUpperCase()} from vibe...`);
+    document.getElementById('btn-vibe-populate').disabled = true;
+    document.getElementById('btn-vibe-populate').textContent = 'Working...';
+
+    const response = await api('/api/vibe/populate-bank', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        toast(response.error || 'Populate failed', 'error');
+        document.getElementById('btn-vibe-populate').disabled = false;
+        document.getElementById('btn-vibe-populate').textContent = 'Populate Bank';
+        return;
+    }
+
+    // Poll job status
+    const jobId = response.job_id;
+    const pollInterval = setInterval(async () => {
+        const status = await api(`/api/vibe/populate-status/${jobId}`);
+        document.getElementById('btn-vibe-populate').textContent = status.progress || 'Working...';
+
+        if (status.status === 'done') {
+            clearInterval(pollInterval);
+            document.getElementById('btn-vibe-populate').disabled = false;
+            document.getElementById('btn-vibe-populate').textContent = 'Populate Bank';
+            toast(`Bank ${bank.toUpperCase()} populated! ${status.fetched || ''}`, 'success');
+            // Refresh the bank view
+            await loadBanks();
+            switchBank(bank);
+        } else if (status.status === 'error') {
+            clearInterval(pollInterval);
+            document.getElementById('btn-vibe-populate').disabled = false;
+            document.getElementById('btn-vibe-populate').textContent = 'Populate Bank';
+            toast(`Error: ${status.progress}`, 'error');
+        }
+    }, 2000);
 }
 
 async function generateDailyBank() {

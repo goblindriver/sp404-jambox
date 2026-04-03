@@ -180,6 +180,152 @@ def _score_banks(query_terms, config):
     return results[:4]
 
 
+# ═══════════════════════════════════════════════════════════
+# Vibe-to-Bank: generate a full 12-pad bank from a prompt
+# ═══════════════════════════════════════════════════════════
+
+# Pad layout template — proven structure from every existing preset
+_PAD_TEMPLATES = [
+    # (pad_num, type_code, role, playability)
+    (1,  "KIK", "kick",       "one-shot"),
+    (2,  "SNR", "snare",      "one-shot"),
+    (3,  "HAT", "hi-hat",     "one-shot"),
+    (4,  "CLP", "clap/perc",  "one-shot"),
+    (5,  "BRK", "break",      "loop"),
+    (6,  "BAS", "bass",       "loop"),
+    (7,  None,  "melodic-a",  "loop"),      # SYN/GTR/KEY varies by genre
+    (8,  None,  "melodic-b",  "loop"),      # SYN/KEY varies by genre
+    (9,  "PAD", "pad/atmo",   "loop"),
+    (10, "FX",  "effect",     "one-shot"),
+    (11, "SMP", "sample",     "loop"),
+    (12, "VOX", "vocal",      "chop-ready"),
+]
+
+# Genre → melodic instrument mapping for pads 7-8
+_GENRE_INSTRUMENTS = {
+    "funk":        [("GTR", "guitar"),   ("KEY", "clavinet")],
+    "disco":       [("KEY", "piano"),    ("STR", "strings")],
+    "soul":        [("KEY", "organ"),    ("BRS", "brass")],
+    "rock":        [("GTR", "guitar"),   ("GTR", "guitar")],
+    "electronic":  [("SYN", "synth"),    ("SYN", "synth")],
+    "ambient":     [("PAD", "pad"),      ("SYN", "synth")],
+    "house":       [("SYN", "synth"),    ("KEY", "piano")],
+    "techno":      [("SYN", "synth"),    ("SYN", "lead")],
+    "hip-hop":     [("KEY", "piano"),    ("SYN", "synth")],
+    "lo-fi":       [("KEY", "piano"),    ("GTR", "guitar")],
+    "industrial":  [("SYN", "synth"),    ("SYN", "lead")],
+    "pop":         [("SYN", "synth"),    ("KEY", "piano")],
+}
+_DEFAULT_INSTRUMENTS = [("SYN", "synth"), ("KEY", "keys")]
+
+
+def _generate_pad_descriptions(llm_tags, bpm=None, key=None):
+    """Build 12 pad descriptions from LLM-parsed tags using templates.
+
+    Uses the proven pad layout (1-4 drums, 5-12 loops/melodic) and fills
+    in genre/vibe/texture keywords from the LLM response.
+    """
+    genres = llm_tags.get("genre", [])
+    vibes = llm_tags.get("vibe", [])
+    textures = llm_tags.get("texture", [])
+    keywords = llm_tags.get("keywords", [])
+
+    # Pick the best genre for instrument selection
+    primary_genre = genres[0] if genres else ""
+    instruments = _GENRE_INSTRUMENTS.get(primary_genre, _DEFAULT_INSTRUMENTS)
+
+    # Build a pool of flavor words (2-3 per pad, no repeats across pads)
+    flavor_pool = []
+    for src in [genres[:2], vibes[:2], textures[:2], keywords[:3]]:
+        for word in src:
+            if word not in flavor_pool and len(word) > 1:
+                flavor_pool.append(word)
+
+    pads = {}
+    for pad_num, type_code, role, playability in _PAD_TEMPLATES:
+        parts = []
+
+        # Type code — resolve melodic pads by genre
+        if type_code is None:
+            idx = 0 if role == "melodic-a" else 1
+            tc, label = instruments[idx] if idx < len(instruments) else _DEFAULT_INSTRUMENTS[idx]
+            parts.append(tc)
+            parts.append(label)
+        else:
+            parts.append(type_code)
+
+        # Add 1-2 flavor words, cycling through the pool
+        added = 0
+        for word in flavor_pool:
+            if word.upper() not in fetch_samples.TYPE_CODES and word not in parts:
+                parts.append(word)
+                added += 1
+                if added >= 2:
+                    break
+        # Rotate pool so next pad gets different flavors
+        if flavor_pool:
+            flavor_pool = flavor_pool[1:] + flavor_pool[:1]
+
+        parts.append(playability)
+        pads[pad_num] = " ".join(parts)
+
+    return pads
+
+
+def build_bank_from_vibe(prompt_data):
+    """Turn a vibe prompt into a full 12-pad bank preset.
+
+    Args:
+        prompt_data: dict with 'prompt', optional 'bpm', 'key'
+
+    Returns:
+        dict with 'preset' (ready for save_preset), 'llm_tags', 'query'
+    """
+    prompt = prompt_data["prompt"]
+    bpm = prompt_data.get("bpm") or 120
+    key = prompt_data.get("key") or "Am"
+
+    # 1. Parse vibe via LLM
+    llm_tags = _call_llm(prompt, bpm=bpm, key=key)
+
+    # 2. Generate 12 pad descriptions from templates + LLM tags
+    pads = _generate_pad_descriptions(llm_tags, bpm=bpm, key=key)
+
+    # 3. Build the query for display
+    query = _build_query(prompt_data, llm_tags)
+
+    # 4. Build slug from prompt
+    slug = re.sub(r"[^a-z0-9]+", "-", prompt.lower().strip())[:40].strip("-")
+    if not slug:
+        slug = "vibe-bank"
+
+    # 5. Assemble tags list
+    all_tags = list(dict.fromkeys(  # dedupe preserving order
+        llm_tags.get("keywords", [])
+        + llm_tags.get("genre", [])
+        + llm_tags.get("vibe", [])
+    ))[:12]
+
+    preset = {
+        "name": f"Vibe: {prompt[:50]}",
+        "slug": slug,
+        "author": "jambox-vibe",
+        "bpm": int(bpm),
+        "key": key,
+        "vibe": prompt,
+        "notes": llm_tags.get("rationale", ""),
+        "source": "vibe-generated",
+        "tags": all_tags,
+        "pads": pads,
+    }
+
+    return {
+        "preset": preset,
+        "llm_tags": llm_tags,
+        "query": query,
+    }
+
+
 def generate_vibe_suggestions(prompt_data):
     llm_tags = _call_llm(
         prompt_data["prompt"],
