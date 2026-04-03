@@ -361,6 +361,54 @@ def _stem_split_task(library_path, rel_path, parent_tags):
             )
 
 
+def _ingest_doc_zip(filepath):
+    """Extract a zip of doc deliverables (no audio) and route them to the repo.
+
+    Returns the number of docs copied.
+    """
+    if not zipfile.is_zipfile(filepath):
+        return 0
+
+    count = 0
+    try:
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            for name in zf.namelist():
+                basename = os.path.basename(name)
+                if not basename:
+                    continue
+                dest_dir = _is_doc_deliverable(basename)
+                if dest_dir is None:
+                    continue
+
+                dest_path = os.path.join(dest_dir, basename)
+                if os.path.exists(dest_path):
+                    # Already in repo — skip
+                    continue
+
+                os.makedirs(dest_dir, exist_ok=True)
+                with zf.open(name) as src, open(dest_path, 'wb') as dst:
+                    dst.write(src.read())
+                rel_dest = os.path.relpath(dest_path, REPO_DIR)
+                print(f"  [DOC] {basename} → {rel_dest}")
+                count += 1
+    except Exception as e:
+        print(f"  [DOC] Error processing {os.path.basename(filepath)}: {e}")
+
+    if count > 0:
+        # Move zip to archive
+        try:
+            archive_dest = os.path.join(RAW_ARCHIVE, os.path.basename(filepath))
+            shutil.move(filepath, archive_dest)
+        except Exception:
+            pass
+        _log_ingest(
+            "Doc zip: %s" % os.path.basename(filepath),
+            count, {'docs': count}, source_type='doc-delivery',
+        )
+
+    return count
+
+
 def _log_ingest(source_name, num_samples, categories, source_type='pack'):
     """Write to ingest log and update watcher state."""
     entry = {
@@ -1233,7 +1281,13 @@ def start_watcher(dedupe=False):
                     if delivery:
                         count = handle_chat_delivery(filepath, delivery)
                     elif not archive_has_audio(filepath):
-                        print(f"[WATCHER] Skipping {fname} — no audio files inside")
+                        # No audio — check if it's a doc delivery zip
+                        doc_count = _ingest_doc_zip(filepath)
+                        if doc_count > 0:
+                            count = doc_count
+                            print(f"[WATCHER] Doc delivery: {doc_count} files from {fname}")
+                        else:
+                            print(f"[WATCHER] Skipping {fname} — no audio or docs inside")
                         self._processed.add(filepath)
                         to_remove.append(filepath)
                         continue
@@ -1339,6 +1393,11 @@ def one_shot_ingest(dry_run=False, dedupe=False):
             delivery = check_chat_delivery(filepath)
             if delivery:
                 total += handle_chat_delivery(filepath, delivery)
+            elif not dry_run and not archive_has_audio(filepath):
+                # No audio — try as doc delivery zip
+                doc_count = _ingest_doc_zip(filepath)
+                if doc_count > 0:
+                    total += doc_count
             else:
                 total += ingest_archive_file(filepath, dry_run=dry_run)
             pack_count += 1
