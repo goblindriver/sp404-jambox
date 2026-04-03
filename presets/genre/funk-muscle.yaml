@@ -1,0 +1,21 @@
+name: funk-muscle
+display_name: "Funk Muscle"
+category: genre
+bpm: 112
+key: Em
+description: "The floor opens up. James Brown tight, Parliament nasty. Chicken-scratch guitar, slap bass, horn stabs. Every hit lands like a punch. This is where hips start moving and nobody can stop."
+tags: [funk, raw, hype, energetic, warm]
+energy: high
+pads:
+  1: "KIK funk hard one-shot"
+  2: "SNR funk snappy one-shot"
+  3: "HAT funk tight one-shot"
+  4: "PRC funk conga one-shot"
+  5: "BRK funk tight loop"
+  6: "BRK funk heavy chop-ready"
+  7: "SYN funk clavinet loop"
+  8: "SYN funk wah loop"
+  9: "BAS funk slap loop"
+  10: "FX funk horn one-shot"
+  11: "PAD funk warm layer"
+  12: "VOX funk hype chop-ready"

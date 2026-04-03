@@ -1,0 +1,21 @@
+name: peak-hour
+display_name: "Peak Hour"
+category: genre
+bpm: 125
+key: Gm
+description: "THE MOMENT. Sun is down, lights are up, maximum intensity. Big brass hits, crowd noise, the build everyone feels in their chest. This is the bank you switch to when the energy is already insane and you want to push it over the edge. The drop everyone will talk about tomorrow."
+tags: [electronic, aggressive, hype, dark, massive]
+energy: high
+pads:
+  1: "KIK electronic heavy one-shot"
+  2: "SNR electronic hard one-shot"
+  3: "HAT electronic sharp one-shot"
+  4: "PRC electronic clap one-shot"
+  5: "BRK electronic hype loop"
+  6: "BRK electronic aggressive loop"
+  7: "SYN electronic big loop"
+  8: "FX electronic brass one-shot"
+  9: "BAS electronic massive loop"
+  10: "SYN electronic lead loop"
+  11: "RSR electronic build transition"
+  12: "FX electronic drop one-shot"

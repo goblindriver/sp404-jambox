@@ -1,0 +1,21 @@
+name: dub-cooldown
+display_name: "Dub Cooldown"
+category: genre
+bpm: 100
+key: Am
+description: "Decompress. The crowd catches its breath. Echo chamber bass, melodica floating through reverb, space between the notes. Lee Scratch Perry's garden at midnight. The party isn't over — it's just breathing. Same key as Disco Inferno so you can ease back into dancing when the moment is right."
+tags: [dub, ambient, mellow, spacious, warm, dreamy]
+energy: low
+pads:
+  1: "KIK dub deep one-shot"
+  2: "SNR dub rim one-shot"
+  3: "HAT dub smooth one-shot"
+  4: "PRC dub woodblock one-shot"
+  5: "BRK dub spacious loop"
+  6: "BRK dub groove loop"
+  7: "SYN dub melodica loop"
+  8: "SYN dub organ loop"
+  9: "BAS dub deep loop"
+  10: "SYN dub echo loop"
+  11: "PAD ambient spacious layer"
+  12: "FX dub echo transition"

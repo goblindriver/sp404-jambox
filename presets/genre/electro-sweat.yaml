@@ -1,0 +1,21 @@
+name: electro-sweat
+display_name: "Electro Sweat"
+category: genre
+bpm: 120
+key: Dm
+description: "The weird turn that makes YOUR block party different from everyone else's. Dance-punk tension, dirty synths, LCD Soundsystem at the cookout. Fischerspooner in the parking lot. The moment where it gets angular and intense and nobody expected it and everyone loves it."
+tags: [electronic, aggressive, raw, dark, hype, dirty]
+energy: high
+pads:
+  1: "KIK electronic hard one-shot"
+  2: "SNR electronic clap one-shot"
+  3: "HAT electronic crispy one-shot"
+  4: "PRC electronic rim one-shot"
+  5: "BRK electronic minimal loop"
+  6: "BRK electronic aggressive loop"
+  7: "SYN electronic dirty loop"
+  8: "SYN electronic acid loop"
+  9: "BAS electronic aggressive loop"
+  10: "SYN electronic dark loop"
+  11: "PAD electronic tense layer"
+  12: "VOX electronic processed chop-ready"

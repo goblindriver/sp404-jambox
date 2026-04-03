@@ -1,0 +1,21 @@
+name: disco-inferno
+display_name: "Disco Inferno"
+category: genre
+bpm: 118
+key: Am
+description: "Full dance floor. Nile Rodgers guitar, lush strings, four-on-the-floor pulse. Everyone's auntie is dancing next to the kid who just learned to pop-lock. The sun is going orange and nobody's leaving."
+tags: [disco, warm, hype, clean, soulful, danceable]
+energy: high
+pads:
+  1: "KIK disco punchy one-shot"
+  2: "SNR disco tight one-shot"
+  3: "HAT disco shimmery one-shot"
+  4: "PRC disco cowbell one-shot"
+  5: "BRK disco groove loop"
+  6: "BRK disco four-on-the-floor loop"
+  7: "SYN disco strings loop"
+  8: "SYN disco piano loop"
+  9: "BAS disco groove loop"
+  10: "SYN disco guitar loop"
+  11: "PAD disco lush layer"
+  12: "VOX disco diva chop-ready"

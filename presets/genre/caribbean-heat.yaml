@@ -1,0 +1,21 @@
+name: caribbean-heat
+display_name: "Caribbean Heat"
+category: genre
+bpm: 108
+key: Cm
+description: "Summer explodes. Dancehall riddims and soca drums, steel pan shimmer over tropical bass. The block party goes international. Everyone's wine-ing and nobody cares who's watching."
+tags: [dancehall, tropical, hype, warm, energetic]
+energy: high
+pads:
+  1: "KIK dancehall deep one-shot"
+  2: "SNR dancehall rim one-shot"
+  3: "HAT dancehall tight one-shot"
+  4: "PRC latin conga one-shot"
+  5: "BRK dancehall riddim loop"
+  6: "BRK soca energetic loop"
+  7: "PRC latin bongo loop"
+  8: "SYN tropical bright loop"
+  9: "BAS dancehall deep loop"
+  10: "SYN tropical warm loop"
+  11: "PAD tropical airy layer"
+  12: "VOX dancehall ragga chop-ready"

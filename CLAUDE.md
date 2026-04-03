@@ -13,10 +13,14 @@ This project is worked on by multiple Claude agents coordinated by the user:
 - Chat may provide instructions via this file or via messages relayed by the user
 - **Chat**: creative direction (bank layouts, genre palettes, tag vocabularies), documentation, orchestrating between agents
 - **Code**: implementation (scripts, web UI, pipeline), code changes, deployment
-- **Cowork**: sample sourcing (scraping, downloading to watchfolders)
-- Cowork drops samples into `~/Downloads/` watchfolders — Code ingests them via `scripts/ingest_downloads.py`
+- **Cowork**: sample sourcing (scraping, downloading to watchfolders), research deliverables
+- **All deliverables flow through `~/Downloads/`** — Code ingests them via `scripts/ingest_downloads.py`:
+  - Audio files (samples, packs) → ingested into the sample library, tagged, converted to FLAC
+  - Doc deliverables (`.md`, `.txt`) → routed to `docs/` by naming convention (see routing table in script)
+  - `CLAUDE.md` → copied to repo root (backup of old version kept as `.bak`)
+  - Originals move to `~/Downloads/_PROCESSED/` after routing
 - When Chat suggests new banks or tag changes, update `bank_config.yaml` and `docs/TAGGING_SPEC.md` accordingly
-- Chat owns docs — Code should not create or update documentation files unless asked
+- Chat owns docs — Code should not create or update documentation files unless asked (the ingest pipeline routes Chat's docs, it doesn't author them)
 - After ingesting new samples, re-tag: `python scripts/tag_library.py --update`
 
 ## Key Paths
@@ -55,7 +59,23 @@ WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silenc
 
 ## Current Bank Layout
 
-### Default Set (v3)
+### Tiger Dust Block Party (default performance set)
+| Bank | Name | BPM | Key | Energy | Purpose |
+|------|------|-----|-----|--------|---------|
+| A | Soul Kitchen | 98 | G | Low | Golden hour opener. Dusty soul grooves. |
+| B | Funk Muscle | 112 | Em | High | James Brown tight, Parliament nasty. |
+| C | Disco Inferno | 118 | Am | High | Four-on-the-floor, lush strings, full dance floor. |
+| D | Boom Bap Cipher | 90 | Dm | Mid | Golden age hip-hop, vinyl crackle, 808 weight. |
+| E | Caribbean Heat | 108 | Cm | High | Dancehall riddims, soca drums, tropical bass. |
+| F | Electro Sweat | 120 | Dm | High | Dance-punk tension, dirty synths, LCD at the cookout. |
+| G | Neon Rave | 128 | F | High | Blog-house filters, rave stabs, 2007 warehouse energy. |
+| H | Peak Hour | 125 | Gm | High | THE MOMENT. Maximum intensity. The drop. |
+| I | Dub Cooldown | 100 | Am | Low | Echo chamber bass, melodica, reverb for days. |
+| J | Weapons Cache | 120 | XX | Mid | Air horns, sirens, scratches, transitions, impacts. |
+
+**Energy arc:** warm up → get moving → full groove → change pace → summer → get weird → build → PEAK → breathe → weapons anytime
+
+### Legacy Default Set (v3)
 | Bank | Name | BPM | Key | Purpose |
 |------|------|-----|-----|---------|
 | A | Your Space | — | — | User's own sounds (empty) |
@@ -72,6 +92,16 @@ WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silenc
 ### Available Genre Presets
 | Preset | BPM | Key | Vibe |
 |--------|-----|-----|------|
+| soul-kitchen | 98 | G | Dusty soul, golden hour warmth |
+| funk-muscle | 112 | Em | James Brown tight, Parliament nasty |
+| disco-inferno | 118 | Am | Nile Rodgers guitar, lush strings |
+| boom-bap-cipher | 90 | Dm | Golden age hip-hop, vinyl crackle |
+| caribbean-heat | 108 | Cm | Dancehall riddims, soca, tropical bass |
+| electro-sweat | 120 | Dm | Dance-punk, dirty synths, LCD energy |
+| neon-rave | 128 | F | Blog-house, rave stabs, 2007 warehouse |
+| peak-hour | 125 | Gm | Maximum intensity, big drops |
+| dub-cooldown | 100 | Am | Echo chamber, melodica, spacious reverb |
+| weapons-cache | 120 | XX | Air horns, sirens, transitions, impacts |
 | big-beat-blowout | 130 | Em | Chemical Brothers warehouse energy |
 | synth-pop-dreams | 110 | Fm | Airy melancholy, Postal Service intimacy |
 | brat-mode | 128 | Gm | Buzzy detuned synths, Charli XCX attitude |
@@ -87,7 +117,13 @@ WAVs also get an RLND chunk (Roland proprietary pad metadata) and leading silenc
 
 **Harmonic design**: Default set keys (Am, Dm, Em, F) are diatonic to C major — everything harmonizes across banks.
 **Tempo design**: 112/120/128/130 BPM cluster — all mix cleanly.
-**Pad convention**: Pads 1-4 = drum hits (one-shots), Pads 5-12 = loops & melodic content
+**Pad convention** (12 pads per bank, SP-404A):
+- Pads 1-4: Drum one-shots (kick, snare, hat, perc)
+- Pads 5-8: Loops & breaks (choppable rhythm, melodic loops)
+- Pads 9-10: Melodic content (bass, chords, leads)
+- Pads 11-12: Texture/FX (risers, transitions, ambient, vocal chops)
+
+This aligns with how professional SP-404 content packs organize pads (rhythm low, melodic mid, texture high). The MK2 uses 16 pads — Jambox targets the SP-404A's 12-pad layout.
 
 ## Tag System & Dimensions
 Auto-tag library: `python scripts/tag_library.py` (incremental: `--update`)
@@ -135,12 +171,31 @@ Example: `KIK hard aggressive one-shot` — finds a hard aggressive kick
 ## Ingest Downloads
 - One-shot: `python scripts/ingest_downloads.py` — process all pending packs/files from ~/Downloads
 - Watcher mode: `python scripts/ingest_downloads.py --watch` — background daemon using watchdog, auto-ingests new files as they appear in ~/Downloads
+- Docs only: `python scripts/ingest_downloads.py --docs-only` — route doc deliverables without processing audio
 - The watcher waits for file sizes to stabilize before processing (handles in-progress downloads)
-- After ingest, auto-runs `tag_library.py --update` on new files
-- Logs to `~/Music/SP404-Sample-Library/_ingest_log.json`
+
+### Audio Pipeline (Unified — shipped April 2026)
+Every audio file that enters the library gets the full pipeline automatically:
+- **Audio analysis** (`scripts/audio_analysis.py`): librosa BPM/key/loudness detection (fallback when filename has no metadata)
+- **Fingerprinting**: Chromaprint fingerprinting + inline dedup check (dupes auto-move to `_DUPES/`)
+- **Stem splitting**: Background Demucs split for tracks >60s (ThreadPoolExecutor, non-blocking). Invocation: `python3 -m demucs`
+- **Tagging**: Auto-runs `tag_library.py --update`, enriches entries with `bpm_source`, `key_source`, `loudness_db` fields
 - Reads `_SOURCE.txt` files left by Cowork and stores context in `_tags.json`
 - Reads `_DELIVERY.yaml` manifests from Chat delivery zips and auto-installs presets
 - Converts to FLAC on ingest for storage efficiency
+
+### Doc Pipeline
+Routes `.md` and `.txt` deliverables from Chat and Cowork to the correct repo location by naming convention:
+- `CLAUDE.md` → repo root (backs up old as `CLAUDE.md.bak`)
+- `HANDOFF_*.md`, `BUG_HUNT_*.md`, `SP404_*.md` → `docs/`
+- `CODE_BRIEF_*.md`, `COWORK_BRIEF_*.md` → `docs/briefs/`
+- `*_SOURCES.txt` → `docs/sources/`
+- `*_Research.md` → `docs/research/`
+- Unrecognized `.md`/`.txt` → skipped with warning in log
+- Originals move to `~/Downloads/_PROCESSED/` after routing
+
+### Logging & UI
+- Logs to `~/Music/SP404-Sample-Library/_ingest_log.json`
 - Web UI has a Watch toggle button to start/stop the watcher, and an activity feed
 
 ## Plex Integration (Personal Music)
@@ -252,6 +307,7 @@ Pattern training is intentionally separate from vibe training. No MIDI corpus ex
 ├── Stems/{source-name}/           (Demucs stem splits)
 ├── Freesound/{bank-name}/         (API downloads with attribution)
 ├── _RAW-DOWNLOADS/                (original packs, ingested packs moved here)
+├── _DUPES/                        (fingerprint-detected duplicates, review before deleting)
 ├── _GOLD/Bank-A/                  (saved Bank A sessions)
 ├── _tags.json                     (tag database, ~20,925 entries)
 └── _ingest_log.json               (watcher activity log)
@@ -276,6 +332,7 @@ Launch: `cd web && python app.py` (runs on http://localhost:5404)
 - Daily Bank button: generate a fresh auto preset for the current bank
 - File watcher toggle with activity feed
 - Disk usage panel with cleanup controls
+- **Power button**: Server status dashboard showing feature availability (LLM, librosa, fpcalc, demucs, watcher) with live checkmarks. Restart Server button for clean respawns.
 
 ## Bank Preset Library
 
@@ -296,19 +353,25 @@ Bank configurations are standalone YAML files in `presets/`, organized by catego
 
 ## Smart Features
 
-Optional local-first creative tools gated by environment variables. When the relevant env var is unset, the feature is silently disabled.
+Local-first creative tools. Status shown in the Power Button UI dashboard.
 
-### Natural Language Vibe Prompts
-Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Requires `SP404_LLM_ENDPOINT`. See "Personalized Vibe Intelligence" section above for full details.
+### Natural Language Vibe Prompts — LIVE
+Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Connected to Ollama Qwen3 8B. See "Personalized Vibe Intelligence" section above for full details.
 
-### Pattern Generation (Magenta)
+### Audio Analysis — LIVE
+librosa-powered BPM, key, and loudness detection. Runs inline during ingest. Results stored in `_tags.json` with `bpm_source`, `key_source`, `loudness_db` fields. Module: `scripts/audio_analysis.py`.
+
+### Audio Deduplication — LIVE
+Chromaprint fingerprint-based duplicate detection. Runs inline during ingest (no separate pass needed). Dupes auto-move to `_DUPES/`. Found 11.5 GB reclaimable at 0.95 threshold on first full library scan. Fingerprinting also available on demand.
+
+### Stem Splitting — LIVE
+Background Demucs stem splitting for tracks >60s. Runs via ThreadPoolExecutor (non-blocking). Invocation: `python3 -m demucs`. Stems land in `Stems/{source-name}/` with metadata carried from parent track.
+
+### Daily Bank — LIVE
+Auto-generates a fresh preset each day from recent/trending library activity. Presets land in `presets/auto/`. Uses type-balanced candidate selection and rank-based weights (bugs fixed this session).
+
+### Pattern Generation (Magenta) — DORMANT
 Generate drum patterns and melodic sequences with human-feel swing using MusicVAE/GrooVAE. Outputs SP-404 .PTN pattern files. Requires Magenta checkpoints. Falls back to starter patterns if Magenta unavailable.
-
-### Audio Deduplication
-Chromaprint fingerprint-based duplicate detection. Runs on demand or during ingest via `--dedupe` flag. Install `fpcalc` via `brew install chromaprint`. Falls back to Python cosine similarity if fpcalc unavailable.
-
-### Daily Bank
-Auto-generates a fresh preset each day from recent/trending library activity. Presets land in `presets/auto/`.
 
 ### Centralized Configuration
 All paths and service endpoints managed through `scripts/jambox_config.py` with environment variable overrides.
@@ -341,6 +404,7 @@ scripts/vibe_retrieval.py          # RAG retrieval for vibe parsing
 scripts/vibe_training_store.py     # Persistent vibe session store (SQLite)
 scripts/generate_patterns.py       # Magenta pattern generation
 scripts/deduplicate_samples.py     # Audio deduplication
+scripts/audio_analysis.py          # BPM/key/loudness detection (librosa)
 scripts/daily_bank.py              # Daily preset generator
 scripts/plex_client.py             # Plex DB client (read-only)
 scripts/preset_utils.py            # Preset/set resolution and management
@@ -371,6 +435,30 @@ Generated by `scripts/gen_padinfo.py` — auto-sets loop mode for pads 5-12, gat
 ## RLND WAV Chunk
 SP-404SX WAVs include a proprietary "RLND" chunk (466 bytes) encoding device ID and pad index.
 Injected by `scripts/wav_utils.py:inject_rlnd()` during sample conversion.
+
+## SP-404 Ecosystem Context
+
+### Hardware Target
+Jambox targets the **SP-404A** (original, not MK2). Key differences from MK2:
+- 12 pads per bank (not 16)
+- No project file import — output is WAV files + PAD_INFO.BIN + patterns on SD card
+- No firmware features like Loop Capture, Groove Function, Sound Generator, or Serato integration
+- Community research and paid packs skew MK2 — filter accordingly
+
+### LLM Training Data Sources (from ecosystem research)
+These should feed the RAG corpus and/or synthetic training examples:
+- **NearTao's Unofficial Guide** (free PDF) — the best single document on SP-404 workflow. Convert sections to Q&A pairs.
+- **Resample workflow patterns** — teach the model to suggest resample chains and effect pairings
+- **Pad organization conventions** from paid packs — rhythm low, melodic mid, texture high
+- **SP-404 effects reference** — which effects suit which sample types (Vinyl Sim for warmth, DJFX Looper for glitch, etc.)
+
+### Community Resources
+- sp-forums.com — original SP-404 community, tips & tricks
+- r/SP404 (Reddit) — active subreddit, beat showcases, technique discussion
+- Key producers to study: Dibiase (chain-resampling), STLNDRMS (hybrid MPC+404), Flying Lotus (effects processing)
+- LofiAndy, CremaSound, SPVIDZ — paid pack creators whose bank architectures inform Jambox's structure
+
+Full ecosystem research doc: see `docs/SP404_ECOSYSTEM_RESEARCH.md`
 
 ## Important Notes
 - The SP-404A (original, non-SX) is more restrictive — always use 44.1kHz/16-bit/mono

@@ -1,0 +1,21 @@
+name: soul-kitchen
+display_name: "Soul Kitchen"
+category: genre
+bpm: 98
+key: G
+description: "Golden hour opener. Dusty 45s on the turntable, smoke off the grill, sun still up. Curtis Mayfield warmth, Al Green intimacy. The vibe that says the party has started but there's no rush."
+tags: [soul, funk, warm, dusty, mellow, nostalgic]
+energy: low
+pads:
+  1: "KIK soul warm one-shot"
+  2: "SNR soul crispy one-shot"
+  3: "HAT soul smooth one-shot"
+  4: "PRC tambourine warm one-shot"
+  5: "BRK soul dusty chop-ready"
+  6: "BRK funk mellow loop"
+  7: "SYN rhodes warm loop"
+  8: "SYN soul organ loop"
+  9: "BAS soul warm loop"
+  10: "SYN soul mellow loop"
+  11: "PAD soul warm layer"
+  12: "VOX soul soulful chop-ready"

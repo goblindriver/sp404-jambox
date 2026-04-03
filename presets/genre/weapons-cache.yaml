@@ -1,0 +1,21 @@
+name: weapons-cache
+display_name: "Weapons Cache"
+category: utility
+bpm: 120
+key: XX
+description: "The utility belt. Air horns for emphasis, sirens for builds, crowd noise for energy, scratches for transitions. Every sound here is a tool — deploy strategically from any bank. The cash register means someone just got paid. The impact hit means you just dropped the hammer."
+tags: [hype, utility, fx, transition]
+energy: mid
+pads:
+  1: "FX hype airhorn one-shot"
+  2: "FX hype siren one-shot"
+  3: "FX hype crowd one-shot"
+  4: "FX hype scratch one-shot"
+  5: "VOX hype drop one-shot"
+  6: "VOX hype shout one-shot"
+  7: "FX transition riser transition"
+  8: "FX transition sweep transition"
+  9: "FX impact drop one-shot"
+  10: "FX transition reverse transition"
+  11: "FX ambient noise layer"
+  12: "FX hype cash-register one-shot"

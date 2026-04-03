@@ -1,0 +1,21 @@
+name: boom-bap-cipher
+display_name: "Boom Bap Cipher"
+category: genre
+bpm: 90
+key: Dm
+description: "The cipher forms. Tempo drops, heads start nodding. Vinyl crackle and dusty loops. 808 weight holding down the low end. Golden age energy — DJ Premier chopping, Pete Rock layering. Someone's about to freestyle."
+tags: [hiphop, dusty, lo-fi, dark, nostalgic, raw]
+energy: mid
+pads:
+  1: "KIK hiphop heavy one-shot"
+  2: "SNR hiphop dusty one-shot"
+  3: "HAT hiphop lo-fi one-shot"
+  4: "PRC hiphop shaker one-shot"
+  5: "BRK hiphop dusty chop-ready"
+  6: "BRK hiphop vinyl loop"
+  7: "BRK soul nostalgic chop-ready"
+  8: "SYN hiphop jazz loop"
+  9: "BAS hiphop 808 loop"
+  10: "SYN hiphop dark loop"
+  11: "PAD hiphop dusty layer"
+  12: "VOX hiphop scratch one-shot"

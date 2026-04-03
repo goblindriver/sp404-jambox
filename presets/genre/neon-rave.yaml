@@ -1,0 +1,21 @@
+name: neon-rave
+display_name: "Neon Rave"
+category: genre
+bpm: 128
+key: F
+description: "Peak energy builds. Blog-house filters, rave stabs, 2007 warehouse energy dropped into the open air. Justice on the PA. Glow sticks appear from nowhere. The block party just became a festival."
+tags: [house, electronic, hype, bright, energetic]
+energy: high
+pads:
+  1: "KIK house punchy one-shot"
+  2: "SNR house clap one-shot"
+  3: "HAT house open one-shot"
+  4: "PRC house percussion one-shot"
+  5: "BRK house driving loop"
+  6: "BRK house filter loop"
+  7: "SYN house rave one-shot"
+  8: "SYN house bright loop"
+  9: "BAS house deep loop"
+  10: "SYN house lead loop"
+  11: "RSR house build transition"
+  12: "FX house siren one-shot"
