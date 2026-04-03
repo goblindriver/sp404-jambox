@@ -228,11 +228,14 @@ def watcher_start():
         if ingest.get_watcher_state()['running']:
             return jsonify({'ok': True, 'message': 'Watcher already running'})
 
-        success = ingest.start_watcher()
-        if success:
-            return jsonify({'ok': True, 'message': 'Watcher started'})
-        else:
-            return jsonify({'ok': False, 'error': 'Failed to start watcher'}), 500
+        # Run initial ingest pass in background, then start watching
+        def _start_with_ingest():
+            ingest.one_shot_ingest()
+            ingest.start_watcher()
+
+        t = threading.Thread(target=_start_with_ingest, daemon=True)
+        t.start()
+        return jsonify({'ok': True, 'message': 'Running initial ingest, then watching'})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 

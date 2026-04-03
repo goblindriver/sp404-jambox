@@ -1,24 +1,25 @@
-bank_i:
-  preset: genre/big-beat-blowout
-  name: Big Beat Blowout
-  bpm: 130
-  key: Em
-  notes: Big beat revival kit. Fat compressed breaks, squelchy 303 bass, rave stabs,
-    and vocal shouts. Built for driving, hypnotic grooves that hit hard. Think Block
-    Rockin' Beats meets Firestarter.
+bank_a:
+  name: Your Space
+  notes: Bank A is yours — resample and chop on-device
+bank_b:
+  preset: genre/sessions
+  name: Sessions
+  bpm: 120
+  key: Am
+  notes: Long-form breaks and full tracks for live sampling and chopping
   pads:
-    1: KIK punchy distorted fat one-shot
-    2: SNR cracking loud compressed one-shot
-    3: HAT crisp open metallic one-shot
-    4: CLP big layered room one-shot
-    5: BRK funk breakbeat compressed loop
-    6: BAS acid 303 squelchy loop
-    7: SYN rave stab hoover loop
-    8: SYN acid lead distorted loop
-    9: SYN filtered sweep build loop
-    10: PRC shaker tambourine uptempo loop
-    11: BRK amen chopped dirty loop
-    12: VOX shout chant crowd chop-ready
+    1: SMP funk soul chop-ready
+    2: SMP disco bright chop-ready
+    3: SMP electronic raw chop-ready
+    4: SMP electronic hype chop-ready
+    5: BRK funk warm loop
+    6: BRK disco bright loop
+    7: BRK electronic raw loop
+    8: BRK electronic hype loop
+    9: SMP funk nostalgic chop-ready
+    10: SMP disco soulful chop-ready
+    11: SMP electronic dark chop-ready
+    12: SMP electronic aggressive chop-ready
 bank_c:
   preset: genre/am-songwriter
   name: Am Songwriter
