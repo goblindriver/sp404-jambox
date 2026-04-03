@@ -19,9 +19,6 @@ bank_i:
     10: PRC shaker tambourine uptempo loop
     11: BRK amen chopped dirty loop
     12: VOX shout chant crowd chop-ready
-C cowbell 808 noise one-shot
-    11: FX riser build siren loop
-    12: VOX chop attitude glitch chop-ready
 bank_c:
   preset: genre/am-songwriter
   name: Am Songwriter

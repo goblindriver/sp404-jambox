@@ -12,6 +12,7 @@ sample packs. It waits for downloads to finish (stable file size), ingests
 them, auto-tags with tag_library.py --update, and logs everything.
 """
 import os, sys, re, shutil, glob, time, argparse, subprocess, json, threading, fcntl, zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import yaml
 
@@ -36,12 +37,43 @@ ALLOWED_EXTENSIONS = AUDIO_EXTENSIONS | ARCHIVE_EXTENSIONS
 # Extensions to always ignore
 IGNORE_EXTENSIONS = {
     '.dmg', '.pkg', '.app', '.exe', '.msi', '.iso',  # installers
-    '.pdf', '.doc', '.docx', '.txt', '.md',           # documents
+    '.pdf', '.doc', '.docx',                           # non-deliverable documents
     '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', # images
     '.mp4', '.mov', '.avi', '.mkv',                    # video
     '.torrent', '.crdownload', '.part',                # incomplete
     '.ds_store',
 }
+
+# Doc deliverable patterns — Chat/Cowork drop these in ~/Downloads for Code to pick up
+DOC_DELIVERABLE_PATTERNS = {
+    'CODE_BRIEF_':      'docs',     # Code briefs → docs/
+    'COWORK_BRIEF_':    'docs',     # Cowork briefs → docs/
+    'HANDOFF':          'docs',     # Session handoffs → docs/
+    'BUG_HUNT_':        'docs',     # Bug hunt reports → docs/
+    '_SOURCE':          'docs',     # Source research docs → docs/
+    '_SOURCES':         'docs',     # Source lists → docs/
+    'SOURCES_':         'docs',     # Source lists → docs/
+    '_Reference':       'docs',     # Sound design reference docs → docs/
+    '_Sound_Design':    'docs',     # Sound design docs → docs/
+    'Playlist_Mining':  'docs',     # Playlist analysis → docs/
+    'Sample_Pack_':     'docs',     # Sample pack research → docs/
+    'playlist_':        'docs',     # Playlist data → docs/
+    'sound_design_':    'docs',     # Sound design references → docs/
+    'WEBAPP_':          'docs',     # Web app specs → docs/
+}
+
+# Special doc files that go to repo root instead of docs/
+DOC_ROOT_FILES = {'CLAUDE.md'}
+
+# Background stem splitting — single worker to avoid overwhelming the system
+_stem_executor = ThreadPoolExecutor(max_workers=1)
+_stem_futures = []
+
+# Recent fingerprints for fast inline dedup (capped)
+_recent_fingerprints = {}
+_RECENT_FP_CAP = 1000
+
+REPO_DIR = os.path.dirname(SCRIPTS_DIR)
 
 # Patterns that identify sample pack folders (vs. music albums)
 SAMPLE_PACK_SUFFIXES = [
@@ -75,6 +107,256 @@ def get_watcher_state():
     """Get current watcher state (thread-safe)."""
     with _watcher_lock:
         return dict(_watcher_state)
+
+
+def _is_doc_deliverable(filename):
+    """Check if a file is a Chat/Cowork doc deliverable based on naming convention."""
+    name = os.path.basename(filename)
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in ('.md', '.txt'):
+        return None
+    if name in DOC_ROOT_FILES:
+        return REPO_DIR  # goes to repo root
+    for pattern, dest_dir in DOC_DELIVERABLE_PATTERNS.items():
+        if pattern in name:
+            return os.path.join(REPO_DIR, dest_dir)
+    return None
+
+
+def ingest_doc_deliverables(dry_run=False):
+    """Scan ~/Downloads for Chat/Cowork doc deliverables and copy to repo.
+
+    Returns (copied, skipped) counts.
+    """
+    if not os.path.isdir(DOWNLOADS):
+        return 0, 0
+
+    copied = 0
+    skipped = 0
+
+    for item in _download_entries():
+        filepath = os.path.join(DOWNLOADS, item)
+        if os.path.isdir(filepath):
+            continue
+
+        dest_dir = _is_doc_deliverable(item)
+        if dest_dir is None:
+            continue
+
+        dest_path = os.path.join(dest_dir, item)
+
+        # Skip if identical file already exists in repo
+        if os.path.exists(dest_path):
+            try:
+                if os.path.getsize(filepath) == os.path.getsize(dest_path):
+                    if not dry_run:
+                        os.remove(filepath)
+                    print(f"  Already in repo, {'would clean' if dry_run else 'cleaned'}: {item}")
+                    skipped += 1
+                    continue
+            except OSError:
+                pass
+
+        rel_dest = os.path.relpath(dest_path, REPO_DIR)
+        print(f"  {'Would copy' if dry_run else 'Copying'}: {item} → {rel_dest}")
+        if not dry_run:
+            os.makedirs(dest_dir, exist_ok=True)
+            shutil.copy2(filepath, dest_path)
+            os.remove(filepath)
+        copied += 1
+
+    return copied, skipped
+
+
+def _route_and_process(library_path, rel_path):
+    """Unified post-ingest processing: tag, fingerprint, dedup check, stem split.
+
+    Called after a file has been copied into the library. Runs the full
+    enrichment pipeline inline (tag + fingerprint + dedup) and queues
+    background stem splitting for full tracks.
+
+    Returns 'keep', 'duplicate', or 'stem-queued'.
+    """
+    # Step 1: Tag the file (with librosa enrichment)
+    try:
+        from tag_library import tag_file, load_existing_tags, save_tags
+        tags_db = load_existing_tags()
+        entry = tag_file(rel_path, library_path, get_dur=True, use_librosa=True)
+        tags_db[rel_path] = entry
+        save_tags(tags_db)
+    except Exception as e:
+        print(f"  [ROUTE] Tag failed for {rel_path}: {e}")
+        entry = {'duration': 0, 'type_code': 'UNK'}
+
+    # Step 2: Fingerprint and inline dedup check
+    is_dup = False
+    try:
+        from deduplicate_samples import compute_fingerprint, similarity
+        fp = compute_fingerprint(library_path)
+        if fp:
+            # Check against recent fingerprints
+            for other_path, other_fp in _recent_fingerprints.items():
+                if other_path == rel_path:
+                    continue
+                sim = similarity(fp, other_fp)
+                if sim is not None and sim >= 0.95:
+                    print(f"  [ROUTE] Duplicate detected ({sim:.2f}): {rel_path}")
+                    print(f"          Matches: {other_path}")
+                    is_dup = True
+                    break
+
+            # Add to recent set (cap it)
+            if len(_recent_fingerprints) >= _RECENT_FP_CAP:
+                oldest = next(iter(_recent_fingerprints))
+                del _recent_fingerprints[oldest]
+            _recent_fingerprints[rel_path] = fp
+    except Exception as e:
+        print(f"  [ROUTE] Fingerprint skipped: {e}")
+
+    if is_dup:
+        # Move to _DUPES instead of keeping
+        dupes_dir = os.path.join(LIBRARY, "_DUPES")
+        os.makedirs(dupes_dir, exist_ok=True)
+        try:
+            dupe_dest = os.path.join(dupes_dir, os.path.basename(library_path))
+            shutil.move(library_path, dupe_dest)
+        except Exception:
+            pass
+        return 'duplicate'
+
+    # Step 3: Duration-based routing
+    duration = entry.get('duration', 0) or 0
+    type_code = entry.get('type_code', 'UNK')
+
+    if duration > 60 and type_code != 'VOX':
+        # Full track — queue background stem split
+        _queue_stem_split(library_path, rel_path, entry)
+        return 'stem-queued'
+
+    return 'keep'
+
+
+def _queue_stem_split(library_path, rel_path, tag_entry):
+    """Submit a stem split job to the background executor."""
+    future = _stem_executor.submit(_stem_split_task, library_path, rel_path, tag_entry)
+    _stem_futures.append(future)
+    print(f"  [ROUTE] Queued stem split: {os.path.basename(library_path)} ({tag_entry.get('duration', 0):.0f}s)")
+
+
+def _stem_split_task(library_path, rel_path, parent_tags):
+    """Background task: run Demucs stem separation and ingest stems.
+
+    Uses htdemucs for 4-stem separation (drums, bass, vocals, other).
+    Each stem gets tagged with parent metadata.
+    """
+    import tempfile
+
+    print(f"\n[STEMS] Starting split: {os.path.basename(library_path)}")
+
+    # Check for demucs
+    try:
+        subprocess.run(['demucs', '--help'], capture_output=True, timeout=10)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print("[STEMS] Demucs not installed — skipping stem split")
+        return
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            result = subprocess.run(
+                ['demucs', '--two-stems=drums', '-n', 'htdemucs',
+                 '-o', tmpdir, library_path],
+                capture_output=True, text=True, timeout=600,
+            )
+            if result.returncode != 0:
+                print(f"[STEMS] Demucs failed: {result.stderr[:200]}")
+                # Try simpler 4-stem
+                result = subprocess.run(
+                    ['demucs', '-n', 'htdemucs', '-o', tmpdir, library_path],
+                    capture_output=True, text=True, timeout=600,
+                )
+                if result.returncode != 0:
+                    print(f"[STEMS] Demucs retry failed: {result.stderr[:200]}")
+                    return
+        except subprocess.TimeoutExpired:
+            print("[STEMS] Demucs timed out (10min)")
+            return
+
+        # Find output stems
+        stem_base = os.path.splitext(os.path.basename(library_path))[0]
+        stem_dir = None
+        for root, dirs, files in os.walk(tmpdir):
+            if any(f.endswith('.wav') for f in files):
+                stem_dir = root
+                break
+
+        if not stem_dir:
+            print("[STEMS] No stems produced")
+            return
+
+        # Map stems to library categories
+        stem_category_map = {
+            'drums': 'Drums/Drum-Loops',
+            'bass': 'Melodic/Bass',
+            'vocals': 'Vocals/Chops',
+            'other': 'Melodic/Synths-Pads',
+            'no_drums': 'Loops/Instrument-Loops',
+        }
+
+        ingested = 0
+        for stem_file in os.listdir(stem_dir):
+            if not stem_file.endswith('.wav'):
+                continue
+
+            stem_name = os.path.splitext(stem_file)[0].lower()
+            category = stem_category_map.get(stem_name, 'Loops/Instrument-Loops')
+
+            dest_dir = os.path.join(LIBRARY, category)
+            os.makedirs(dest_dir, exist_ok=True)
+            dest_fname = "{}_stem-{}.flac".format(stem_base, stem_name)
+            dest_path = os.path.join(dest_dir, dest_fname)
+
+            if os.path.exists(dest_path):
+                continue
+
+            src_path = os.path.join(stem_dir, stem_file)
+            _copy_as_flac(src_path, os.path.join(dest_dir, "{}_stem-{}.wav".format(stem_base, stem_name)))
+            ingested += 1
+
+        if ingested > 0:
+            print(f"[STEMS] Split {os.path.basename(library_path)} → {ingested} stems")
+
+            # Tag the new stems
+            try:
+                from tag_library import tag_file, load_existing_tags, save_tags
+                tags_db = load_existing_tags()
+                for stem_file in os.listdir(stem_dir):
+                    if not stem_file.endswith('.wav'):
+                        continue
+                    stem_name = os.path.splitext(stem_file)[0].lower()
+                    category = stem_category_map.get(stem_name, 'Loops/Instrument-Loops')
+                    dest_fname = "{}_stem-{}.flac".format(stem_base, stem_name)
+                    stem_rel = os.path.join(category, dest_fname)
+                    stem_full = os.path.join(LIBRARY, stem_rel)
+                    if os.path.exists(stem_full):
+                        stem_entry = tag_file(stem_rel, stem_full, get_dur=True, use_librosa=True)
+                        # Carry parent metadata
+                        stem_entry['source'] = 'processed'
+                        stem_entry['parent'] = rel_path
+                        if parent_tags.get('genre'):
+                            stem_entry['genre'] = parent_tags['genre']
+                        if parent_tags.get('bpm'):
+                            stem_entry['bpm'] = parent_tags['bpm']
+                        tags_db[stem_rel] = stem_entry
+                save_tags(tags_db)
+            except Exception as e:
+                print(f"[STEMS] Tag enrichment failed: {e}")
+
+            _log_ingest(
+                "{} (stems)".format(os.path.basename(library_path)),
+                ingested,
+                {'stems': ingested},
+                source_type='stem-split',
+            )
 
 
 def _log_ingest(source_name, num_samples, categories, source_type='pack'):
@@ -494,6 +776,13 @@ def ingest_single_file(filepath, dry_run=False):
     if source_context:
         _store_source_context(actual_dest, source_context)
 
+    # Unified pipeline: tag + fingerprint + dedup + route
+    rel_path = os.path.relpath(actual_dest, LIBRARY)
+    route_result = _route_and_process(actual_dest, rel_path)
+    if route_result == 'duplicate':
+        print(f"  Duplicate — moved to _DUPES")
+        return 0
+
     # Move original out of Downloads
     archive_dest = os.path.join(RAW_ARCHIVE, fname)
     if filepath.startswith(DOWNLOADS):
@@ -598,6 +887,12 @@ def ingest_pack(pack_dir, dry_run=False):
             if source_context:
                 _store_source_context(actual, source_context)
 
+            # Unified pipeline: tag + fingerprint + dedup + route
+            rel = os.path.relpath(actual, LIBRARY)
+            route_result = _route_and_process(actual, rel)
+            if route_result == 'duplicate':
+                counts[category] = counts.get(category, 0) - 1
+
     for cat in sorted(counts):
         print(f"  → {cat}: {counts[cat]} files")
     total = sum(counts.values())
@@ -680,6 +975,12 @@ def ingest_archive_file(filepath, dry_run=False):
             counts[category] = counts.get(category, 0) + 1
             if source_context:
                 _store_source_context(actual, source_context)
+
+            # Unified pipeline: tag + fingerprint + dedup + route
+            rel = os.path.relpath(actual, LIBRARY)
+            route_result = _route_and_process(actual, rel)
+            if route_result == 'duplicate':
+                counts[category] = counts.get(category, 0) - 1
 
     for cat in sorted(counts):
         print(f"  → {cat}: {counts[cat]} files")
@@ -926,11 +1227,7 @@ def start_watcher(dedupe=False):
             for fp in to_remove:
                 self._pending.pop(fp, None)
 
-            # Auto-tag after ingesting
-            if ingested_any:
-                run_auto_tag()
-                if dedupe:
-                    run_auto_dedupe()
+            # Tagging + fingerprint + dedup now happen inline via _route_and_process()
 
     handler = IngestHandler()
     observer = Observer()
@@ -980,6 +1277,11 @@ def one_shot_ingest(dry_run=False, dedupe=False):
         print(f"Downloads path not found: {DOWNLOADS}")
         return 0
 
+    # Process doc deliverables first (Chat/Cowork .md and .txt files)
+    doc_copied, doc_skipped = ingest_doc_deliverables(dry_run=dry_run)
+    if doc_copied or doc_skipped:
+        print(f"Docs: {doc_copied} copied to repo, {doc_skipped} already present (cleaned)")
+
     # Process sample pack folders
     packs = find_sample_packs()
     total = 0
@@ -1019,19 +1321,22 @@ def one_shot_ingest(dry_run=False, dedupe=False):
         print(f"Processed {pack_count} packs, {total} files organized")
         print(f"Library: {LIBRARY}")
 
-        # Auto-tag new files
-        if total > 0 and not dry_run:
-            run_auto_tag()
-            if dedupe:
-                run_auto_dedupe()
+        # Note: tagging, fingerprinting, and dedup now happen inline
+        # via _route_and_process() during ingest. run_auto_tag() and
+        # run_auto_dedupe() are kept for standalone/CLI use but are
+        # no longer needed in the ingest pipeline.
 
     return total
 
 
 def cleanup_downloads(dry_run=False):
-    """Remove already-ingested packs and archives from ~/Downloads to free disk space."""
+    """Remove already-ingested packs, archives, and doc deliverables from ~/Downloads."""
     freed = 0
     removed = 0
+
+    # Clean up doc deliverables first
+    doc_copied, doc_skipped = ingest_doc_deliverables(dry_run=dry_run)
+    removed += doc_copied + doc_skipped
 
     print(f"Scanning {DOWNLOADS} for already-ingested items...")
     if not os.path.isdir(DOWNLOADS):

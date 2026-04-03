@@ -30,6 +30,12 @@ from pathlib import Path
 
 from jambox_config import load_settings_for_script
 
+try:
+    from audio_analysis import analyze_audio, is_available as librosa_available
+except ImportError:
+    analyze_audio = None
+    librosa_available = lambda: False
+
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
@@ -578,8 +584,13 @@ def classify_playability(duration, type_code, filename, bpm):
 # Main tagging function
 # ═══════════════════════════════════════════════════════════
 
-def tag_file(rel_path, full_path, get_dur=True):
-    """Generate all tags for a single file using the spec dimensions."""
+def tag_file(rel_path, full_path, get_dur=True, use_librosa=True):
+    """Generate all tags for a single file using the spec dimensions.
+
+    When use_librosa is True and librosa is available, falls back to
+    audio analysis for BPM/key when filename extraction returns nothing.
+    Also adds loudness_db and source indicators (bpm_source, key_source).
+    """
     filename = os.path.basename(rel_path)
     dirpath = os.path.dirname(rel_path)
 
@@ -590,6 +601,28 @@ def tag_file(rel_path, full_path, get_dur=True):
     type_code = extract_type_code(rel_path, filename)
     bpm = extract_bpm(filename, dirpath)
     key = extract_key(filename)
+
+    bpm_source = "filename" if bpm else None
+    key_source = "filename" if key else None
+    loudness_db = None
+
+    # Librosa fallback for BPM/key + loudness enrichment
+    if use_librosa and analyze_audio and librosa_available():
+        needs_analysis = (bpm is None) or (key is None)
+        if needs_analysis:
+            analysis = analyze_audio(full_path)
+            if analysis:
+                if bpm is None and analysis.get('bpm'):
+                    bpm = analysis['bpm']
+                    bpm_source = "librosa"
+                if key is None and analysis.get('key'):
+                    key = analysis['key']
+                    key_source = "librosa"
+                if analysis.get('loudness_db') is not None:
+                    loudness_db = analysis['loudness_db']
+                if duration <= 0 and analysis.get('duration'):
+                    duration = analysis['duration']
+
     vibe = extract_vibe(rel_path, filename, type_code)
     texture = extract_texture(rel_path, filename, type_code)
     genres = extract_genres(rel_path)
@@ -610,7 +643,7 @@ def tag_file(rel_path, full_path, get_dur=True):
     tags.add(energy)
     tags.add(playability)
     if bpm:
-        tags.add(f"{bpm}bpm")
+        tags.add(f"{int(bpm)}bpm")
 
     try:
         mtime = os.path.getmtime(full_path)
@@ -627,7 +660,10 @@ def tag_file(rel_path, full_path, get_dur=True):
         "energy": energy,
         "playability": playability,
         "bpm": bpm,
+        "bpm_source": bpm_source,
         "key": key,
+        "key_source": key_source,
+        "loudness_db": loudness_db,
         "duration": round(duration, 3),
         "tags": sorted(tags),
         "mtime": mtime,
