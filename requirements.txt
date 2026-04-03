@@ -1,0 +1,6 @@
+Flask
+mutagen
+numpy
+PyYAML
+requests
+watchdog
