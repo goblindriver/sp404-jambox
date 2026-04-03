@@ -12,6 +12,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+import yaml
 
 from jambox_config import ConfigError, load_settings_for_script
 import fetch_samples
@@ -54,6 +55,26 @@ def _extract_content(payload):
         if "response" in payload:
             return payload["response"]
     return ""
+
+
+def _coerce_int(value, default, *, minimum=None):
+    if value in (None, ""):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if minimum is not None and parsed < minimum:
+        return default
+    return parsed
+
+
+def _load_bank_config():
+    try:
+        config = fetch_samples.load_config()
+    except (FileNotFoundError, OSError, yaml.YAMLError, ValueError):
+        return {}
+    return config if isinstance(config, dict) else {}
 
 
 def _call_llm(prompt, bpm=None, key=None):
@@ -327,6 +348,8 @@ def build_bank_from_vibe(prompt_data):
 
 
 def generate_vibe_suggestions(prompt_data):
+    limit = _coerce_int(prompt_data.get("limit"), 12, minimum=1)
+    min_score = _coerce_int(prompt_data.get("min_score"), 4, minimum=0)
     llm_tags = _call_llm(
         prompt_data["prompt"],
         bpm=prompt_data.get("bpm"),
@@ -336,10 +359,10 @@ def generate_vibe_suggestions(prompt_data):
     matches = fetch_samples.rank_library_matches(
         query,
         bank_config={"bpm": prompt_data.get("bpm"), "key": prompt_data.get("key")},
-        limit=int(prompt_data.get("limit", 12)),
-        min_score=int(prompt_data.get("min_score", 4)),
+        limit=limit,
+        min_score=min_score,
     )
-    config = fetch_samples.load_config()
+    config = _load_bank_config()
     bank_query_terms = (
         llm_tags.get("keywords", [])
         + llm_tags.get("vibe", [])

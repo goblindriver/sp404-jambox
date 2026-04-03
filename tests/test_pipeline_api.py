@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,12 +17,15 @@ for path in (SCRIPTS_DIR, WEB_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+import api.pipeline as pipeline_api
 from api.pipeline import pipeline_bp
 import fetch_samples
 
 
 class PipelineApiTests(unittest.TestCase):
     def setUp(self):
+        pipeline_api._jobs.clear()
+        self.addCleanup(pipeline_api._jobs.clear)
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
 
@@ -83,6 +87,50 @@ class PipelineApiTests(unittest.TestCase):
 
             self.assertFalse(os.path.exists(wav_path))
             self.assertTrue(os.path.exists(txt_path))
+
+    def test_fetch_rejects_second_request_while_first_is_starting(self):
+        thread = SimpleNamespace(daemon=False, start=lambda: None)
+        with patch("api.pipeline.threading.Thread", return_value=thread):
+            first = self.client.post("/api/pipeline/fetch", json={})
+            second = self.client.post("/api/pipeline/fetch", json={})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(second.get_json()["error"], "Fetch already running")
+
+    def test_fetch_rejects_non_integer_pad(self):
+        response = self.client.post("/api/pipeline/fetch", json={"bank": "b", "pad": "sidechain"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "pad must be an integer")
+
+    def test_fetch_normalizes_string_pad_numbers_before_thread_start(self):
+        seen = {}
+
+        class FakeThread:
+            daemon = False
+
+            def __init__(self, target=None, args=None, kwargs=None):
+                seen["target"] = target
+                seen["args"] = args
+                seen["kwargs"] = kwargs or {}
+
+            def start(self):
+                seen["started"] = True
+
+        with patch("api.pipeline.threading.Thread", side_effect=FakeThread):
+            response = self.client.post("/api/pipeline/fetch", json={"bank": "b", "pad": "3"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(seen["started"])
+        self.assertEqual(seen["args"][3:], ("b", 3))
+
+    def test_build_patterns_returns_timeout_error(self):
+        with patch("api.pipeline.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="gen_patterns.py", timeout=1)):
+            response = self.client.post("/api/pipeline/patterns")
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.get_json()["error"], "gen_patterns timed out")
 
 
 if __name__ == "__main__":

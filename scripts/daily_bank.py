@@ -12,6 +12,7 @@ import preset_utils
 
 SETTINGS = load_settings_for_script(__file__)
 TODAY = date.today().isoformat()
+DEFAULT_TRENDING_TERMS = ["disco", "funk", "electronic", "ambient", "house", "neon"]
 
 
 def _load_tag_db():
@@ -38,17 +39,21 @@ def _entry_query(entry):
 def _load_trending_terms():
     path = SETTINGS.get("TRENDING_FILE", "")
     if path and os.path.exists(path):
-        with open(path) as handle:
-            payload = json.load(handle)
+        try:
+            with open(path) as handle:
+                payload = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            return list(DEFAULT_TRENDING_TERMS)
         if isinstance(payload, list):
-            return [str(item).lower() for item in payload]
+            terms = [str(item).lower() for item in payload if str(item).strip()]
+            return terms or list(DEFAULT_TRENDING_TERMS)
         if isinstance(payload, dict):
             terms = []
             for value in payload.values():
                 if isinstance(value, list):
-                    terms.extend(str(item).lower() for item in value)
-            return terms
-    return ["disco", "funk", "electronic", "ambient", "house", "neon"]
+                    terms.extend(str(item).lower() for item in value if str(item).strip())
+            return terms or list(DEFAULT_TRENDING_TERMS)
+    return list(DEFAULT_TRENDING_TERMS)
 
 
 def _recent_candidates(db):
@@ -94,6 +99,16 @@ def _weighted_pick(candidates, count):
     return chosen
 
 
+def _coerce_bpm(value):
+    try:
+        bpm = int(value)
+    except (TypeError, ValueError):
+        return None
+    if bpm <= 0:
+        return None
+    return bpm
+
+
 def build_daily_preset(source=None, pad_count=12):
     source = (source or SETTINGS.get("DAILY_BANK_SOURCE", "recent")).lower()
     db = _load_tag_db()
@@ -118,8 +133,9 @@ def build_daily_preset(source=None, pad_count=12):
         pads[index] = _entry_query(entry)
         tags.update(tag.lower() for tag in entry.get("genre", []))
         tags.update(tag.lower() for tag in entry.get("vibe", []))
-        if entry.get("bpm"):
-            bpm_values.append(int(entry["bpm"]))
+        bpm = _coerce_bpm(entry.get("bpm"))
+        if bpm is not None:
+            bpm_values.append(bpm)
 
     preset = {
         "name": f"Daily Bank {TODAY}",

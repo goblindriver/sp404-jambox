@@ -81,7 +81,35 @@ def similarity(a, b):
         return difflib.SequenceMatcher(a=a["value"], b=b["value"]).ratio()
     if a["kind"] == "python" and b["kind"] == "python":
         return float(dedup_library.cosine_similarity(a["value"], b["value"]))
-    return 0.0
+    return None
+
+
+def _ensure_python_fingerprint(rel_path, fingerprints, python_fingerprints):
+    if rel_path in python_fingerprints:
+        return python_fingerprints[rel_path]
+
+    fingerprint = fingerprints[rel_path]
+    if fingerprint["kind"] == "python":
+        python_fingerprints[rel_path] = fingerprint
+        return fingerprint
+
+    full_path = os.path.join(LIBRARY, rel_path)
+    python_fp = _fingerprint_with_python(full_path)
+    if python_fp is not None:
+        python_fingerprints[rel_path] = python_fp
+    return python_fp
+
+
+def _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints):
+    primary_score = similarity(fingerprints[rel_path], fingerprints[compare_path])
+    if primary_score is not None:
+        return primary_score
+
+    rel_python = _ensure_python_fingerprint(rel_path, fingerprints, python_fingerprints)
+    compare_python = _ensure_python_fingerprint(compare_path, fingerprints, python_fingerprints)
+    if rel_python is None or compare_python is None:
+        return 0.0
+    return similarity(rel_python, compare_python) or 0.0
 
 
 def _llm_tag_filename(rel_path):
@@ -136,28 +164,37 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None):
             fingerprints[rel_path] = fp
 
     paths = list(fingerprints.keys())
-    groups = []
-    used = set()
+    python_fingerprints = {}
+    adjacency = {rel_path: set() for rel_path in paths}
     for idx, rel_path in enumerate(paths):
-        if idx in used:
-            continue
-        group = [idx]
         for compare_idx in range(idx + 1, len(paths)):
-            if compare_idx in used:
-                continue
-            sim = similarity(fingerprints[rel_path], fingerprints[paths[compare_idx]])
+            compare_path = paths[compare_idx]
+            sim = _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints)
             if sim >= threshold:
-                group.append(compare_idx)
-                used.add(compare_idx)
+                adjacency[rel_path].add(compare_path)
+                adjacency[compare_path].add(rel_path)
+
+    groups = []
+    visited = set()
+    for rel_path in paths:
+        if rel_path in visited or not adjacency[rel_path]:
+            continue
+        stack = [rel_path]
+        group = []
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            group.append(current)
+            stack.extend(sorted(adjacency[current] - visited, reverse=True))
         if len(group) > 1:
-            used.add(idx)
             groups.append(group)
 
     reports = []
     for group in groups:
         members = []
-        for item_idx in group:
-            rel_path = paths[item_idx]
+        for rel_path in group:
             full_path = os.path.join(LIBRARY, rel_path)
             entry = db.get(rel_path, {})
             members.append({
@@ -175,20 +212,27 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None):
     return reports
 
 
-def apply_clean(report_groups):
+def apply_clean(report_groups, db):
     os.makedirs(DUPES_DIR, exist_ok=True)
+    updated_db = dict(db)
     for group in report_groups:
         for rel_path in group["duplicates"]:
             src = os.path.join(LIBRARY, rel_path)
             if not os.path.exists(src):
+                updated_db.pop(rel_path, None)
                 continue
             dst = os.path.join(DUPES_DIR, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.move(src, dst)
+            updated_db.pop(rel_path, None)
+
+    with open(TAGS_FILE, "w") as handle:
+        json.dump(updated_db, handle, indent=2, sort_keys=True)
+    return updated_db
 
 
-def build_report(args):
-    db = load_tag_db()
+def build_report(args, db=None):
+    db = load_tag_db() if db is None else db
     groups = find_duplicate_groups(db, threshold=args.threshold, limit=args.limit, type_code=args.type)
     unknown_tags = {}
     if args.llm_tag_unknown:
@@ -221,9 +265,10 @@ def main():
     parser.add_argument("--llm-tag-unknown", action="store_true", help="Ask the local LLM for tags on untagged files")
     args = parser.parse_args()
 
-    report = build_report(args)
+    db = load_tag_db()
+    report = build_report(args, db=db)
     if args.clean:
-        apply_clean(report["duplicate_groups"])
+        db = apply_clean(report["duplicate_groups"], db)
 
     if args.report_json or args.clean:
         with open(REPORT_PATH, "w") as handle:

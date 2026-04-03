@@ -8,6 +8,9 @@ pipeline_bp = Blueprint('pipeline', __name__)
 # In-memory job tracking
 _jobs = {}
 _job_lock = threading.Lock()
+PADINFO_TIMEOUT = 120
+PATTERN_BUILD_TIMEOUT = 180
+DEPLOY_TIMEOUT = 180
 
 
 def _settings():
@@ -36,16 +39,29 @@ def _command_error_payload(result):
     return payload
 
 
+def _normalize_pad_value(value):
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('pad must be an integer') from exc
+
+
 def _run_script(script_name, timeout=None):
     repo_dir = _settings()['REPO_DIR']
-    result = subprocess.run(
-        [sys.executable, os.path.join(repo_dir, 'scripts', script_name)],
-        capture_output=True,
-        text=True,
-        cwd=repo_dir,
-        env=build_subprocess_env(_settings()),
-        timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, os.path.join(repo_dir, 'scripts', script_name)],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir,
+            env=build_subprocess_env(_settings()),
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        script_label = script_name.removesuffix('.py')
+        return jsonify({'ok': False, 'error': f'{script_label} timed out'}), 500
     if result.returncode != 0:
         return jsonify(_command_error_payload(result)), 500
 
@@ -84,8 +100,10 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
             if not pads:
                 continue
 
-            if pad:
-                pad_query = pads.get(pad) or pads.get(str(pad))
+            if pad is not None:
+                pad_query = pads.get(pad)
+                if pad_query is None:
+                    pad_query = pads.get(str(pad))
                 if pad_query:
                     _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad}"
                     result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files)
@@ -123,22 +141,26 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
 def fetch():
     data = request.get_json() or {}
     bank = data.get('bank')
-    pad = data.get('pad')
+    try:
+        pad = _normalize_pad_value(data.get('pad'))
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
 
     # Only one fetch at a time
     with _job_lock:
         for j in _jobs.values():
-            if j['type'] == 'fetch' and j['status'] == 'running':
+            if j['type'] == 'fetch' and j['status'] in {'starting', 'running'}:
                 return jsonify({'error': 'Fetch already running'}), 409
 
-    job_id = str(uuid.uuid4())[:8]
-    _jobs[job_id] = {
-        'id': job_id,
-        'type': 'fetch',
-        'status': 'starting',
-        'progress': '',
-        'result': '',
-    }
+        job_id = str(uuid.uuid4())[:8]
+        _jobs[job_id] = {
+            'id': job_id,
+            'type': 'fetch',
+            'status': 'starting',
+            'progress': '',
+            'result': '',
+        }
+
     repo_dir = current_app.config['REPO_DIR']
     settings = dict(current_app.config)
     t = threading.Thread(target=_run_fetch, args=(job_id, repo_dir, settings, bank, pad))
@@ -159,7 +181,7 @@ def job_status(job_id):
 @pipeline_bp.route('/pipeline/padinfo', methods=['POST'])
 def build_padinfo():
     try:
-        return _run_script('gen_padinfo.py')
+        return _run_script('gen_padinfo.py', timeout=PADINFO_TIMEOUT)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -167,7 +189,7 @@ def build_padinfo():
 @pipeline_bp.route('/pipeline/patterns', methods=['POST'])
 def build_patterns():
     try:
-        return _run_script('gen_patterns.py')
+        return _run_script('gen_patterns.py', timeout=PATTERN_BUILD_TIMEOUT)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -338,9 +360,12 @@ def deploy():
         result = subprocess.run(
             ['bash', script], capture_output=True, text=True, cwd=repo_dir,
             env=build_subprocess_env(_settings()),
+            timeout=DEPLOY_TIMEOUT,
         )
         if result.returncode != 0:
             return jsonify(_command_error_payload(result)), 500
         return jsonify({'ok': True, 'output': result.stdout})
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'error': 'Deploy timed out'}), 500
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
