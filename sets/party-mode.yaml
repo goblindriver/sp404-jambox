@@ -1,0 +1,12 @@
+name: Party Mode
+slug: party-mode
+author: jambox
+description: >
+  High energy, dancefloor ready. Big beat, brat pop, French house,
+  and attitude. For store playlists, DJ sets, and loud sessions.
+presets:
+  - genre/big-beat-blowout
+  - genre/brat-mode
+  - genre/french-filter-house
+  - genre/azealia-mode
+  - genre/riot-mode

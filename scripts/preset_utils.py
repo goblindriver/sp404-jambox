@@ -271,7 +271,9 @@ def apply_set(set_slug):
         raise ValueError(f"Set not found: {set_slug}")
 
     config = _load_config()
-    banks_map = set_data.get('banks', {})
+    raw_banks = set_data.get('banks', {})
+    # Normalize keys to lowercase for consistent lookup
+    banks_map = {k.lower(): v for k, v in raw_banks.items()}
 
     for letter in BANK_LETTERS:
         bank_key = f'bank_{letter}'

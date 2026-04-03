@@ -1,0 +1,50 @@
+name: tiger-dust-block-party
+display_name: "Tiger Dust Block Party"
+description: "The ultimate pickup-and-perform set. Ten banks designed as the arc of the best block party you've ever been to — from golden hour soul through peak-hour madness to dub cooldown. Every bank harmonizes with its neighbors. Every pad is placed for performance. Grab the SD card and go."
+tags: [party, performance, complete, block-party]
+banks:
+  A: genre/soul-kitchen
+  B: genre/funk-muscle
+  C: genre/disco-inferno
+  D: genre/boom-bap-cipher
+  E: genre/caribbean-heat
+  F: genre/electro-sweat
+  G: genre/neon-rave
+  H: genre/peak-hour
+  I: genre/dub-cooldown
+  J: genre/weapons-cache
+
+# Performance Notes
+#
+# ENERGY ARC:
+#   A (warm up) → B (get moving) → C (full groove) → D (change pace) →
+#   E (summer vibes) → F (get weird) → G (build) → H (PEAK) →
+#   I (breathe) → J (weapons anytime)
+#
+# BPM FLOW:
+#   98 → 112 → 118 → 90 ↓ → 108 → 120 → 128 → 125 → 100 ↓ → any
+#   Core cluster: 112/118/120 mix cleanly
+#   High energy: 125/128 mix cleanly
+#   Drop-downs at D (90) and I (100) are intentional tempo resets
+#
+# KEY MAP:
+#   A: G    |  B: Em  |  C: Am  |  D: Dm  |  E: Cm
+#   F: Dm   |  G: F   |  H: Gm  |  I: Am  |  J: any
+#
+#   Core diatonic family (C major): Em, Am, Dm, F, G — banks A-D and F-G all harmonize
+#   Dark contrast keys: Cm (E), Gm (H) — tension for Caribbean heat and peak hour
+#   C→I share Am — easy harmonic bridge from disco back to cooldown
+#   D→F share Dm — hip-hop and electro can crossfade smoothly
+#
+# PAD CONVENTION (all banks):
+#   Pads 1-4:   Drum one-shots (kick, snare, hat, perc)
+#   Pads 5-8:   Loops & breaks (choppable rhythm, melodic loops)
+#   Pads 9-10:  Melodic content (bass, chords, leads)
+#   Pads 11-12: Texture/FX (risers, transitions, ambient, vocal chops)
+#
+# QUICK TRANSITIONS:
+#   Soul Kitchen → Funk Muscle: same family (G/Em), +14 BPM — gradual build
+#   Disco Inferno → Boom Bap Cipher: Am→Dm (related), big tempo drop — dramatic shift
+#   Electro Sweat → Neon Rave: Dm→F (relatives), +8 BPM — smooth escalation
+#   Peak Hour → Dub Cooldown: Gm→Am, -25 BPM — the big exhale
+#   Any bank → Weapons Cache: always works, no key/BPM dependency

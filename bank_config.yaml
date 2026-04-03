@@ -1,184 +1,191 @@
 bank_a:
-  name: Your Space
-  notes: Bank A is yours — resample and chop on-device
-bank_b:
-  preset: genre/sessions
-  name: Sessions
-  bpm: 120
-  key: Am
-  notes: Long-form breaks and full tracks for live sampling and chopping
+  preset: genre/soul-kitchen
+  name: soul-kitchen
+  bpm: 98
+  key: G
+  notes: ''
   pads:
-    1: SMP funk soul chop-ready
-    2: SMP disco bright chop-ready
-    3: SMP electronic raw chop-ready
-    4: SMP electronic hype chop-ready
-    5: BRK funk warm loop
-    6: BRK disco bright loop
-    7: BRK electronic raw loop
-    8: BRK electronic hype loop
-    9: SMP funk nostalgic chop-ready
-    10: SMP disco soulful chop-ready
-    11: SMP electronic dark chop-ready
-    12: SMP electronic aggressive chop-ready
+    1: KIK soul warm one-shot
+    2: SNR soul crispy one-shot
+    3: HAT soul smooth one-shot
+    4: PRC tambourine warm one-shot
+    5: BRK soul dusty chop-ready
+    6: BRK funk mellow loop
+    7: SYN rhodes warm loop
+    8: SYN soul organ loop
+    9: BAS soul warm loop
+    10: SYN soul mellow loop
+    11: PAD soul warm layer
+    12: VOX soul soulful chop-ready
+bank_b:
+  preset: genre/funk-muscle
+  name: funk-muscle
+  bpm: 112
+  key: Em
+  notes: ''
+  pads:
+    1: KIK funk hard one-shot
+    2: SNR funk snappy one-shot
+    3: HAT funk tight one-shot
+    4: PRC funk conga one-shot
+    5: BRK funk tight loop
+    6: BRK funk heavy chop-ready
+    7: SYN funk clavinet loop
+    8: SYN funk wah loop
+    9: BAS funk slap loop
+    10: FX funk horn one-shot
+    11: PAD funk warm layer
+    12: VOX funk hype chop-ready
 bank_c:
-  preset: genre/am-songwriter
-  name: Am Songwriter
+  preset: genre/disco-inferno
+  name: disco-inferno
+  bpm: 118
+  key: Am
+  notes: ''
+  pads:
+    1: KIK disco punchy one-shot
+    2: SNR disco tight one-shot
+    3: HAT disco shimmery one-shot
+    4: PRC disco cowbell one-shot
+    5: BRK disco groove loop
+    6: BRK disco four-on-the-floor loop
+    7: SYN disco strings loop
+    8: SYN disco piano loop
+    9: BAS disco groove loop
+    10: SYN disco guitar loop
+    11: PAD disco lush layer
+    12: VOX disco diva chop-ready
+bank_d:
+  preset: genre/boom-bap-cipher
+  name: boom-bap-cipher
+  bpm: 90
+  key: Dm
+  notes: ''
+  pads:
+    1: KIK hiphop heavy one-shot
+    2: SNR hiphop dusty one-shot
+    3: HAT hiphop lo-fi one-shot
+    4: PRC hiphop shaker one-shot
+    5: BRK hiphop dusty chop-ready
+    6: BRK hiphop vinyl loop
+    7: BRK soul nostalgic chop-ready
+    8: SYN hiphop jazz loop
+    9: BAS hiphop 808 loop
+    10: SYN hiphop dark loop
+    11: PAD hiphop dusty layer
+    12: VOX hiphop scratch one-shot
+bank_e:
+  preset: genre/caribbean-heat
+  name: caribbean-heat
+  bpm: 108
+  key: Cm
+  notes: ''
+  pads:
+    1: KIK dancehall deep one-shot
+    2: SNR dancehall rim one-shot
+    3: HAT dancehall tight one-shot
+    4: PRC latin conga one-shot
+    5: BRK dancehall riddim loop
+    6: BRK soca energetic loop
+    7: PRC latin bongo loop
+    8: SYN tropical bright loop
+    9: BAS dancehall deep loop
+    10: SYN tropical warm loop
+    11: PAD tropical airy layer
+    12: VOX dancehall ragga chop-ready
+bank_f:
+  preset: genre/electro-sweat
+  name: electro-sweat
+  bpm: 120
+  key: Dm
+  notes: ''
+  pads:
+    1: KIK electronic hard one-shot
+    2: SNR electronic clap one-shot
+    3: HAT electronic crispy one-shot
+    4: PRC electronic rim one-shot
+    5: BRK electronic minimal loop
+    6: BRK electronic aggressive loop
+    7: SYN electronic dirty loop
+    8: SYN electronic acid loop
+    9: BAS electronic aggressive loop
+    10: SYN electronic dark loop
+    11: PAD electronic tense layer
+    12: VOX electronic processed chop-ready
+bank_g:
+  preset: genre/neon-rave
+  name: neon-rave
+  bpm: 128
+  key: F
+  notes: ''
+  pads:
+    1: KIK house punchy one-shot
+    2: SNR house clap one-shot
+    3: HAT house open one-shot
+    4: PRC house percussion one-shot
+    5: BRK house driving loop
+    6: BRK house filter loop
+    7: SYN house rave one-shot
+    8: SYN house bright loop
+    9: BAS house deep loop
+    10: SYN house lead loop
+    11: RSR house build transition
+    12: FX house siren one-shot
+bank_h:
+  preset: genre/peak-hour
+  name: peak-hour
+  bpm: 125
+  key: Gm
+  notes: ''
+  pads:
+    1: KIK electronic heavy one-shot
+    2: SNR electronic hard one-shot
+    3: HAT electronic sharp one-shot
+    4: PRC electronic clap one-shot
+    5: BRK electronic hype loop
+    6: BRK electronic aggressive loop
+    7: SYN electronic big loop
+    8: FX electronic brass one-shot
+    9: BAS electronic massive loop
+    10: SYN electronic lead loop
+    11: RSR electronic build transition
+    12: FX electronic drop one-shot
+bank_i:
+  preset: genre/dub-cooldown
+  name: dub-cooldown
   bpm: 100
   key: Am
-  notes: Scale-mapped pads for melodic expression. Pads 1-8 are A natural minor ascending,
-    9-10 are bass notes, 11-12 are chord stabs. Classic singer-songwriter key.
-  pads: {}
-bank_d:
-  preset: genre/crystal-chaos
-  name: Crystal Chaos
-  bpm: 135
-  key: Fm
-  notes: 'Crystal Castles appeared 3 times in Tiger Dust (Vietnam, BAPTISM, AFFECTION).
-    The dark wing of the Brat Mode aesthetic. Bitcrushed everything, distorted synths,
-    aggressive lo-fi textures. Pairs with brat-mode preset as the aggressive counterpart.
-
-    '
+  notes: ''
   pads:
-    1: KIK distorted crushed clipping hard one-shot
-    2: SNR bitcrushed harsh noisy crunch one-shot
-    3: HHT glitchy stuttered digital artifact one-shot
-    4: PRC noise burst static crackle one-shot
-    5: SYN bitcrushed lead screaming distorted loop
-    6: VOX crushed processed dark distant vocal loop
-    7: BAS distorted sub growling resonant bass loop
-    8: SYN noise wash harsh digital texture loop
-    9: DRM glitch stutter broken beat chopped loop
-    10: PAD dark drone ominous swelling menace loop
-    11: FX digital artifact error crash glitch loop
-    12: SYN chaotic layered clashing tonal noise loop
-bank_e:
-  preset: genre/french-filter-house
-  name: French Filter House
-  bpm: 122
-  key: Dm
-  notes: 'Built from Spotify liked songs cluster (Modjo, Supermen Lovers, Dimitri
-    From Paris) + YouTube electroclash presence (Miss Kittin, Fischerspooner). Late-90s/early-2000s
-    French touch. Filtered disco samples, four-on-the-floor with swing, warm bass,
-    chopped vocals.
-
-    '
-  pads:
-    1: KIK four-on-the-floor punchy warm one-shot
-    2: SNR clap tight disco reverb one-shot
-    3: HHT open shimmery disco offbeat one-shot
-    4: PRC conga slap funky tight one-shot
-    5: GTR filtered disco funk wah loop
-    6: BAS deep french house rolling sub loop
-    7: SYN filtered sweep rising phaser pad loop
-    8: VOX chopped disco diva pitched vocal loop
-    9: STR string stab filtered orchestral disco loop
-    10: KEY rhodes warm chord jazzy funk loop
-    11: SYN acid squelch resonant filter bass loop
-    12: FX vinyl crackle warm hiss texture loop
-bank_f:
-  preset: genre/purity-ring-dreams
-  name: Purity Ring Dreams
-  bpm: 108
-  key: Ab
-  notes: 'Purity Ring appeared 7 times in Tiger Dust — more than any other artist.
-    This preset channels their specific production: granular vocal processing, layered
-    ambient pads, delicate synth leads, sparse but textured drums. Complements the
-    broader synth-pop-dreams preset with a more focused aesthetic.
-
-    '
-  pads:
-    1: KIK soft deep sub thump one-shot
-    2: SNR processed snap glassy reverb one-shot
-    3: HHT delicate tiny sparkle click one-shot
-    4: PRC metallic bell granular shimmer one-shot
-    5: PAD lush warm evolving ambient pad loop
-    6: VOX granular chopped pitched ethereal loop
-    7: SYN delicate arp ascending crystalline loop
-    8: PAD dark deep underwater swelling pad loop
-    9: BAS soft sub pulse gentle throb loop
-    10: SYN lead thin melody distant bright loop
-    11: FX granular scatter vocal texture dust loop
-    12: PAD reversed swell ambient breathe pad loop
-bank_g:
-  preset: genre/drum-loops
-  name: Drum Loops
+    1: KIK dub deep one-shot
+    2: SNR dub rim one-shot
+    3: HAT dub smooth one-shot
+    4: PRC dub woodblock one-shot
+    5: BRK dub spacious loop
+    6: BRK dub groove loop
+    7: SYN dub melodica loop
+    8: SYN dub organ loop
+    9: BAS dub deep loop
+    10: SYN dub echo loop
+    11: PAD ambient spacious layer
+    12: FX dub echo transition
+bank_j:
+  preset: genre/weapons-cache
+  name: weapons-cache
   bpm: 120
   key: XX
-  notes: Pure rhythm — no melody, all genres, mix and match
+  notes: ''
   pads:
-    1: BRK funk warm loop
-    2: BRK funk raw loop
-    3: BRK disco bright loop
-    4: BRK disco soulful loop
-    5: BRK electronic raw loop
-    6: BRK electronic aggressive loop
-    7: BRK electronic hype loop
-    8: BRK electronic crunchy loop
-    9: BRK electronic aggressive loop
-    10: BRK electronic bitcrushed loop
-    11: BRK house clean loop
-    12: BRK house bright loop
-bank_h:
-  preset: genre/azealia-mode
-  name: Azealia Mode
-  bpm: 130
-  key: Bbm
-  notes: 'Built from recent Azealia Banks binge (Spotify recently played — 3 albums)
-    plus 212 ft. Lazy Jay in Tiger Dust. House beats meets aggressive rap delivery.
-    Art-pop deconstruction. Pairs with brat-mode as the hip-hop-inflected counterpart.
-
-    '
-  pads:
-    1: KIK house deep thumping four-floor one-shot
-    2: SNR sharp snappy tight crack one-shot
-    3: HHT rapid rolling programmed trap one-shot
-    4: CLP house clap reverb layered one-shot
-    5: BAS house bouncing rolling sub bass loop
-    6: VOX rapid-fire aggressive attitude rap loop
-    7: SYN house stab bright filtered chord loop
-    8: DRM house groove four-floor driving beat loop
-    9: BAS acid squelch resonant 303 bass loop
-    10: VOX chopped pitched processed diva vocal loop
-    11: SYN dark arp menacing minor synth loop
-    12: FX crowd hype energy attitude shout loop
-bank_i:
-  preset: genre/big-beat-blowout
-  name: Big Beat Blowout
-  bpm: 130
-  key: Em
-  notes: Big beat revival kit. Fat compressed breaks, squelchy 303 bass, rave stabs,
-    and vocal shouts. Built for driving, hypnotic grooves that hit hard. Think Block
-    Rockin' Beats meets Firestarter.
-  pads:
-    1: KIK punchy distorted fat one-shot
-    2: SNR cracking loud compressed one-shot
-    3: HAT crisp open metallic one-shot
-    4: CLP big layered room one-shot
-    5: BRK funk breakbeat compressed loop
-    6: BAS acid 303 squelchy loop
-    7: SYN rave stab hoover loop
-    8: SYN acid lead distorted loop
-    9: SYN filtered sweep build loop
-    10: PRC shaker tambourine uptempo loop
-    11: BRK amen chopped dirty loop
-    12: VOX shout chant crowd chop-ready
-bank_j:
-  preset: utility/utility-fun
-  name: Utility & Fun
-  bpm: 120
-  key: any
-  notes: Speeches, gunshots, cash registers, iconic sounds — performance triggers
-  pads:
-    1: VOX speech dramatic one-shot
-    2: VOX speech aggressive one-shot
-    3: VOX countdown one-shot
-    4: VOX crowd hype one-shot
-    5: SFX gunshot hard one-shot
-    6: SFX explosion hard one-shot
-    7: SFX cash-register one-shot
-    8: SFX siren hype one-shot
-    9: SFX glass impact one-shot
-    10: SFX air-horn bright one-shot
-    11: SFX whip bright one-shot
-    12: SFX boom dark one-shot
-active_set: default
+    1: FX hype airhorn one-shot
+    2: FX hype siren one-shot
+    3: FX hype crowd one-shot
+    4: FX hype scratch one-shot
+    5: VOX hype drop one-shot
+    6: VOX hype shout one-shot
+    7: FX transition riser transition
+    8: FX transition sweep transition
+    9: FX impact drop one-shot
+    10: FX transition reverse transition
+    11: FX ambient noise layer
+    12: FX hype cash-register one-shot
+active_set: tiger-dust-block-party
