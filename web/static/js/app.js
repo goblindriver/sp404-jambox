@@ -36,6 +36,7 @@ async function init() {
         document.getElementById('btn-help').onclick = showTutorial;
         document.getElementById('btn-settings').onclick = toggleSettingsMenu;
         document.getElementById('btn-watcher').onclick = toggleWatcher;
+        document.getElementById('btn-power').onclick = togglePowerMenu;
 
         // Wire up footer buttons (streamlined: Browse, Fetch All, Export to SD)
         document.getElementById('btn-browse').onclick = toggleBrowseSidebar;
@@ -1269,7 +1270,7 @@ function hideTutorial() {
 // ── Ingest Downloads ──
 async function ingestDownloads() {
     toast('Ingesting sample packs from Downloads...');
-    document.getElementById('btn-ingest').disabled = true;
+    document.getElementById('settings-menu').classList.add('hidden');
 
     try {
         const result = await api('/api/pipeline/ingest', { method: 'POST' });
@@ -1281,8 +1282,6 @@ async function ingestDownloads() {
     } catch (e) {
         toast('Ingest error: ' + e.message, 'error');
     }
-
-    document.getElementById('btn-ingest').disabled = false;
 }
 
 // ── File Watcher ──
@@ -2215,6 +2214,80 @@ async function splitTrack(trackId, btn) {
         toast(`Split failed: ${e.message}`, 'error');
         if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
     }
+}
+
+// ── Power Menu ──
+
+function togglePowerMenu() {
+    const menu = document.getElementById('power-menu');
+    menu.classList.toggle('hidden');
+    if (!menu.classList.contains('hidden')) {
+        fetchServerStatus();
+        setTimeout(() => {
+            const handler = (e) => {
+                if (!menu.contains(e.target) && e.target.id !== 'btn-power') {
+                    menu.classList.add('hidden');
+                    document.removeEventListener('click', handler);
+                }
+            };
+            document.addEventListener('click', handler);
+        }, 0);
+    }
+}
+
+async function fetchServerStatus() {
+    try {
+        const result = await api('/api/pipeline/server/status');
+        const dot = document.querySelector('#power-status .power-status-dot');
+        const btn = document.getElementById('btn-power');
+        if (result.ok) {
+            dot.classList.add('active');
+            btn.classList.remove('offline');
+            const features = result.features || {};
+            const container = document.getElementById('power-features');
+            const feats = [
+                ['LLM', features.llm],
+                ['librosa', features.librosa],
+                ['fpcalc', features.fpcalc],
+                ['demucs', features.demucs],
+                ['watcher', features.watcher],
+            ];
+            container.innerHTML = feats.map(([name, on]) =>
+                `<div class="feat ${on ? 'feat-on' : 'feat-off'}">${on ? '\u2713' : '\u2717'} ${name}</div>`
+            ).join('');
+        }
+    } catch (e) {
+        const dot = document.querySelector('#power-status .power-status-dot');
+        dot.classList.remove('active');
+        document.getElementById('btn-power').classList.add('offline');
+    }
+}
+
+async function restartServer() {
+    if (!confirm('Restart the Jambox server? The page will reload.')) return;
+    document.getElementById('power-menu').classList.add('hidden');
+    toast('Restarting server...');
+    try {
+        await api('/api/pipeline/server/restart', { method: 'POST' });
+    } catch (e) {
+        // Expected — server dies before response completes
+    }
+    // Wait for server to come back, then reload
+    setTimeout(() => {
+        const poll = setInterval(async () => {
+            try {
+                const resp = await fetch('/api/pipeline/server/status');
+                if (resp.ok) {
+                    clearInterval(poll);
+                    window.location.reload();
+                }
+            } catch (e) {
+                // Still restarting
+            }
+        }, 1000);
+        // Give up after 30s
+        setTimeout(() => clearInterval(poll), 30000);
+    }, 1500);
 }
 
 // ── Go ──

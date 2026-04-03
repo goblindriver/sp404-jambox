@@ -350,6 +350,71 @@ def downloads_path():
         return jsonify({'ok': False, 'error': str(e)}), 400
 
 
+@pipeline_bp.route('/pipeline/server/status')
+def server_status():
+    """Server health check with uptime and feature availability."""
+    import time
+    try:
+        scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+
+        # Check feature availability
+        features = {}
+        try:
+            from audio_analysis import is_available
+            features['librosa'] = is_available()
+        except ImportError:
+            features['librosa'] = False
+
+        try:
+            import ingest_downloads as ingest
+            features['watcher'] = ingest.get_watcher_state()['running']
+        except Exception:
+            features['watcher'] = False
+
+        llm_endpoint = os.environ.get('SP404_LLM_ENDPOINT', '')
+        features['llm'] = bool(llm_endpoint)
+
+        try:
+            subprocess.run(['demucs', '--help'], capture_output=True, timeout=5)
+            features['demucs'] = True
+        except Exception:
+            features['demucs'] = False
+
+        try:
+            tool = current_app.config.get('FINGERPRINT_TOOL', 'fpcalc')
+            subprocess.run([tool, '-version'], capture_output=True, timeout=5)
+            features['fpcalc'] = True
+        except Exception:
+            features['fpcalc'] = False
+
+        return jsonify({
+            'ok': True,
+            'pid': os.getpid(),
+            'features': features,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@pipeline_bp.route('/pipeline/server/restart', methods=['POST'])
+def server_restart():
+    """Gracefully restart the Flask server by re-exec'ing the process."""
+    import signal
+
+    def _restart():
+        """Send SIGTERM to self — the launch wrapper or preview_start will respawn."""
+        import time
+        time.sleep(0.5)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    # Run in background so we can return the response first
+    t = threading.Thread(target=_restart, daemon=True)
+    t.start()
+    return jsonify({'ok': True, 'message': 'Server restarting...'})
+
+
 @pipeline_bp.route('/pipeline/deploy', methods=['POST'])
 def deploy():
     repo_dir = _settings()['REPO_DIR']

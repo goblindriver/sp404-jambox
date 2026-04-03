@@ -22,6 +22,9 @@
                 <span id="watcher-dot" class="watcher-dot"></span>
                 <span id="watcher-label">Watch</span>
             </button>
+            <button id="btn-power" class="header-icon-btn power-btn" title="Server status &amp; restart">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v8"/><path d="M16.24 5.76a9 9 0 1 1-8.48 0"/></svg>
+            </button>
             <div id="sd-status" class="sd-indicator">
                 <span class="sd-dot"></span>
                 <span class="sd-text">Checking...</span>
@@ -262,6 +265,17 @@
         <button onclick="ingestDownloads()">Ingest Downloads</button>
         <button onclick="toggleDiskPanel()">Disk &amp; Cleanup</button>
         <button onclick="generatePattern()">Generate Pattern</button>
+    </div>
+
+    <!-- Power menu dropdown -->
+    <div id="power-menu" class="settings-menu hidden">
+        <div class="power-status" id="power-status">
+            <span class="power-status-dot active"></span>
+            <span>Server running</span>
+        </div>
+        <div class="power-features" id="power-features"></div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0"/>
+        <button onclick="restartServer()">Restart Server</button>
     </div>
 
     <!-- Tutorial Overlay -->
