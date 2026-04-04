@@ -1,0 +1,299 @@
+FAMOUS BEAT BREAKDOWNS & SAMPLE DECONSTRUCTIONS
+SOURCE: Compiled from WhoSampled, Micro-Chop, Tracklib, Sampleface, production interviews
+DATE COMPILED: April 2, 2026
+PURPOSE: Understanding how iconic sample-based tracks were constructed — what was sampled, how it was flipped, and why
+
+=== DJ SHADOW — "ENDTRODUCING....." (1996) ===
+GEAR: Akai MPC60 II, Technics SL-1200 turntable, Alesis ADAT digital recorder
+DISTINCTION: Often cited as the first album made ENTIRELY from samples
+
+PRODUCTION CONTEXT:
+- Recorded primarily at a home studio, then at Glama Sound Studios
+- The MPC60 II had SEVERE memory limitations — forced Shadow to finish tracks in one session because he couldn't save and return to complex arrangements
+- This constraint made every track a "one-take" composition — what got saved was what got released
+- Sample sources: almost exclusively from obscure vinyl found at Rare Records in Sacramento, CA
+- Shadow would spend HOURS at Rare Records, methodically listening to records and noting potential sample material
+
+KEY TRACK BREAKDOWNS:
+
+"Building Steam with a Grain of Salt":
+- Opens with a spoken word sample about music and recording
+- Layers multiple drum breaks with piano loops
+- The drums shift and evolve throughout — not one loop, but a collage of breaks
+
+"Midnight in a Perfect World":
+- Ambient, downtempo masterpiece
+- Layers vocal samples, orchestral swells, and gentle breaks
+- Everything is pitched down and processed for dreamlike quality
+
+"Organ Donor":
+- Built around a jazz organ sample, heavily chopped
+- The famous organ riff is replayed from chopped pieces, not a straight loop
+- Scratch sections performed live on turntable
+
+PHILOSOPHY:
+Shadow described his approach as "painting with sound" — each sample is a color, and the MPC is his canvas. Memory limitations meant he had to be decisive. No unlimited undos. No going back. Commit and move forward.
+
+WHAT TO LEARN:
+- Constraints force commitment. The SP-404's pattern recorder has similar "perform and commit" energy
+- Layer multiple drum breaks, not just one loop
+- Obscure sources > famous sources for originality
+- Process everything — pitch shift, time stretch, filter, layer
+
+=== THE AVALANCHES — "SINCE I LEFT YOU" (2000/2001) ===
+GEAR: Akai S2000 sampler, Yamaha Promix 01 mixer, turntables
+ESTIMATED SAMPLES: 3,500 (Robbie Chater's estimate; some sources say ~900 identified)
+
+PRODUCTION CONTEXT:
+- Robbie Chater and Darren Seltmann worked separately in almost identical home studios
+- Would spend DAYS combing through records, gathering catalogs of sounds
+- Then reconvene to swap finds and build tracks together
+- 18 months spent stitching sounds together after the initial gathering phase
+- Due to limited budget, sourced from esoteric/obscure records to avoid expensive sample clearances
+- The Akai S2000 sampler was their primary tool — relatively affordable, 32-voice polyphony
+
+KEY TRACK BREAKDOWNS:
+
+"Since I Left You" (title track):
+- Primary sample: The Main Attraction — "Everyday" (1968)
+- Additional layers: Rose Royce — "Daddy Rich", Tony Mottola — "Anema e Core" and "By the Time I Get to Phoenix", The Duprees — "The Sky's the Limit", Lamont Dozier — "Take Off Your Make-Up", Klaus Wunderlich — "Let's Do the Latin Hustle"
+- Madonna — "Holiday" (the iconic vocal hook)
+- Multiple samples layered to create what sounds like a single coherent piece
+
+"Frontier Psychiatrist":
+- Features spoken word samples from educational records, comedy albums
+- Horse sounds, bull-whip cracks, orchestral stabs
+- Each "character" in the song is a different sample source
+- The parrot sounds and therapy dialogue are from obscure vinyl
+
+"Radio":
+- Built from layers of radio tuning static and frequency hops
+- Samples weave in and out like turning a radio dial
+- Creates the illusion of surfing through multiple stations
+
+PHILOSOPHY:
+The Avalanches treated sampling like archaeology — digging through cultural sediment to find fragments that could be reassembled into something new. The sheer density of samples means every listen reveals new details. The album sounds like the collective unconscious of pop music, fragmented and reassembled into a joyful, surreal dream.
+
+WHAT TO LEARN:
+- Sample DENSITY: layer many sources, not just one
+- Contrast: combine wildly different sources (educational records + disco + comedy)
+- The "radio surfing" concept = perfect for SP-404 bank-switching performances
+- Esoteric sources avoid clearance issues and create unique textures
+
+=== MADVILLAIN — "MADVILLAINY" (2004) ===
+GEAR: Boss SP-303, portable turntable, cassette deck (hotel room in São Paulo, Brazil)
+PRODUCER: Madlib
+MC: MF DOOM
+
+PRODUCTION CONTEXT:
+- Most beats produced during Madlib's trip to Brazil
+- Minimal equipment in a hotel room
+- Crate-digging during the day in Brazilian record shops with Cut Chemist, DJ Babu, J.Rocc
+- Sampling obscure Brazilian bossa nova, psychedelic jazz, and film soundtracks at night
+- The SP-303's lo-fi character became the album's sonic identity
+
+KEY TRACK BREAKDOWNS:
+
+"Accordion":
+- Opens with a distinctive accordion melody sample
+- The sample is pitch-shifted and looped with subtle timing variation
+- Madlib's signature compressed, dusty drum pattern underneath
+
+"Figaro":
+- Primary sample: Maria Bethânia — "Mariana Mariana" (1971, Brazilian)
+- A Brazilian vocal/orchestral piece, chopped and rearranged
+- DOOM's rapid-fire flow rides over Madlib's choppy, off-kilter loop
+
+"Fancy Clown":
+- Sample: Zeze Hill — 1975 soul record
+- Madlib takes TINY, UNEVEN pieces from the intro and stitches them together
+- "It sounds like a straight sample, but it's not. It's stitched together with intention."
+- The illusion of a smooth loop is actually a micro-collage
+
+"Strange Ways":
+- Built from Brazilian records found during the São Paulo trip
+- Dark, cinematic quality from obscure soundtrack samples
+- The SP-303's compression adds grit and cohesion
+
+"Rhinestone Cowboy":
+- Another São Paulo find
+- Psychedelic jazz sample, chopped and flipped
+- DOOM's wordplay rides over constantly shifting sample textures
+
+"Raid":
+- Brazilian source material
+- The sample chops are intentionally rough — you can hear the edits
+- This roughness IS the aesthetic
+
+MADLIB ON HIS SAMPLING:
+"I don't remember the samples I use. Hell no." — This is Madlib's anti-precious approach. He samples so much, so fast, that individual sources become irrelevant. The TRANSFORMATION is what matters, not the origin.
+
+WHAT TO LEARN:
+- Travel + crate digging = unique palette (Brazilian records in a São Paulo hotel room)
+- The SP-303/404 compression IS the glue that holds disparate samples together
+- Micro-chopping: stitch tiny pieces to create the ILLUSION of a smooth loop
+- Work fast, don't be precious, make lots of beats
+
+=== DAFT PUNK — "DISCOVERY" (2001) ===
+GEAR: Akai MPC, E-mu SP-1200, Roland SVC-350 vocoder, DigiTech Vocalist, Oberheim DMX, LinnDrum, Sequential Circuits Drumtraks, Auto-Tune
+PRODUCERS: Thomas Bangalter & Guy-Manuel de Homem-Christo
+
+PRODUCTION CONTEXT:
+- Heavily sample-based, drawing from late 70s/early 80s disco, soul, and funk
+- BUT: approximately HALF the "sampled" material was actually performed by Daft Punk themselves, imitating the style of the originals
+- They created "fake samples" — performances designed to sound like chopped records
+- Pioneered "filter house" — generous use of lowpass, highpass, bandpass filters to make loops dynamic
+- Unusual drum machine choices: Oberheim DMX, LinnDrum, and Drumtraks instead of the typical 808/909
+
+KEY TRACK BREAKDOWNS:
+
+"One More Time":
+- Sample: Eddie Johns — "More Spell on You" (1979)
+- The vocal hook processed through heavy compression and filtering
+- The stuttered editing technique — chopping the vocal into rhythmic fragments
+- Romanthony's vocal layered on top
+
+"Harder, Better, Faster, Stronger":
+- Sample: Edwin Birdsong — "Cola Bottle Baby" (1979)
+- The funky keyboard riff was PLAYED BACKWARDS and twisted
+- The intro sounds like it's "rotating on its own axis"
+- Vocoder vocals processed through Auto-Tune "in a way it wasn't designed to work"
+
+"Face to Face":
+- Samples: Electric Light Orchestra — "Evil Woman" + Alan Parsons Project — "Silence & I" + "Old & Wise"
+- Todd Edwards handled the vocal micro-chopping
+- Multiple samples stitched together in a stuttered collage
+
+"Digital Love":
+- Sample: George Duke — "I Love You More" (1979)
+- A smooth, dreamy interpolation of the guitar riff
+- Filtered and phased for that signature French house warmth
+
+"Superheroes":
+- Sample: Barry Manilow — "Who's Been Sleeping in My Bed" (1975)
+- The transformation is so dramatic the source is barely recognizable
+
+"Veridis Quo":
+- Ambient, cinematic — mostly original composition
+- Title is an anagram of "Discovery"
+
+TECHNIQUE — FILTER HOUSE:
+The defining Daft Punk technique is aggressive filtering. Take a disco loop and sweep a lowpass filter over it — the loop opens and closes, creating dynamics from a static sample. This simple technique (filter + loop) is the foundation of French house and can be done in real time on the SP-404's DJFX Looper and filter effects.
+
+WHAT TO LEARN:
+- Create your OWN "fake samples" — record yourself playing in a vintage style, then sample it
+- Filter sweeps turn static loops into dynamic arrangements
+- Unusual drum machines (not just 808/909) give distinctive character
+- Backward playback, pitch shifting, and stuttered editing as primary techniques
+- The LinnDrum and Oberheim DMX are both represented in our sample library (808/LinnDrum KnobCon pack)
+
+=== BOARDS OF CANADA — "MUSIC HAS THE RIGHT TO CHILDREN" (1998) ===
+GEAR: ~200 instruments, tape machines (Tascam MSR-16, Revox, Grundig, cassette), various samplers
+PRODUCERS: Michael Sandison & Marcus Eoin
+
+PRODUCTION CONTEXT:
+- Recorded in their Hexagon Sun studio in the Scottish Highlands
+- The duo's process involves recording extended jams, sampling them, degrading them, then reassembling
+- Samples from 1970s educational TV, National Film Board of Canada documentaries, found recordings
+- The Conet Project (numbers station recordings) was sampled on "Gyroscope" and elsewhere
+- Deliberate lo-fi processing: 8-bit sampling, low sample rates, tape degradation
+
+KEY AESTHETIC TECHNIQUES:
+- Super 8 film grain aesthetic applied to audio — everything sounds like a faded home movie
+- Children's voices from educational records, processed and pitched
+- Analog synth melodies processed through tape and resampled
+- The "warbly" quality comes from tape wow and flutter, both real and simulated
+- Mathematical/numerical obsessions embedded in track titles and samples
+
+WHAT TO LEARN:
+- Found sound from educational/documentary sources = gold for ambient/experimental
+- Degradation as a creative tool — the SP-404's lo-fi effect achieves similar results
+- Numbers station recordings (we have Conet Project samples!) fit perfectly in this aesthetic
+- Tape-style processing (wow, flutter, saturation) via SP-404 effects
+
+=== GENRE-SPECIFIC FAMOUS BREAKS AND SAMPLES ===
+
+ESSENTIAL DRUM BREAKS (every sampler musician should know):
+1. "Amen, Brother" — The Winstons (1969) — THE Amen Break. Foundation of jungle, DnB, hardcore
+2. "Think (About It)" — Lyn Collins (1972) — The Think Break. James Brown's Funky People production
+3. "Apache" — Incredible Bongo Band (1973) — Foundation of hip-hop DJ culture
+4. "Funky Drummer" — James Brown (1970) — Clyde Stubblefield's break. Most sampled drum break in hip-hop
+5. "Impeach the President" — The Honeydrippers (1973) — Classic boom-bap foundation
+6. "It's a New Day" — Skull Snaps (1973) — Dark, heavy break used in jungle and hip-hop
+7. "Hot Pants" — James Brown (1971) — Driving funk break
+8. "Ashley's Roachclip" — The Soul Searchers (1974) — Foundation of electro and early hip-hop
+9. "Synthetic Substitution" — Melvin Bliss (1973) — Signature boom-bap break
+10. "When the Levee Breaks" — Led Zeppelin (1971) — John Bonham's thunderous break, used in hip-hop and electronic
+
+NOTE: Our drums-bank already contains 10 Simon Harris breaks from "Beats, Breaks & Scratches" which include several of these classic breaks.
+
+=== SP-404 COMMUNITY PROJECTS & RESOURCES ===
+
+NEARTAO (neartao.wordpress.com):
+- Comprehensive unofficial SP-404 MK2 guide (PDF, free)
+- Covers firmware features, sampling tips, sequencing, pattern organization
+- Multiple versions tracking firmware updates (latest: v0.29 for firmware 3.02)
+- Offers free SP-404 MK2 project files with included patterns
+
+CREMASOUND (cremasound.shop):
+- Designs ready-to-play SP-404 MK2 projects
+- Projects come as complete bank sets (typically 10 banks × 16 pads = 160 sounds)
+- Notable packs:
+  * "Found Sounds V1" — 3 banks/48 sounds
+  * "Manfria Grooves" — 10 banks/160 sounds
+  * "Forbidden Planet" — 10 banks/160 one-shot samples from 1956 sci-fi film
+  * "Hectic Beats V.3" — 10 banks/160 sounds
+  * "SEGA Master System" — Sound chip samples + drum kits
+  * "Games Nostalgia V.1" — Retro gaming sounds
+- Import via Roland SP-404 MKII App or SD card
+
+LOFIANDY (lofiandy.com):
+- Free demos: Robot Cartoon SFX (15 samples), NES 8-bit Sound Effects (16 samples), GameBoy LSDJ Sounds (10 samples)
+- Paid SP-404 MK2 projects including "Forbidden Planet" and "SEGA Master System"
+- Also offers free SP-404 MK2 startup logos and screensavers
+
+SAMPLETOPIA (sampletopia.org):
+- "Busy Loops" series — FREE, royalty-free, attribution-free
+- Each volume: 10 banks × 12 loops = 120 loops
+- Formatted for SP-404SX/A SD card loading
+- Each bank includes: Drums, Bass, Chords, Arpeggios, Pads, Leads
+- BPM and key labeled in filenames
+- "All Sampletopia sound files are free forever"
+- Volumes 1, 2, and 3 available
+
+SUNWARPER (sunwarper.com):
+- SP-404 MK2 performance tips and tutorials
+- "5 Tips for Epic Live Sets" guide covering bank organization, transitions, effects
+- Key advice: plan your set with structure + spontaneity
+- Use reverb swells, delay feedback, spoken word segments, filter sweeps for transitions
+- The iconic "404 sim noise" as a transition tool
+
+ROLAND CLOUD — 404 DAY PACKS:
+- Free for Roland Account holders (released annually on 4/04)
+- "404 Day Beat Maker Sample Pack Vol. 1"
+- 64 DAW-ready WAV files
+- Musical phrase loops + one-shot samples
+- Tempo and key info in file labels
+- Pre-organized as SP-404MK2 project with banks and patterns
+- Download via Roland Cloud Manager
+- Registering an SP-404MK2 also gives free 6 months Roland Cloud Pro
+
+SPVIDZ (spvidz.com):
+- Lo-fi hip-hop sample packs designed for SP-404SX hardware
+- Community-driven content
+
+=== SUMMARY: THE ORGANIZATIONAL INTELLIGENCE ===
+
+The common thread across ALL these producers and projects:
+
+1. SOUND SELECTION IS COMPOSITION: The sample you choose determines 80% of the beat. Great producers spend more time FINDING sounds than arranging them.
+
+2. BANKS = CREATIVE CONSTRAINTS: Whether it's 12 pads on an MPC60 or 160 pads on an SP-404 MK2, the bank structure forces you to curate. What you LEAVE OUT matters as much as what you include.
+
+3. EFFECTS ARE PERFORMED, NOT APPLIED: From King Tubby's dub mixing to Madlib's vinyl sim to BoC's degradation pipeline — the greatest producers treat effects as live instruments.
+
+4. THE WORKFLOW IS THE ART: Madlib's hotel room in Brazil, Shadow's one-take MPC sessions, the Avalanches' 18-month collage — the process shapes the product.
+
+5. EVERY PAD SHOULD HAVE A REASON: Don't fill pads randomly. Each sound should serve a specific role in the performance/composition. Genre templates (boom-bap, house, jungle, etc.) provide proven starting frameworks.
+
+6. RESAMPLE, RESAMPLE, RESAMPLE: The most powerful technique available on any sampler. Build → capture → rebuild → capture. Each generation adds character and complexity.

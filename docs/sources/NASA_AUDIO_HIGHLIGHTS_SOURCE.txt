@@ -1,0 +1,41 @@
+PACK NAME: NASA Audio Highlight Reels, Soundbites and Launch Sounds
+SOURCE URL: https://archive.org/details/NasaAudioHighlightReels (highlight reels)
+  https://archive.org/details/NasaLaunchAudio (launch audio)
+  https://archive.org/details/Voyager1 (Voyager 1 plasma/interstellar sounds)
+DOWNLOAD URLS:
+  https://archive.org/download/NasaAudioHighlightReels/Apollo11Highlights.mp3
+  https://archive.org/download/NasaAudioHighlightReels/Apollo13Highlights.mp3
+  https://archive.org/download/NasaAudioHighlightReels/Apollo8Highlights.mp3
+  https://archive.org/download/NasaLaunchAudio/01-Nasa-Sts-87Launch.mp3
+  https://archive.org/download/NasaLaunchAudio/12-Nasa-Delta2Launch-Mgs.mp3
+  https://archive.org/download/Voyager1/495-AAB_8min10sec.mp3
+FILE SIZE: ~235MB total (7 files)
+FORMAT: MP3
+LICENSE: Public domain — NASA audio is not copyrighted, created as a public service by the US government. Note: you may not use NASA's name or logo to imply commercial endorsement.
+AUTHOR: NASA / Houston Audio Control Room, NASA Johnson Space Center
+SOURCE PLATFORM: Archive.org (NASA Audio Collection)
+
+DESCRIPTION:
+Audio highlight reels digitized and cataloged by the Houston Audio Control Room at NASA Johnson Space Center. Includes mission communications, launch countdown audio, and scientific instrument data converted to audio.
+
+FILES DOWNLOADED:
+1. NASA_Apollo11_Highlights.mp3 (56MB) — Apollo 11 mission audio highlights. First Moon landing (July 20, 1969). Includes "The Eagle has landed," "That's one small step for man," mission control communications, astronaut chatter. Neil Armstrong, Buzz Aldrin, Michael Collins.
+
+2. NASA_Apollo13_Highlights.mp3 (32MB) — Apollo 13 mission audio highlights. The "successful failure" (April 1970). Includes "Houston, we've had a problem," dramatic mission control exchanges during the crisis, crew communications. Jim Lovell, Jack Swigert, Fred Haise.
+
+3. NASA_Apollo8_Highlights.mp3 (20MB) — Apollo 8 mission audio highlights. First humans to orbit the Moon (December 1968). Includes the famous "Earthrise" moment and Genesis reading on Christmas Eve. Frank Borman, Jim Lovell, William Anders.
+
+4. NASA_STS87_Launch.mp3 (5.6MB) — Space Shuttle STS-87 launch audio (November 1997). Countdown sequence, main engine ignition, solid rocket booster ignition, launch. Raw rocket thunder.
+
+5. NASA_Delta2_Launch.mp3 (3.3MB) — Delta II rocket launch (Mars Global Surveyor mission). Countdown and launch audio — different rocket signature from the Shuttle.
+
+6. NASA_Voyager1_Plasma.mp3 (8.6MB) — Voyager 1 plasma wave instrument data sonified to audio. Interstellar plasma oscillations converted to sound. 8 minutes of alien, otherworldly drone/noise — the literal sound of interstellar space. Launched 1977, crossed into interstellar space 2012.
+
+7. NASA_Voyager1_Launch.mp3 (113MB) — Extended Voyager 1 launch commentary and mission audio.
+
+TAGS/CATEGORIES: NASA, space, public-domain, speech, launch, rocket, interstellar, drone, noise, ambient, found-sound
+GENRE INTENT: Industrial, ambient, noise, experimental — also utility speech clips for any genre
+MOOD: Epic, eerie, intense, vast, alien, dramatic
+INSTRUMENTS: N/A — field recordings, radio communications, scientific instrument sonification
+MADE WITH / RECORDED WITH: NASA mission communication systems, Houston Audio Control Room recording equipment, Voyager 1 Plasma Wave Science instrument (PWS), Space Shuttle launch pad microphones
+HISTORICAL CONTEXT: The Voyager 1 plasma recording is especially unique — it's literally the sound of particles vibrating in interstellar space, captured by an instrument 14+ billion miles from Earth. The Apollo mission audio contains some of the most iconic speech moments in human history. The shuttle launch sounds capture raw acoustic energy from the most powerful machines ever built.

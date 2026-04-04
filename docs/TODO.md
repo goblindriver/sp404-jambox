@@ -44,34 +44,73 @@
 - [x] SD card auto-scan — Reads PAD_INFO.BIN + WAV inventory on card insert, shows per-pad status in UI
 - [x] Vibe-to-Bank — Full bank population from natural language prompt (LLM → 12 pads → preset → fetch)
 - [x] Library expansion — 57 sample packs ingested (9,600 → 40,000+ files)
+- [x] SP404A Field Manual — #1 LLM training doc for SP-404A context
+- [x] Tiger Dust Block Party — 10 presets + curated set
+- [x] Riot Mode + Minneapolis Machine — Bank concepts defined, set YAMLs ready
+- [x] Cross-media taste profiler — Movies/books/games/music → vibe fingerprint
+- [x] Multitrack stem ingestion — 500+ stems (Marvin Gaye, NIN, Phoenix, Nirvana, etc.)
+- [x] Movie clip extraction pipeline
+- [x] DPO training architecture designed
+- [x] RL pipeline approved by Chat
+- [x] Cowork plugins installed — HF connector, Engineering Plugin, Plugin Creator, Scheduled Tasks
+- [x] Cowork research delivered — UTS (CVPR 2026), DPO frameworks, CLAP model comparison, film SFX databases, MIDI corpus
 
-## In Progress
+## Active — Running Now
 
-- [ ] **Cowork**: Ongoing sample sourcing — downloading packs to ~/Downloads watchfolder
-- [ ] **Code**: Web UI refinements (ongoing)
-- [ ] **Code**: Downloads triage — ingesting remaining sample packs from watchfolder/big_beat/synth_pop
+- [ ] **Smart retag** — qwen3:32b running on ~30,718 files. ~42s/file, ~250 processed. **38% error rate needs investigation.** ~15 day run. DO NOT INTERRUPT.
 
-## Priority 1 — Activate Dormant Features
+## CRITICAL — ARCH-1: SQLite Migration
 
-- [ ] **Install fpcalc / Chromaprint** — `brew install chromaprint`. Run library-wide dedupe on 40k+ samples.
-- [ ] **Smoke test daily bank** — Run `POST /api/presets/daily` against real library. Verify output.
-- [ ] **Install Magenta / MusicVAE** — Set up checkpoints, verify pattern generation works.
+- [ ] **Code**: Migrate `_tags.json` → SQLite (`data/jambox.db`). Schema spec in `CODE_BRIEF_session4.md`. Must complete before retag finishes (~15 days). Dual-write during transition.
 
-## Priority 2 — Preset System Expansion
+## Session 4 — Active Priorities
 
-- [ ] **"Build a Set" workflow modal** — Guided UI flow for assembling a new set of 10 presets
-- [ ] **Community preset import** — Import preset YAML files from external sources
-- [ ] **Playlist-to-bank feature** — Select a Plex playlist → auto-generate a bank preset
+### Code (CODE_BRIEF_SESSION4.md)
+1. [ ] **Error rate triage** — Categorize 38% failure rate. Top buckets: parse failure, OOM, file read, schema validation. Patch top failure mode, re-run failed files.
+2. [ ] **Docs reorg** — Run `docs_reorg.sh`, fix broken refs. See `CONVENTIONS.md` for rules.
+3. [ ] **Watcher expansion** — Add document routing to `ingest_downloads.py --watch`. Route per `CONVENTIONS.md` routing table. Normalize filenames to SCREAMING_SNAKE_CASE. Audio intake unchanged.
+4. [ ] **ARCH-1 SQLite migration** — See above. Includes CLAP embeddings table.
+5. [ ] **Plugin v0.1.1** — Sub pad fix (retrigger button, not 13th slot, 120 pads total). Freesound removal. SP-404SX folder structure verification.
 
-## Priority 3 — Harmonic Engine
+### Cowork (COWORK_BRIEF_session4.md)
+5. [ ] **Riot Mode sourcing** — 30-50 samples via Splice. Staging: `_staging/riot-mode/`
+6. [ ] **Minneapolis Machine sourcing** — 30-50 samples via Splice. Staging: `_staging/minneapolis-machine/`
+7. [ ] **Stem-split queue** — Priority batch from 500+ ingested stems.
+8. [ ] **Error rate log analysis** — Pull 20 failed files, categorize failure reasons, report back.
+9. [ ] **UTS dataset profiling** — Download AudenAI/UTS (MIT, 400K clips), tag overlap analysis with Jambox vocabulary.
+10. [ ] **Track OpenBEATs + Qwen3-Omni-Captioner fine-tunes** — Flag if music-specific versions appear.
 
+### Chat (This Session)
+11. [ ] **Production taste prompt** — Draft the re-vibe prompt encoding Jason's "party at the end of the world" philosophy. Production target: hype > warm > soulful.
+12. [ ] **DPO data strategy** — Define how preference pairs are generated. Preset-derived + manual correction hybrid. Informed by Cowork's DPO research (SFT → DPO, 1K-5K pairs, Unsloth + TRL).
+13. [ ] **TODO update** — ✅ This file.
+14. [ ] **Code + Cowork briefs** — ✅ Delivered.
+
+## Later — Post-Retag
+
+- [ ] **Re-vibe pass** — Run production taste prompt across all tagged samples. Generate vibe_score.
+- [ ] **TF-IDF vocabulary emergence** — Run on sonic_descriptions in SQLite. Surface missed tags. V2 taxonomy.
+- [ ] **CLAP embedding pass** — `laion/larger_clap_music`, 512-dim, ~1-2 hours overnight for 30K files. Store in SQLite `clap_embeddings` table.
+- [ ] **SFT fine-tune** — Distill qwen3:32b → Qwen3 7B via Unsloth + QLoRA. 1-2K high-quality training pairs from retag outputs.
+- [ ] **DPO training** — 1K+ preference pairs from review UI corrections. Unsloth PatchDPOTrainer + TRL. 1 epoch, lr=5e-5, β=0.1.
+- [ ] **GGUF export** — Merge DPO adapter → FP16 → GGUF → Ollama `jambox-vibe` model.
+- [ ] **UTS calibration eval** — Run Jambox tagger against UTS ground truth for baseline accuracy.
+- [ ] **Optimization measurements** — Before/after metrics on tag quality, vibe alignment, error rate.
+
+## Backlog
+
+### Preset System
+- [ ] "Build a Set" workflow modal
+- [ ] Community preset import
+- [ ] Playlist-to-bank feature
+
+### Harmonic Engine
 - [ ] Key-to-family mapping
 - [ ] Harmonize API endpoint
 - [ ] Harmonic filter in tag cloud
-- [ ] Chemistry view — cross-bank compatibility visualization
+- [ ] Chemistry view — cross-bank compatibility
 
-## Priority 4 — Stem Splitting Priority Queue
-
+### Stem Splitting Queue
 - [ ] Block Rockin' Beats — legendary break
 - [ ] Deceptacon — bass line + drum machine
 - [ ] Feel It Still — Motown drum loop + bass
@@ -80,27 +119,17 @@
 - [ ] Teardrop — everything → Textures bank
 - [ ] D.A.N.C.E. — vocal chops as performance triggers
 
-## Priority 5 — Quality of Life
+### Quality of Life
+- [ ] Trending dashboard — Visualize trending.json in web UI
+- [ ] Dedupe report UI — Side-by-side comparison
+- [ ] Vibe prompt history — Save and recall
+- [ ] Batch export — Full bank to SP-404 format
 
-- [ ] **Trending dashboard** — Visualize trending.json data in web UI
-- [ ] **Dedupe report UI** — Display dedupe results with side-by-side comparison
-- [ ] **Vibe prompt history** — Save and recall previous vibe prompts
-- [ ] **Batch export** — Export entire bank to SP-404 format (FLAC → WAV for all 12 pads)
-
-## Priority 6 — Taste Engine (Phases 2-4)
-
-- [ ] **Phase 2: Fine-tune** — QLoRA training of Qwen3 8B via MLX on Apple Silicon (~2,000 examples)
-- [ ] **Phase 3: RAG** — ChromaDB indexed with sound design refs, tag taxonomy, presets
-- [ ] **Phase 4: Preference learning** — Track accept/reject signals in preferences.json
-
-## Waiting On
-
-- [ ] **Cowork**: Riot Mode source hunting (brief delivered)
-- [ ] **Cowork**: Minneapolis Machine source hunting (brief delivered)
-- [ ] **Cowork**: Resume remaining briefs from session crash
-- [ ] **Chat**: Genre template presets from Cowork's 9 genre templates (pending docs)
-- [ ] **Chat**: Set configs for different session types
+### Taste Engine (Remaining Phases)
+- [ ] Phase 2: Fine-tune — QLoRA (now SFT → DPO per Cowork research)
+- [ ] Phase 3: RAG — ChromaDB with sound design refs, taxonomy, presets
+- [ ] Phase 4: Preference learning — Accept/reject signals in review UI
 
 ---
 
-*Last updated by Chat + Code — April 3, 2026*
+*Last updated by Chat — April 4, 2026 (Session 4)*

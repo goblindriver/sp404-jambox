@@ -1,0 +1,27 @@
+PACK NAME: SampleRadar: 205 free EBM samples
+SOURCE URL: https://www.musicradar.com/music-tech/samples/sampleradar-205-free-ebm-samples
+DOWNLOAD URL: https://cdn.mos.musicradar.com/audio/musicradar-sampleradar-EBM-samples.zip
+FILE SIZE: 154MB (ZIP) / 132MB on disk
+FORMAT: WAV
+LICENSE: Royalty-free (free to use in your music in any way you like, do not re-distribute)
+AUTHOR: MusicRadar
+SOURCE PLATFORM: MusicRadar SampleRadar
+DATE PUBLISHED: 7 July 2025
+
+DESCRIPTION FROM PAGE:
+"Before there was EDM, there was EBM. Short for Electronic Body Music, EBM was an outgrowth of industrial music spawned in '80s Germany, dialling up the tempo of its predecessor to create a potent fusion of driving synth lines, distorted beats and aggressive vocals."
+
+"Today's edition of SampleRadar is an EBM toolkit, containing a selection of synth loops, basslines and drum patterns, along with a variety of individual drum hits, all bearing the genre's punchy and dystopian sonic signature."
+
+CONTENTS:
+- Synth loops
+- Basslines
+- Drum patterns
+- Individual drum hits
+- 205 total samples
+
+TAGS/CATEGORIES: EBM, electronic body music, industrial, 80s, German, synth, dystopian
+GENRE INTENT: Electronic Body Music (EBM), industrial, dark electronic
+MOOD: Punchy, dystopian, aggressive, driving, dark
+INSTRUMENTS: Synth, bass, drums
+HISTORICAL CONTEXT: EBM emerged in 1980s Germany as an outgrowth of industrial music. Key acts include Nitzer Ebb (pictured on the article), DAF, Front 242, Die Krupps. Characterized by driving synth lines, distorted beats, and aggressive vocals. Precursor to modern industrial techno and dark electro.
