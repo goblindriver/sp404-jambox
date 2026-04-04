@@ -175,6 +175,10 @@ def _build_prompt(filepath, features):
     if features.get('chroma'):
         lines.append("Chroma: %s" % json.dumps(features['chroma']))
 
+    # Suppress qwen3 reasoning to save tokens and get direct JSON
+    lines.append("")
+    lines.append("/no_think")
+
     return "\n".join(lines)
 
 
@@ -215,7 +219,18 @@ def _call_llm(prompt):
         # Strip <think> blocks (qwen3 reasoning)
         content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
 
-        return json.loads(content)
+        # Try parsing JSON, fix common truncation issues
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            # Try fixing truncated JSON (trailing comma, missing closing brace)
+            fixed = content.rstrip().rstrip(',')
+            if not fixed.endswith('}'):
+                fixed += '}'
+            try:
+                return json.loads(fixed)
+            except json.JSONDecodeError:
+                return None
     except Exception:
         return None
 
