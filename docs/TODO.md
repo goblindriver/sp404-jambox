@@ -81,10 +81,11 @@
 10. [ ] **Track OpenBEATs + Qwen3-Omni-Captioner fine-tunes** — Flag if music-specific versions appear.
 
 ### Chat (This Session)
-11. [ ] **Production taste prompt** — Draft the re-vibe prompt encoding Jason's "party at the end of the world" philosophy. Production target: hype > warm > soulful.
-12. [ ] **DPO data strategy** — Define how preference pairs are generated. Preset-derived + manual correction hybrid. Informed by Cowork's DPO research (SFT → DPO, 1K-5K pairs, Unsloth + TRL).
-13. [ ] **TODO update** — ✅ This file.
-14. [ ] **Code + Cowork briefs** — ✅ Delivered.
+11. [x] **Production taste prompt** — ✅ `PRODUCTION_TASTE_PROMPT.md` delivered. Encodes "party at the end of the world", vibe_score 0-1, scene tags, dpo_signal field.
+12. [x] **DPO data strategy** — ✅ `DPO_DATA_STRATEGY.md` delivered. 4-source pair generation (preset-derived, re-vibe signal, manual corrections, hard negatives). 3K-5K pair target. Full SFT→DPO→GGUF timeline.
+13. [x] **TODO update** — ✅ This file.
+14. [x] **Code + Cowork briefs** — ✅ Delivered.
+15. [x] **Docs conventions** — ✅ `CONVENTIONS.md` + `docs_reorg.sh` delivered.
 
 ## Later — Post-Retag
 

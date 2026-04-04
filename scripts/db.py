@@ -91,6 +91,18 @@ CREATE TABLE IF NOT EXISTS features (
     attack_position REAL
 );
 
+-- DPO preference pairs for taste model training
+CREATE TABLE IF NOT EXISTS dpo_pairs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sample_id INTEGER NOT NULL REFERENCES samples(id),
+    prompt TEXT NOT NULL,
+    chosen TEXT NOT NULL,
+    rejected TEXT NOT NULL,
+    source TEXT NOT NULL,
+    preset_name TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Schema version tracking
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -102,12 +114,14 @@ CREATE INDEX IF NOT EXISTS idx_tags_sample ON tags(sample_id);
 CREATE INDEX IF NOT EXISTS idx_samples_filepath ON samples(filepath);
 CREATE INDEX IF NOT EXISTS idx_samples_hash ON samples(file_hash);
 CREATE INDEX IF NOT EXISTS idx_pad_preset_bank ON pad_assignments(preset_name, bank);
+CREATE INDEX IF NOT EXISTS idx_dpo_source ON dpo_pairs(source);
+CREATE INDEX IF NOT EXISTS idx_dpo_sample ON dpo_pairs(sample_id);
 """
 
 # Tag keys that are lists in _tags.json (multi-valued)
-LIST_TAG_KEYS = {'vibe', 'texture', 'genre'}
+LIST_TAG_KEYS = {'vibe', 'texture', 'genre', 'production_tag'}
 # Tag keys that are scalars
-SCALAR_TAG_KEYS = {'type_code', 'playability', 'energy', 'source'}
+SCALAR_TAG_KEYS = {'type_code', 'playability', 'energy', 'source', 'scene'}
 
 
 class JamboxDB:
