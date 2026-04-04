@@ -110,12 +110,8 @@ def cosine_similarity(a, b):
 
 
 def load_tag_db():
-    try:
-        with open(TAGS_FILE) as f:
-            payload = json.load(f)
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    from jambox_config import load_tag_db as _load
+    return _load(TAGS_FILE)
 
 
 def cached_fingerprint(rel_path, cache_entries):

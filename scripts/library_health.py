@@ -160,12 +160,8 @@ def detect_bpm_from_onset(samples, sr=44100):
 
 def load_tag_db():
     """Load tag database."""
-    try:
-        with open(TAGS_FILE) as f:
-            payload = json.load(f)
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    from jambox_config import load_tag_db as _load
+    return _load(TAGS_FILE)
 
 
 def save_tag_db(db):

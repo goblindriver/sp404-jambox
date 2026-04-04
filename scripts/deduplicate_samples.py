@@ -29,11 +29,8 @@ REPORT_PATH = os.path.join(LIBRARY, "_dedupe_report.json")
 
 
 def load_tag_db():
-    try:
-        with open(TAGS_FILE) as handle:
-            return json.load(handle)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    from jambox_config import load_tag_db as _load
+    return _load(TAGS_FILE)
 
 
 def _fingerprint_with_fpcalc(filepath):

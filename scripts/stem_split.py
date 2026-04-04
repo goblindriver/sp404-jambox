@@ -154,17 +154,13 @@ def run_demucs(input_path, output_dir, model="htdemucs"):
 
 
 def load_tag_db():
-    try:
-        with open(TAGS_FILE) as f:
-            payload = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    from jambox_config import load_tag_db as _load
+    return _load(TAGS_FILE)
 
 
 def save_tag_db(db):
-    with open(TAGS_FILE, 'w') as f:
-        json.dump(db, f, indent=1, sort_keys=True)
+    from jambox_config import save_tag_db as _save
+    _save(TAGS_FILE, db)
 
 
 def copy_stem_to_library(stem_path, source_name, stem_name):

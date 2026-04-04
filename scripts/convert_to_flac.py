@@ -31,14 +31,8 @@ SKIP_DIRS = {'_RAW-DOWNLOADS', '_GOLD', '_DUPES', 'Stems', '.git'}
 
 def load_tags():
     """Load _tags.json."""
-    if not os.path.exists(TAGS_FILE):
-        return {}
-    try:
-        with open(TAGS_FILE) as f:
-            payload = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    from jambox_config import load_tag_db
+    return load_tag_db(TAGS_FILE)
 
 
 def save_tags(tags):
