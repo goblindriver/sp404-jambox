@@ -88,6 +88,21 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
         total_fetched = 0
         total_pads = 0
 
+        # Count total pads for progress
+        pad_count_total = 0
+        pad_count_done = 0
+        for key, bc in config.items():
+            if not key.startswith('bank_') or not bc:
+                continue
+            l = key.split('_')[1]
+            if bank and l.lower() != bank.lower():
+                continue
+            p = bc.get('pads', {})
+            if pad is not None:
+                pad_count_total += 1 if (p.get(pad) or p.get(str(pad))) else 0
+            else:
+                pad_count_total += len(p)
+
         for key, bank_config in config.items():
             if not key.startswith('bank_') or not bank_config:
                 continue
@@ -104,7 +119,10 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
                 if pad_query is None:
                     pad_query = pads.get(str(pad))
                 if pad_query:
+                    pad_count_done += 1
+                    pct = int(pad_count_done * 100 / max(pad_count_total, 1))
                     _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad}"
+                    _jobs[job_id]['percent'] = pct
                     result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files)
                     if result:
                         total_fetched += 1
@@ -113,7 +131,10 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
             else:
                 for pad_num, pad_query in pads.items():
                     pad_num = int(pad_num)
+                    pad_count_done += 1
+                    pct = int(pad_count_done * 100 / max(pad_count_total, 1))
                     _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad_num}: {pad_query[:40]}"
+                    _jobs[job_id]['percent'] = pct
                     result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files)
                     if result:
                         total_fetched += 1

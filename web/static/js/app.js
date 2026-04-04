@@ -38,9 +38,10 @@ async function init() {
         document.getElementById('btn-watcher').onclick = toggleWatcher;
         document.getElementById('btn-power').onclick = togglePowerMenu;
 
-        // Wire up footer buttons (streamlined: Browse, Fetch All, Export to SD)
+        // Wire up footer buttons
         document.getElementById('btn-browse').onclick = toggleBrowseSidebar;
-        document.getElementById('btn-fetch-all').onclick = () => fetchSamples();
+        document.getElementById('btn-fetch-bank').onclick = fetchCurrentBank;
+        document.getElementById('btn-fetch-all').onclick = fetchAllBanks;
         document.getElementById('btn-export').onclick = exportToSD;
 
         // Vibe panel
@@ -443,20 +444,30 @@ async function fetchSamples(bank, pad) {
     }
 
     state.fetchJobId = result.job_id;
-    showProgress(`Fetching ${label}...`, 12);
-    pollFetchStatus(result.job_id);
+    showProgress(`Fetching ${label}...`, 5);
+    pollFetchStatus(result.job_id, label);
 }
 
-async function pollFetchStatus(jobId) {
+function fetchCurrentBank() {
+    if (!state.currentBank) return;
+    fetchSamples(state.currentBank.letter);
+}
+
+function fetchAllBanks() {
+    fetchSamples();
+}
+
+async function pollFetchStatus(jobId, label) {
     try {
         const data = await api(`/api/pipeline/status/${jobId}`);
 
         if (data.status === 'running' || data.status === 'starting') {
-            showProgress(data.progress || 'Starting...', 55);
-            setTimeout(() => pollFetchStatus(jobId), 2000);
+            const pct = data.percent || 10;
+            showProgress(data.progress || 'Starting...', pct);
+            setTimeout(() => pollFetchStatus(jobId, label), 1500);
         } else {
             showProgress(data.progress || 'Finishing...', 100);
-            hideProgress();
+            setTimeout(hideProgress, 800);
             if (data.status === 'done') {
                 toast(`Fetch complete: ${data.result}`, 'success');
             } else {

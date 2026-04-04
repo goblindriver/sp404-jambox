@@ -775,6 +775,13 @@ main {
 
 .btn-accent:hover { filter: brightness(1.15); }
 
+.btn-accent-dim {
+    background: none;
+    color: var(--accent);
+    border-color: var(--accent);
+}
+.btn-accent-dim:hover { background: var(--accent); color: #000; }
+
 .btn-deploy {
     background: #4CAF50;
     color: #000;
