@@ -127,17 +127,21 @@ This aligns with how professional SP-404 content packs organize pads (rhythm low
 
 ## Tag System & Dimensions
 Auto-tag library: `python scripts/tag_library.py` (incremental: `--update`)
+Smart retag: `python scripts/smart_retag.py` (LLM-powered, see `docs/SMART_RETAG_SPEC.md`)
 
 ### Tag Dimensions (from TAGGING_SPEC.md)
 | Dimension | What it answers | Examples |
 |-----------|----------------|---------|
-| type_code | What is it? | KIK, SNR, HAT, BAS, SYN, PAD, VOX, FX, BRK, RSR |
-| vibe | What does it feel like? | dark, mellow, hype, dreamy, nostalgic, aggressive |
-| texture | What does it sound like? | dusty, lo-fi, raw, clean, warm, bitcrushed |
-| genre | What style? | funk, disco, house, electronic, ambient, soul |
+| type_code | What is it? | KIK, SNR, HAT, PRC, BAS, SYN, PAD, VOX, FX, BRK, RSR, GTR, HRN, KEY, STR |
+| vibe | What does it feel like? | dark, warm, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty, ethereal, triumphant, melancholic, tense |
+| texture | What does it sound like? | dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crispy, glassy, vinyl, tape, digital, organic |
+| genre | What style? | funk, soul, disco, house, electronic, hiphop, dub, ambient, jazz, rock, punk, dancehall, latin, pop, rnb, boom-bap, lo-fi, tropical, afrobeat |
 | energy | How intense? | low, mid, high |
 | source | Where from? | kit, dug, synth, field, processed |
 | playability | How to use it? | one-shot, loop, chop-ready, layer, transition |
+| instrument_hint | Specific instrument? | rhodes, 808, clavinet, melodica, congas, etc. (from smart retag) |
+| quality_score | How good for SP-404? | 1-5 (from smart retag) |
+| sonic_description | What would a producer hear? | Free text (from smart retag, for browsing/search) |
 
 ### Pad Description Format
 Each pad in `bank_config.yaml` uses: `TYPE_CODE keyword keyword playability`
@@ -308,6 +312,7 @@ Pattern training is intentionally separate from vibe training. No MIDI corpus ex
 ├── Freesound/{bank-name}/         (API downloads with attribution)
 ├── _RAW-DOWNLOADS/                (original packs, ingested packs moved here)
 ├── _DUPES/                        (fingerprint-detected duplicates, review before deleting)
+├── _QUARANTINE/                   (quality 1-2 files from smart retag, review before deleting)
 ├── _GOLD/Bank-A/                  (saved Bank A sessions)
 ├── _tags.json                     (tag database, ~20,925 entries)
 └── _ingest_log.json               (watcher activity log)
@@ -355,14 +360,28 @@ Bank configurations are standalone YAML files in `presets/`, organized by catego
 
 Local-first creative tools. Status shown in the Power Button UI dashboard.
 
+### Smart Retag (LLM-Powered Library Intelligence) — NEXT PRIORITY
+Runs every file through librosa feature extraction + Ollama LLM tagging to generate real dimensional tags (vibe, texture, genre, energy, instrument_hint, quality_score). Currently only 108 of 30,511 files have dimensional tags — this is the #1 blocker for fetch quality.
+
+**Architecture:** CLI batch tool (`scripts/smart_retag.py`) for bulk pass, inline in ingest pipeline for new files, webapp for monitoring + review only. Training stays standalone CLI.
+
+**See:** `docs/SMART_RETAG_SPEC.md` for full system prompt, quality rubric, trim policy, tag vocabulary, and processing order.
+
+**New type codes added:** GTR (guitar), HRN (horns/brass), KEY (keys/piano), STR (strings), RSR (riser/build)
+
 ### Natural Language Vibe Prompts — LIVE
 Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Connected to Ollama Qwen3 8B. See "Personalized Vibe Intelligence" section above for full details.
 
 ### Audio Analysis — LIVE
 librosa-powered BPM, key, and loudness detection. Runs inline during ingest. Results stored in `_tags.json` with `bpm_source`, `key_source`, `loudness_db` fields. Module: `scripts/audio_analysis.py`.
 
-### Audio Deduplication — LIVE
-Chromaprint fingerprint-based duplicate detection. Runs inline during ingest (no separate pass needed). Dupes auto-move to `_DUPES/`. Found 11.5 GB reclaimable at 0.95 threshold on first full library scan. Fingerprinting also available on demand.
+### Audio Deduplication — LIVE (multi-resolution)
+Three tiers of duplicate detection, all querying stored features (extract once, query forever):
+- **Tier 1 — Chromaprint:** Exact/near-exact fingerprint matching. Runs inline during ingest. Dupes auto-move to `_DUPES/`. Found 11.5 GB reclaimable at 0.95 threshold.
+- **Tier 2 — MFCC Similarity:** Timbral similarity via cosine distance on stored MFCC vectors. Catches "same sound, different recording." No audio I/O — pure vector math on stored features.
+- **Tier 3 — CLAP Embeddings:** Semantic audio similarity via LAION-CLAP. Future — requires one embedding pass, then enables natural language audio search.
+
+Feature vectors stored in `_tags.json` per file under `features` key. See `docs/SMART_RETAG_SPEC.md` for thresholds and implementation plan.
 
 ### Stem Splitting — LIVE
 Background Demucs stem splitting for tracks >60s. Runs via ThreadPoolExecutor (non-blocking). Invocation: `python3 -m demucs`. Stems land in `Stems/{source-name}/` with metadata carried from parent track.
@@ -405,6 +424,7 @@ scripts/vibe_training_store.py     # Persistent vibe session store (SQLite)
 scripts/generate_patterns.py       # Magenta pattern generation
 scripts/deduplicate_samples.py     # Audio deduplication
 scripts/audio_analysis.py          # BPM/key/loudness detection (librosa)
+scripts/smart_retag.py             # LLM-powered library tagging (batch CLI)
 scripts/daily_bank.py              # Daily preset generator
 scripts/plex_client.py             # Plex DB client (read-only)
 scripts/preset_utils.py            # Preset/set resolution and management
@@ -419,6 +439,7 @@ training/vibe/configs/             # Training hyperparameter configs
 training/pattern/readiness.py      # Pattern training readiness gates
 data/evals/                        # Seed eval suite
 data/vibe_sessions.sqlite          # Runtime session store (gitignored)
+data/retag_checkpoint.json         # Smart retag progress (gitignored)
 web/api/vibe.py                    # POST /api/vibe/generate, apply-bank, populate-bank
 web/api/pattern.py                 # POST /api/pattern/generate
 trending.json                      # Tag trend data
