@@ -37,29 +37,38 @@ ALLOWED_EXTENSIONS = AUDIO_EXTENSIONS | ARCHIVE_EXTENSIONS
 # Extensions to always ignore
 IGNORE_EXTENSIONS = {
     '.dmg', '.pkg', '.app', '.exe', '.msi', '.iso',  # installers
-    '.pdf', '.doc', '.docx',                           # non-deliverable documents
     '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', # images
     '.mp4', '.mov', '.avi', '.mkv',                    # video
     '.torrent', '.crdownload', '.part',                # incomplete
     '.ds_store',
 }
 
+# Document extensions that get routed to docs/ (not ignored)
+DOC_EXTENSIONS = {'.pdf', '.doc', '.docx', '.md', '.txt'}
+
 # Doc deliverable patterns — Chat/Cowork drop these in ~/Downloads for Code to pick up
+# Routes follow docs/CONVENTIONS.md subdirectory structure
 DOC_DELIVERABLE_PATTERNS = {
-    'CODE_BRIEF_':      'docs',     # Code briefs → docs/
-    'COWORK_BRIEF_':    'docs',     # Cowork briefs → docs/
-    'HANDOFF':          'docs',     # Session handoffs → docs/
-    'BUG_HUNT_':        'docs',     # Bug hunt reports → docs/
-    '_SOURCE':          'docs',     # Source research docs → docs/
-    '_SOURCES':         'docs',     # Source lists → docs/
-    'SOURCES_':         'docs',     # Source lists → docs/
-    '_Reference':       'docs',     # Sound design reference docs → docs/
-    '_Sound_Design':    'docs',     # Sound design docs → docs/
-    'Playlist_Mining':  'docs',     # Playlist analysis → docs/
-    'Sample_Pack_':     'docs',     # Sample pack research → docs/
-    'playlist_':        'docs',     # Playlist data → docs/
-    'sound_design_':    'docs',     # Sound design references → docs/
-    'WEBAPP_':          'docs',     # Web app specs → docs/
+    'CODE_BRIEF_':      'docs/briefs',       # Code agent briefs
+    'COWORK_BRIEF_':    'docs/briefs',       # Cowork agent briefs
+    'CHAT_RESPONSE_':   'docs/briefs',       # Chat response/pitch docs
+    'HANDOFF_SESSION':  'docs/handoffs',     # Session handoffs
+    'HANDOFF_':         'docs/handoffs',     # Other handoffs
+    'BUG_HUNT_':        'docs/handoffs',     # Bug hunt reports
+    '_SOURCE':          'docs/sources',      # Source lists (*_SOURCE.txt)
+    '_SOURCES':         'docs/sources',      # Source lists (*_SOURCES.txt)
+    'SOURCES_':         'docs/sources',      # Source lists (SOURCES_*.txt)
+    '_REFERENCE':       'docs/references',   # Sound design references
+    '_Reference':       'docs/references',   # Sound design references (mixed case)
+    '_Research':        'docs/research',     # Research deliverables
+    'Research_':        'docs/research',     # Research deliverables
+    '_RESEARCH':        'docs/research',     # Research deliverables (upper)
+    '_PITCH':           'docs/briefs',       # Pitch docs → briefs
+    'PIPELINE_':        'docs/briefs',       # Pipeline specs → briefs
+    '_SPEC':            'docs',              # Specs stay at docs root
+    'WEBAPP_':          'docs',              # Web app specs → docs root
+    'Playlist_Mining':  'docs/research',     # Playlist analysis → research
+    'Sample_Pack_':     'docs/research',     # Sample pack research
 }
 
 # Special doc files that go to repo root instead of docs/
@@ -110,16 +119,24 @@ def get_watcher_state():
 
 
 def _is_doc_deliverable(filename):
-    """Check if a file is a Chat/Cowork doc deliverable based on naming convention."""
+    """Check if a file is a Chat/Cowork doc deliverable based on naming convention.
+
+    Handles .md, .txt, .pdf, .doc, .docx files. Routes by pattern matching.
+    """
     name = os.path.basename(filename)
     ext = os.path.splitext(name)[1].lower()
-    if ext not in ('.md', '.txt'):
+    if ext not in DOC_EXTENSIONS:
         return None
     if name in DOC_ROOT_FILES:
         return REPO_DIR  # goes to repo root
     for pattern, dest_dir in DOC_DELIVERABLE_PATTERNS.items():
         if pattern in name:
             return os.path.join(REPO_DIR, dest_dir)
+    # PDF/DOCX files with SP-404 or project-related names → docs/
+    if ext in ('.pdf', '.docx', '.doc'):
+        name_lower = name.lower()
+        if any(kw in name_lower for kw in ('sp-404', 'sp404', 'jambox', 'manual', 'reference', 'field_manual')):
+            return os.path.join(REPO_DIR, 'docs')
     return None
 
 
@@ -187,6 +204,22 @@ def _route_and_process(library_path, rel_path):
     except Exception as e:
         print(f"  [ROUTE] Tag failed for {rel_path}: {e}")
         entry = {'duration': 0, 'type_code': 'UNK'}
+
+    # Step 1.5: Smart retag via LLM (if available — ~2s per file)
+    try:
+        from smart_retag import retag_single
+        enriched = retag_single(rel_path, library_path, existing_entry=entry)
+        if enriched:
+            entry = enriched
+            tags_db = load_existing_tags()
+            tags_db[rel_path] = entry
+            save_tags(tags_db)
+            q = entry.get('quality_score', '?')
+            tc = entry.get('type_code', '?')
+            print(f"  [ROUTE] Smart tagged: {tc} q={q} — {os.path.basename(rel_path)}")
+    except Exception as e:
+        # LLM not available or failed — basic tags still applied from step 1
+        pass
 
     # Step 2: Fingerprint and inline dedup check
     is_dup = False
@@ -1179,6 +1212,10 @@ def should_ignore(filepath):
     if ext in IGNORE_EXTENSIONS:
         return True
 
+    # Doc deliverables are allowed through
+    if ext in DOC_EXTENSIONS:
+        return _is_doc_deliverable(fname) is None  # ignore if not a recognized doc
+
     # Not in our allowlist
     if ext not in ALLOWED_EXTENSIONS:
         return True
@@ -1275,7 +1312,31 @@ def start_watcher(dedupe=False):
                 ext = os.path.splitext(fname)[1].lower()
                 print(f"\n[WATCHER] New file ready: {fname}")
 
-                if ext in ARCHIVE_EXTENSIONS:
+                if ext in DOC_EXTENSIONS:
+                    # Route doc deliverables (PDF, DOCX, MD, TXT)
+                    dest_dir = _is_doc_deliverable(fname)
+                    if dest_dir:
+                        dest_path = os.path.join(dest_dir, fname)
+                        if not os.path.exists(dest_path):
+                            os.makedirs(dest_dir, exist_ok=True)
+                            shutil.copy2(filepath, dest_path)
+                            rel_dest = os.path.relpath(dest_path, REPO_DIR)
+                            print(f"[WATCHER] Doc routed: {fname} → {rel_dest}")
+                            _log_ingest(fname, 1, {'docs': 1}, source_type='doc-delivery')
+                            count = 1
+                        else:
+                            print(f"[WATCHER] Doc already exists: {fname}")
+                            count = 0
+                        # Move original to _PROCESSED
+                        processed_dir = os.path.join(DOWNLOADS, '_PROCESSED')
+                        os.makedirs(processed_dir, exist_ok=True)
+                        try:
+                            shutil.move(filepath, os.path.join(processed_dir, fname))
+                        except Exception:
+                            pass
+                    else:
+                        count = 0
+                elif ext in ARCHIVE_EXTENSIONS:
                     # Check for Chat delivery first
                     delivery = check_chat_delivery(filepath)
                     if delivery:
@@ -1388,7 +1449,10 @@ def one_shot_ingest(dry_run=False, dedupe=False):
             continue
 
         ext = os.path.splitext(item)[1].lower()
-        if ext in ARCHIVE_EXTENSIONS:
+        if ext in DOC_EXTENSIONS:
+            # Already handled by ingest_doc_deliverables() above
+            continue
+        elif ext in ARCHIVE_EXTENSIONS:
             # Check for Chat delivery first
             delivery = check_chat_delivery(filepath)
             if delivery:

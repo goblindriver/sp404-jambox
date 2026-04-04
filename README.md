@@ -6,7 +6,7 @@ A fully-loaded SP-404A/SX sampler SD card builder with a web UI, intelligent sam
 
 This project turns a blank SD card into a **jam-ready SP-404** with 10 genre-themed banks designed to harmonize and mix together. A Flask web UI lets you browse your library, edit bank layouts, preview audio, and run the full pipeline without touching the terminal.
 
-All samples are **royalty-free** (MusicRadar SampleRadar + Freesound API).
+All samples are **royalty-free** (MusicRadar SampleRadar + curated sample packs).
 
 ## Bank Layout
 
@@ -83,7 +83,7 @@ Launch: `cd web && python app.py` → http://localhost:5404
 ## Pipeline
 
 ```
-Sample Packs (MusicRadar / Freesound)
+Sample Packs (MusicRadar / Curated Packs)
         │
         ▼
   ~/Downloads/*.zip
@@ -100,7 +100,7 @@ Sample Packs (MusicRadar / Freesound)
         │
         ▼
   fetch_samples.py ──► Scores library against bank_config.yaml pad descriptions
-        │                  Falls back to Freesound API if no local match
+        │                  Falls back to Curated Packs API if no local match
         │
         ▼
   gen_padinfo.py ──► PAD_INFO.BIN (loop/gate mode per pad)
@@ -191,7 +191,7 @@ trending.json                   # Tag trend data
 2. Scores every file in `_tags.json` against the query
 3. Scoring: type code match = +10 (mismatch = −8), playability = +5, BPM/key = +3–4, keywords = +3 each
 4. Global deduplication — no file used twice across any pad
-5. Falls back to Freesound API if no local match (needs `FREESOUND_API_KEY` in `.env`)
+5. Returns empty result if no local match (UI shows "no match" state)
 6. Converts winner to 16-bit/44.1kHz/mono WAV with RLND chunk
 
 ## Tag System
@@ -223,7 +223,7 @@ Every sample is auto-tagged across 7 dimensions (see `docs/TAGGING_SPEC.md`):
 ├── Melodic/{Bass, Guitar, Keys-Piano, Synths-Pads}
 ├── SFX/Stabs-Hits
 ├── Vocals/Chops
-├── Freesound/{bank-name}/           (API downloads with attribution)
+├── Curated Packs/{bank-name}/           (API downloads with attribution)
 ├── _RAW-DOWNLOADS/                  (original packs, archived after ingest)
 ├── _GOLD/Bank-A/                    (saved Bank A sessions)
 ├── _tags.json                       (tag database)
@@ -315,4 +315,4 @@ Optional smart flows:
 
 ## License
 
-Scripts: MIT. Samples: royalty-free (MusicRadar SampleRadar + Freesound).
+Scripts: MIT. Samples: royalty-free (MusicRadar SampleRadar + Curated Packs).

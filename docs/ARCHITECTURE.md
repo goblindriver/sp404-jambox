@@ -11,7 +11,7 @@ Three components work together:
 ## Pipeline
 
 ```
-MusicRadar / Freesound / Cowork downloads
+MusicRadar / Curated Packs / Cowork downloads
         │
         ▼
   ~/Downloads/*.zip
@@ -24,7 +24,6 @@ MusicRadar / Freesound / Cowork downloads
         │                    ├── Ambient-Textural/Atmospheres
         │                    ├── SFX/Stabs-Hits
         │                    ├── Vocals/Chops
-        │                    ├── Freesound/{bank-name}/
         │                    ├── _RAW-DOWNLOADS/
         │                    └── _tags.json
         │
@@ -39,7 +38,7 @@ MusicRadar / Freesound / Cowork downloads
   fetch_samples.py ──► Scores entire _tags.json against each pad description
         │                 Type match = +10, playability = +5, BPM/key = +3-4, keywords = +3 each
         │                 Global dedup (no file reused across pads)
-        │                 Falls back to Freesound API if no local match
+        │                 Returns empty if no local match
         │                 Converts to 16-bit/44.1kHz/mono + RLND chunk
         │
         ▼
@@ -99,9 +98,6 @@ Version 1 synthesized everything using numpy. Results were functional but lacked
 
 ### Tag-Based Fetching Over Keyword Matching
 The tag system (`_tags.json`) pre-computes 7 dimensions per sample, so `fetch_samples.py` can score candidates quickly without re-analyzing audio each time. The scoring weights favor type code accuracy (you asked for a kick, you get a kick) while allowing vibe/texture/genre keywords to break ties between candidates.
-
-### Freesound Fallback
-If the local library has no good match for a pad description, the fetcher hits the Freesound API. Downloaded files go into `Freesound/{bank-name}/` with proper attribution. This keeps the library growing organically as bank designs evolve.
 
 ## File Format Details
 

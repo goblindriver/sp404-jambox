@@ -86,7 +86,14 @@ VALID_PLAYABILITIES = {"one-shot", "loop", "chop-ready", "chromatic", "layer", "
 
 # ── System prompt ──
 
-TAGGER_SYSTEM_PROMPT = """You are a sample library tagger for an SP-404 sampler. You analyze audio features and metadata to generate precise tags that help a fetch system find the right sample for a musical context.
+TAGGER_SYSTEM_PROMPT = """You are a sample library tagger for an SP-404 sampler used for LIVE PERFORMANCE at block parties, DJ sets, and dance events. You analyze audio features and metadata to generate precise tags that help a fetch system find the right sample for a musical context.
+
+PRODUCTION PHILOSOPHY: This sampler is built for making people DANCE. The aesthetic is warm, soulful, hype — funk, soul, disco, dancehall, house, electro. Quality means "would this make the crowd move?" not "is this technically interesting." The best samples have warmth and groove. Vintage/lo-fi character is a FEATURE not a flaw — dusty vinyl warmth, tape saturation, and crate-dug texture are premium qualities.
+
+VIBE PRIORITY (production target — what we optimize for):
+  hype (0.22) > warm (0.20) > soulful (0.18) > nostalgic (0.12) > playful (0.10) > dreamy (0.08) > dark (0.05) > aggressive (0.05)
+
+Tag vibes based on what the audio SOUNDS like, not what the filename suggests. A warm danceable loop should be tagged warm/hype even if the filename contains "dark." Follow the audio features, not the filename.
 
 You will receive:
 - Audio features extracted by librosa (spectral centroid, MFCCs, spectral rolloff, chroma, zero-crossing rate, onset strength, RMS envelope, BPM, key)
@@ -131,15 +138,16 @@ RULES:
   - Duration >2s with rhythmic onsets (onset_count > 4) -> loop or chop-ready
   - Duration >2s with steady/evolving RMS -> layer or loop
   - Rising RMS envelope (attack_position > 0.7) -> transition or riser
-- quality_score for SP-404 live performance:
-  - 5: Instantly usable, distinctive, would build a bank around it
-  - 4: Solid, good character, reliable workhorse
-  - 3: Usable but generic
-  - 2: Technical issues, boring, redundant
-  - 1: Broken, unusable, irrelevant
+- quality_score for SP-404 LIVE DANCE PERFORMANCE:
+  - 5: Would make the crowd move. Distinctive groove, warmth, or energy. Build a bank around it.
+  - 4: Solid danceable character. Reliable workhorse for a set.
+  - 3: Usable but generic — lacks distinctive character.
+  - 2: Technical issues, boring, or wrong energy for a party context.
+  - 1: Broken, unusable, or irrelevant to live performance.
   - Samples under 0.1s: almost always 1
   - Samples over 120s: almost always 1-2
-  - Vintage/lo-fi character is a FEATURE not a flaw"""
+  - Warm, groovy, funky samples with vintage character → score higher
+  - Cold, sterile, or lifeless samples → score lower"""
 
 
 def _build_prompt(filepath, features):
@@ -182,57 +190,89 @@ def _build_prompt(filepath, features):
     return "\n".join(lines)
 
 
-def _call_llm(prompt):
-    """Send prompt to Ollama and parse JSON response."""
+_llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
+              'empty': 0, 'parse_fail': 0, 'exception': 0}
+
+
+def _call_llm(prompt, retries=2):
+    """Send prompt to Ollama and parse JSON response. Retries on timeout."""
     if not LLM_ENDPOINT:
         return None
 
     import requests
 
-    try:
-        resp = requests.post(
-            LLM_ENDPOINT,
-            json={"model": LLM_MODEL, "messages": [
-                {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ], "temperature": 0.3, "max_tokens": 2048},
-            timeout=max(LLM_TIMEOUT, 90),
-        )
-        if resp.status_code != 200:
-            return None
+    timeout = max(LLM_TIMEOUT, 180)  # 32b on 24GB needs headroom
 
-        data = resp.json()
-        content = ""
-        choices = data.get("choices", [])
-        if choices:
-            content = choices[0].get("message", {}).get("content", "")
-
-        if not content:
-            return None
-
-        content = content.strip()
-        # Strip markdown fences
-        if content.startswith("```"):
-            content = re.sub(r'^```\w*\n?', '', content)
-            content = re.sub(r'\n?```$', '', content)
-            content = content.strip()
-        # Strip <think> blocks (qwen3 reasoning)
-        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
-
-        # Try parsing JSON, fix common truncation issues
+    for attempt in range(retries + 1):
+        _llm_stats['calls'] += 1
         try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            # Try fixing truncated JSON (trailing comma, missing closing brace)
-            fixed = content.rstrip().rstrip(',')
-            if not fixed.endswith('}'):
-                fixed += '}'
-            try:
-                return json.loads(fixed)
-            except json.JSONDecodeError:
+            resp = requests.post(
+                LLM_ENDPOINT,
+                json={"model": LLM_MODEL, "messages": [
+                    {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ], "temperature": 0.3, "max_tokens": 2048},
+                timeout=timeout,
+            )
+            if resp.status_code != 200:
+                _llm_stats['http_error'] += 1
+                print("  LLM HTTP %d" % resp.status_code, file=sys.stderr)
                 return None
-    except Exception:
-        return None
+
+            data = resp.json()
+            content = ""
+            choices = data.get("choices", [])
+            if choices:
+                content = choices[0].get("message", {}).get("content", "")
+
+            if not content:
+                _llm_stats['empty'] += 1
+                return None
+
+            content = content.strip()
+            # Strip markdown fences
+            if content.startswith("```"):
+                content = re.sub(r'^```\w*\n?', '', content)
+                content = re.sub(r'\n?```$', '', content)
+                content = content.strip()
+            # Strip <think> blocks (qwen3 reasoning)
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+
+            # Try parsing JSON, fix common truncation issues
+            try:
+                result = json.loads(content)
+                _llm_stats['success'] += 1
+                return result
+            except json.JSONDecodeError:
+                # Try fixing truncated JSON (trailing comma, missing closing brace)
+                fixed = content.rstrip().rstrip(',')
+                if not fixed.endswith('}'):
+                    fixed += '}'
+                try:
+                    result = json.loads(fixed)
+                    _llm_stats['success'] += 1
+                    return result
+                except json.JSONDecodeError:
+                    _llm_stats['parse_fail'] += 1
+                    print("  LLM parse fail: %s..." % content[:120], file=sys.stderr)
+                    return None
+
+        except requests.exceptions.Timeout:
+            _llm_stats['timeout'] += 1
+            if attempt < retries:
+                wait = 5 * (attempt + 1)
+                print("  LLM timeout (attempt %d/%d, retry in %ds)" % (
+                    attempt + 1, retries + 1, wait), file=sys.stderr)
+                time.sleep(wait)
+                continue
+            print("  LLM timeout (all %d attempts exhausted)" % (retries + 1), file=sys.stderr)
+            return None
+        except Exception as e:
+            _llm_stats['exception'] += 1
+            print("  LLM error: %s" % e, file=sys.stderr)
+            return None
+
+    return None
 
 
 def _validate_llm_tags(llm_tags):
@@ -371,6 +411,14 @@ def _load_tags():
 def _save_tags(db):
     from jambox_config import save_tag_db
     save_tag_db(TAGS_FILE, db)
+    # Dual-write to normalized SQLite during transition
+    try:
+        from db import JamboxDB
+        jdb = JamboxDB()
+        jdb.import_from_tag_dict(db)
+        jdb.close()
+    except Exception:
+        pass  # non-fatal — JSON is still the primary
 
 
 def _walk_library(path_filter=None):
@@ -408,6 +456,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
     Returns (tagged, quarantined, errors).
     """
     tagged = quarantined = errors = 0
+    llm_failures = 0
 
     for rel_path, full_path in files:
         fname = os.path.basename(rel_path)
@@ -434,9 +483,14 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
         raw_llm = _call_llm(prompt)
         llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
 
+        if not llm_tags:
+            llm_failures += 1
+
         # 3. Merge into tag DB
         existing = tag_db.get(rel_path, {})
         entry = _merge_tags(existing, llm_tags, features, rel_path)
+        # Track whether LLM enrichment succeeded
+        entry['retag_model'] = LLM_MODEL if llm_tags else None
         tag_db[rel_path] = entry
 
         quality = entry.get('quality_score', 3)
@@ -463,7 +517,35 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
         if verbose:
             print("  %s q=%d %s [%s]: %s — %s" % (src, quality, tc, vibe_str, fname, desc))
 
+    if llm_failures and verbose:
+        print("  [batch LLM failures: %d/%d]" % (llm_failures, len(files)))
+
     return tagged, quarantined, errors
+
+
+def retag_single(rel_path, full_path, existing_entry=None):
+    """Smart-retag a single file inline. Returns enriched tag entry or None.
+
+    Designed for ingest pipeline use — extracts features, calls LLM, merges
+    tags, returns the enriched entry without saving to disk (caller saves).
+    Does NOT quarantine (caller decides).
+    """
+    if not librosa_available():
+        return None
+    if not LLM_ENDPOINT:
+        return None
+
+    features = extract_features(full_path)
+    if not features:
+        return None
+
+    prompt = _build_prompt(full_path, features)
+    raw_llm = _call_llm(prompt)
+    llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
+
+    existing = existing_entry or {}
+    entry = _merge_tags(existing, llm_tags, features, rel_path)
+    return entry
 
 
 # ── Main runner ──
@@ -560,6 +642,7 @@ def run(args):
                 'batch_size': BATCH_SIZE,
                 'processed_files': processed_files,
                 'avg_time_per_file_ms': int(elapsed * 1000 / max(len(processed_files), 1)),
+                'llm_stats': dict(_llm_stats),
             })
 
     elapsed = time.time() - t0
@@ -570,6 +653,279 @@ def run(args):
     print("  Time: %.1f min  Rate: %.0f files/min" % (
         elapsed / 60, len(processed_files) / max(elapsed / 60, 0.01)))
     print("  Tag DB: %d entries" % len(tag_db))
+    if _llm_stats['calls']:
+        s = _llm_stats
+        print("  LLM: %d calls, %d ok (%.0f%%), %d timeout, %d parse fail, %d empty, %d http err" % (
+            s['calls'], s['success'],
+            s['success'] / max(s['calls'], 1) * 100,
+            s['timeout'], s['parse_fail'], s['empty'], s['http_error']))
+
+
+def run_revibe(args):
+    """Re-vibe pass: re-interpret stored features with the current system prompt.
+
+    Skips librosa extraction entirely — reads feature vectors already stored in
+    _tags.json and re-sends them to the LLM with the (updated) production-aware
+    prompt. Only overwrites subjective fields: vibe, texture, energy,
+    quality_score, sonic_description, instrument_hint. Preserves type_code,
+    playability, BPM, key, features, and all other objective data.
+
+    This is the second pass after a full smart_retag run — same features,
+    new interpretation. ~3-6x faster than a full re-run.
+    """
+    if not LLM_ENDPOINT:
+        print("ERROR: SP404_LLM_ENDPOINT not set.")
+        sys.exit(1)
+
+    tag_db = _load_tags()
+    print("Tag DB: %d entries" % len(tag_db))
+
+    # Find entries that have stored features (from a prior smart_retag run)
+    candidates = []
+    for rel_path, entry in tag_db.items():
+        if entry.get('tag_source') != 'smart_retag_v1':
+            continue
+        stored_features = entry.get('features')
+        if not stored_features:
+            continue
+        full_path = os.path.join(LIBRARY, rel_path)
+        if os.path.exists(full_path):
+            candidates.append((rel_path, full_path, entry))
+
+    print("Files with stored features: %d" % len(candidates))
+
+    if args.limit:
+        candidates = candidates[:args.limit]
+        print("Limited to %d" % args.limit)
+
+    if not candidates:
+        print("Nothing to re-vibe. Run --all first to extract features.")
+        return
+
+    print("Re-vibing %d files with updated production prompt...\n" % len(candidates))
+
+    # Subjective fields to overwrite
+    REVIBE_FIELDS = ('vibe', 'texture', 'energy', 'quality_score',
+                     'sonic_description', 'instrument_hint')
+
+    updated = errors = 0
+    t0 = time.time()
+
+    for i, (rel_path, full_path, entry) in enumerate(candidates):
+        if i > 0 and i % BATCH_SIZE == 0:
+            elapsed = time.time() - t0
+            rate = i / elapsed if elapsed > 0 else 0
+            eta = (len(candidates) - i) / rate / 60 if rate > 0 else 0
+            batch_num = i // BATCH_SIZE + 1
+            total_batches = (len(candidates) + BATCH_SIZE - 1) // BATCH_SIZE
+            print("=== Re-vibe %d/%d  |  %.0f/min  |  ETA %.0fm ===" % (
+                batch_num, total_batches, rate * 60, eta))
+
+            # Save progress
+            if not args.dry_run:
+                _save_tags(tag_db)
+
+        # Reconstruct features dict from stored vectors + entry metadata
+        features = dict(entry.get('features', {}))
+        for k in ('duration', 'bpm', 'key', 'loudness_db'):
+            if entry.get(k) is not None:
+                features[k] = entry[k]
+
+        # Build prompt from stored features (no librosa call)
+        prompt = _build_prompt(full_path, features)
+
+        if args.dry_run:
+            if not args.quiet:
+                fname = os.path.basename(rel_path)
+                old_vibe = ','.join(entry.get('vibe', [])[:2])
+                print("  DRY-RUN: %s [%s]" % (fname, old_vibe))
+            updated += 1
+            continue
+
+        # Call LLM with updated prompt
+        raw_llm = _call_llm(prompt)
+        llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
+
+        if not llm_tags:
+            errors += 1
+            continue
+
+        # Only overwrite subjective fields — preserve type_code, playability, etc.
+        old_vibe = entry.get('vibe', [])
+        for field in REVIBE_FIELDS:
+            if field in llm_tags:
+                entry[field] = llm_tags[field]
+
+        # Rebuild flat tags
+        tags = set()
+        if entry.get('type_code'):
+            tags.add(entry['type_code'])
+        for v in entry.get('vibe', []):
+            tags.add(v)
+        for t in entry.get('texture', []):
+            tags.add(t)
+        for g in entry.get('genre', []):
+            tags.add(g)
+        if entry.get('source'):
+            tags.add(entry['source'])
+        if entry.get('energy'):
+            tags.add(entry['energy'])
+        if entry.get('playability'):
+            tags.add(entry['playability'])
+        if entry.get('bpm'):
+            tags.add("%dbpm" % int(entry['bpm']))
+        entry['tags'] = sorted(tags)
+
+        entry['tag_source'] = 'smart_retag_v2_revibe'
+        entry['tagged_at'] = datetime.now().isoformat()
+        tag_db[rel_path] = entry
+        updated += 1
+
+        if not args.quiet:
+            new_vibe = ','.join(entry.get('vibe', [])[:2])
+            q = entry.get('quality_score', '?')
+            tc = entry.get('type_code', '?')
+            fname = os.path.basename(rel_path)
+            changed = '*' if old_vibe != entry.get('vibe', []) else ' '
+            print(" %s q=%s %s [%s→%s]: %s" % (
+                changed, q, tc, ','.join(old_vibe[:2]), new_vibe, fname))
+
+    if not args.dry_run:
+        _save_tags(tag_db)
+
+    elapsed = time.time() - t0
+    print("\n" + "=" * 60)
+    print("Re-Vibe Pass Complete")
+    print("  Updated: %d  Errors: %d" % (updated, errors))
+    print("  Time: %.1f min  Rate: %.0f files/min" % (
+        elapsed / 60, updated / max(elapsed / 60, 0.01)))
+
+
+def run_retry_llm_failures(args):
+    """Re-run LLM tagging on files that have features but no LLM enrichment.
+
+    These are files where feature extraction succeeded but _call_llm returned
+    None (timeout, parse failure, etc.). Uses stored features — no librosa call.
+    """
+    if not LLM_ENDPOINT:
+        print("ERROR: SP404_LLM_ENDPOINT not set.")
+        sys.exit(1)
+
+    tag_db = _load_tags()
+    print("Tag DB: %d entries" % len(tag_db))
+
+    # Find entries with features but no LLM enrichment
+    candidates = []
+    for rel_path, entry in tag_db.items():
+        stored_features = entry.get('features')
+        if not stored_features:
+            continue
+        # No sonic_description means LLM never succeeded
+        if entry.get('sonic_description'):
+            continue
+        full_path = os.path.join(LIBRARY, rel_path)
+        if os.path.exists(full_path):
+            candidates.append((rel_path, full_path, entry))
+
+    print("Files needing LLM retry: %d" % len(candidates))
+
+    if args.limit:
+        candidates = candidates[:args.limit]
+        print("Limited to %d" % args.limit)
+
+    if not candidates:
+        print("All files with features already have LLM enrichment.")
+        return
+
+    print("Retrying LLM on %d files...\n" % len(candidates))
+
+    success = errors = 0
+    t0 = time.time()
+
+    for i, (rel_path, full_path, entry) in enumerate(candidates):
+        if i > 0 and i % BATCH_SIZE == 0:
+            elapsed = time.time() - t0
+            rate = i / elapsed if elapsed > 0 else 0
+            eta = (len(candidates) - i) / rate / 60 if rate > 0 else 0
+            print("=== Retry %d/%d  |  %.0f/min  |  ETA %.0fm ===" % (
+                i, len(candidates), rate * 60, eta))
+            if not args.dry_run:
+                _save_tags(tag_db)
+
+        # Reconstruct features from stored data
+        features = dict(entry.get('features', {}))
+        for k in ('duration', 'bpm', 'key', 'loudness_db'):
+            if entry.get(k) is not None:
+                features[k] = entry[k]
+
+        prompt = _build_prompt(full_path, features)
+
+        if args.dry_run:
+            fname = os.path.basename(rel_path)
+            if not args.quiet:
+                print("  DRY-RUN: %s" % fname)
+            success += 1
+            continue
+
+        raw_llm = _call_llm(prompt)
+        llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
+
+        if not llm_tags:
+            errors += 1
+            continue
+
+        # Merge LLM tags into existing entry
+        for key in ('type_code', 'playability', 'vibe', 'texture', 'genre',
+                    'energy', 'sonic_description', 'quality_score', 'instrument_hint'):
+            if key in llm_tags:
+                entry[key] = llm_tags[key]
+
+        # Rebuild flat tags
+        tags = set()
+        if entry.get('type_code'):
+            tags.add(entry['type_code'])
+        for v in entry.get('vibe', []):
+            tags.add(v)
+        for t in entry.get('texture', []):
+            tags.add(t)
+        for g in entry.get('genre', []):
+            tags.add(g)
+        if entry.get('source'):
+            tags.add(entry['source'])
+        if entry.get('energy'):
+            tags.add(entry['energy'])
+        if entry.get('playability'):
+            tags.add(entry['playability'])
+        if entry.get('bpm'):
+            tags.add("%dbpm" % int(entry['bpm']))
+        entry['tags'] = sorted(tags)
+        entry['retag_model'] = LLM_MODEL
+        entry['tagged_at'] = datetime.now().isoformat()
+        tag_db[rel_path] = entry
+        success += 1
+
+        if not args.quiet:
+            fname = os.path.basename(rel_path)
+            tc = entry.get('type_code', '?')
+            vibe_str = ','.join(entry.get('vibe', [])[:2])
+            desc = (entry.get('sonic_description') or '')[:50]
+            print("  LLM q=%s %s [%s]: %s — %s" % (
+                entry.get('quality_score', '?'), tc, vibe_str, fname, desc))
+
+    if not args.dry_run:
+        _save_tags(tag_db)
+
+    elapsed = time.time() - t0
+    print("\n" + "=" * 60)
+    print("LLM Retry Complete")
+    print("  Success: %d  Errors: %d" % (success, errors))
+    if _llm_stats['calls']:
+        s = _llm_stats
+        print("  LLM: %d calls, %d ok (%.0f%%), %d timeout, %d parse fail" % (
+            s['calls'], s['success'],
+            s['success'] / max(s['calls'], 1) * 100,
+            s['timeout'], s['parse_fail']))
+    print("  Time: %.1f min" % (elapsed / 60))
 
 
 def main():
@@ -582,7 +938,19 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Feature extraction only')
     parser.add_argument('--force', action='store_true', help='Retag already tagged files')
     parser.add_argument('--quiet', '-q', action='store_true', help='Less output')
+    parser.add_argument('--revibe', action='store_true',
+                        help='Re-vibe pass: re-interpret stored features with updated prompt')
+    parser.add_argument('--retry-llm-failures', action='store_true',
+                        help='Re-run LLM on files that have features but no LLM enrichment')
     args = parser.parse_args()
+
+    if args.revibe:
+        run_revibe(args)
+        return
+
+    if args.retry_llm_failures:
+        run_retry_llm_failures(args)
+        return
 
     if not any([args.all, args.resume, args.validate, args.path, args.limit]):
         parser.print_help()
