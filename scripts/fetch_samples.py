@@ -228,16 +228,11 @@ def _keys_compatible(key_a, key_b):
 
 def load_tag_db():
     """Load the tag database."""
-    try:
-        with open(TAGS_FILE) as f:
-            payload = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    from jambox_config import load_tag_db as _load
+    db = _load(TAGS_FILE)
+    if not db:
         print("  WARNING: No tag database found. Run: python scripts/tag_library.py")
-        return {}
-    if not isinstance(payload, dict):
-        print("  WARNING: Tag database is not a JSON object. Run: python scripts/tag_library.py")
-        return {}
-    return payload
+    return db
 
 
 def search_local(query, bank_config, tag_db, used_files, min_score=8):

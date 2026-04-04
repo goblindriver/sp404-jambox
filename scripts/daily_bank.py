@@ -16,11 +16,8 @@ DEFAULT_TRENDING_TERMS = ["disco", "funk", "electronic", "ambient", "house", "ne
 
 
 def _load_tag_db():
-    try:
-        with open(SETTINGS["TAGS_FILE"]) as handle:
-            return json.load(handle)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    from jambox_config import load_tag_db
+    return load_tag_db(SETTINGS["TAGS_FILE"])
 
 
 def _entry_query(entry):

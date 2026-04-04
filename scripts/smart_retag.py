@@ -364,18 +364,13 @@ def _save_checkpoint(cp):
 
 
 def _load_tags():
-    if os.path.exists(TAGS_FILE):
-        try:
-            with open(TAGS_FILE) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            pass
-    return {}
+    from jambox_config import load_tag_db
+    return load_tag_db(TAGS_FILE)
 
 
 def _save_tags(db):
-    with open(TAGS_FILE, 'w') as f:
-        json.dump(db, f, indent=1, sort_keys=True)
+    from jambox_config import save_tag_db
+    save_tag_db(TAGS_FILE, db)
 
 
 def _walk_library(path_filter=None):

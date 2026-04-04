@@ -1,5 +1,6 @@
 """Shared runtime settings for the SP-404 Jambox app and scripts."""
 
+import json
 import os
 import shutil
 
@@ -146,6 +147,25 @@ def load_settings(repo_dir):
         "FINE_TUNED_LLM_MODEL": _read_command("SP404_FINE_TUNED_LLM_MODEL", ""),
         "VIBE_RETRIEVAL_LIMIT": _read_int("SP404_VIBE_RETRIEVAL_LIMIT", 4, minimum=0),
     }
+
+
+def load_tag_db(tags_file):
+    """Load the tag database from a JSON file. Shared across all scripts.
+
+    Returns a dict (rel_path -> tag entry) or empty dict on failure.
+    """
+    try:
+        with open(tags_file, "r") as fh:
+            payload = json.load(fh)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def save_tag_db(tags_file, db):
+    """Save the tag database to a JSON file. Shared across all scripts."""
+    with open(tags_file, "w") as fh:
+        json.dump(db, fh, indent=1, sort_keys=True)
 
 
 def load_settings_for_script(script_file):
