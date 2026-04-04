@@ -151,3 +151,77 @@ def detect_loudness(y):
         pass
 
     return None
+
+
+def extract_features(filepath, sr=22050):
+    """Extract full spectral features for smart retagging.
+
+    Returns dict with all audio features needed by the LLM tagger,
+    or None if analysis fails. Loads audio once and extracts everything.
+    """
+    if not LIBROSA_AVAILABLE:
+        return None
+
+    if not os.path.exists(filepath):
+        return None
+
+    try:
+        y, actual_sr = librosa.load(filepath, sr=sr, mono=True)
+    except Exception:
+        return None
+
+    if len(y) == 0:
+        return None
+
+    duration = len(y) / actual_sr
+
+    result = {
+        'duration': round(duration, 3),
+        'bpm': detect_bpm(y, actual_sr),
+        'key': detect_key(y, actual_sr),
+        'loudness_db': detect_loudness(y),
+    }
+
+    try:
+        # Spectral centroid — bright vs dark
+        centroid = librosa.feature.spectral_centroid(y=y, sr=actual_sr)
+        result['spectral_centroid'] = round(float(np.mean(centroid)), 1)
+
+        # Spectral rolloff — high-frequency content
+        rolloff = librosa.feature.spectral_rolloff(y=y, sr=actual_sr)
+        result['spectral_rolloff'] = round(float(np.mean(rolloff)), 1)
+
+        # Zero-crossing rate — noisy vs tonal
+        zcr = librosa.feature.zero_crossing_rate(y)
+        result['zero_crossing_rate'] = round(float(np.mean(zcr)), 4)
+
+        # Onset strength — transient character
+        onset_env = librosa.onset.onset_strength(y=y, sr=actual_sr)
+        result['onset_strength'] = round(float(np.mean(onset_env)), 2)
+        result['onset_count'] = int(len(librosa.onset.onset_detect(
+            y=y, sr=actual_sr, onset_envelope=onset_env)))
+
+        # RMS envelope — punch vs sustain
+        rms = librosa.feature.rms(y=y)[0]
+        result['rms_peak'] = round(float(np.max(rms)), 4) if len(rms) > 0 else 0.0
+        result['rms_mean'] = round(float(np.mean(rms)), 4) if len(rms) > 0 else 0.0
+        # Attack shape: ratio of peak position to duration
+        if len(rms) > 1:
+            peak_pos = int(np.argmax(rms))
+            result['attack_position'] = round(peak_pos / len(rms), 2)
+        else:
+            result['attack_position'] = 0.0
+
+        # MFCCs — timbral fingerprint (13 coefficients)
+        mfcc = librosa.feature.mfcc(y=y, sr=actual_sr, n_mfcc=13)
+        result['mfcc'] = [round(float(c), 2) for c in np.mean(mfcc, axis=1)]
+
+        # Chroma — harmonic content (12 pitch classes)
+        chroma = librosa.feature.chroma_cqt(y=y, sr=actual_sr)
+        result['chroma'] = [round(float(c), 3) for c in np.mean(chroma, axis=1)]
+
+    except Exception:
+        # Partial features are fine — return what we have
+        pass
+
+    return result
