@@ -117,7 +117,6 @@ DIR_CATEGORY_MAP = {
     "sfx": "FX",
     "vocals": "VOX",
     "ambient-textural": "AMB",
-    "freesound": None,
 }
 
 # ═══════════════════════════════════════════════════════════

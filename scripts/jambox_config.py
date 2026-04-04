@@ -5,6 +5,35 @@ import os
 import shutil
 
 
+def _load_dotenv():
+    """Load .env file from repo root into os.environ (only if not already set)."""
+    # Walk up from this file to find the repo root
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(here)
+    env_file = os.path.join(repo_root, ".env")
+    if not os.path.isfile(env_file):
+        return
+    try:
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip()
+                # Don't override existing env vars
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except OSError:
+        pass
+
+
+_load_dotenv()
+
+
 DEFAULT_SAMPLE_LIBRARY = "~/Music/SP404-Sample-Library"
 DEFAULT_DOWNLOADS = "~/Downloads"
 DEFAULT_SD_CARD = "/Volumes/SP-404SX"
@@ -149,11 +178,81 @@ def load_settings(repo_dir):
     }
 
 
-def load_tag_db(tags_file):
-    """Load the tag database from a JSON file. Shared across all scripts.
+def _tags_sqlite_path(tags_file):
+    """Derive SQLite path from the JSON tags file path."""
+    return os.path.splitext(tags_file)[0] + ".sqlite"
 
-    Returns a dict (rel_path -> tag entry) or empty dict on failure.
+
+def _ensure_tags_sqlite(db_path):
+    """Create the tags SQLite database if it doesn't exist."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tags (
+            rel_path TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    return conn
+
+
+def _migrate_json_to_sqlite(json_path, db_path):
+    """One-time migration: import existing JSON tags into SQLite."""
+    import sqlite3
+    try:
+        with open(json_path, "r") as fh:
+            payload = json.load(fh)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return
+    if not isinstance(payload, dict) or not payload:
+        return
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tags (
+            rel_path TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        )
+    """)
+    # Batch insert
+    conn.executemany(
+        "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
+        [(k, json.dumps(v)) for k, v in payload.items()]
+    )
+    conn.commit()
+    conn.close()
+    print(f"[TAG_DB] Migrated {len(payload)} entries from JSON to SQLite")
+
+
+def load_tag_db(tags_file):
+    """Load the tag database. Uses SQLite backend, falls back to JSON.
+
+    Auto-migrates from JSON on first use. Returns a dict (rel_path -> tag entry).
     """
+    import sqlite3
+    db_path = _tags_sqlite_path(tags_file)
+
+    # Auto-migrate from JSON if SQLite doesn't exist yet
+    if not os.path.exists(db_path) and os.path.exists(tags_file):
+        _migrate_json_to_sqlite(tags_file, db_path)
+
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path)
+            rows = conn.execute("SELECT rel_path, data FROM tags").fetchall()
+            conn.close()
+            result = {}
+            for rel_path, data in rows:
+                try:
+                    result[rel_path] = json.loads(data)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            return result
+        except sqlite3.Error:
+            pass
+
+    # Fallback to JSON
     try:
         with open(tags_file, "r") as fh:
             payload = json.load(fh)
@@ -163,9 +262,28 @@ def load_tag_db(tags_file):
 
 
 def save_tag_db(tags_file, db):
-    """Save the tag database to a JSON file. Shared across all scripts."""
-    with open(tags_file, "w") as fh:
-        json.dump(db, fh, indent=1, sort_keys=True)
+    """Save the tag database to SQLite. Also writes JSON for compatibility."""
+    import sqlite3
+    db_path = _tags_sqlite_path(tags_file)
+
+    conn = _ensure_tags_sqlite(db_path)
+    # Batch upsert
+    conn.executemany(
+        "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
+        [(k, json.dumps(v)) for k, v in db.items()]
+    )
+    conn.commit()
+    conn.close()
+
+    # Also write JSON for backward compatibility and human readability
+    # (skip if file would be >50MB to avoid slowdowns)
+    estimated_size = len(db) * 1100  # ~1.1KB avg per entry
+    if estimated_size < 50 * 1024 * 1024:
+        try:
+            with open(tags_file, "w") as fh:
+                json.dump(db, fh, indent=1, sort_keys=True)
+        except OSError:
+            pass
 
 
 def load_settings_for_script(script_file):

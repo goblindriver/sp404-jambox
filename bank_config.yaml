@@ -1,123 +1,8 @@
 bank_a:
-  preset: genre/soul-kitchen
-  name: soul-kitchen
-  bpm: 98
-  key: G
-  notes: ''
-  pads:
-    1: KIK soul warm one-shot
-    2: SNR soul crispy one-shot
-    3: HAT soul smooth one-shot
-    4: PRC tambourine warm one-shot
-    5: BRK soul dusty chop-ready
-    6: BRK funk mellow loop
-    7: SYN rhodes warm loop
-    8: SYN soul organ loop
-    9: BAS soul warm loop
-    10: SYN soul mellow loop
-    11: PAD soul warm layer
-    12: VOX soul soulful chop-ready
-bank_b:
-  preset: genre/funk-muscle
-  name: funk-muscle
-  bpm: 112
-  key: Em
-  notes: ''
-  pads:
-    1: KIK funk hard one-shot
-    2: SNR funk snappy one-shot
-    3: HAT funk tight one-shot
-    4: PRC funk conga one-shot
-    5: BRK funk tight loop
-    6: BRK funk heavy chop-ready
-    7: SYN funk clavinet loop
-    8: SYN funk wah loop
-    9: BAS funk slap loop
-    10: FX funk horn one-shot
-    11: PAD funk warm layer
-    12: VOX funk hype chop-ready
-bank_c:
-  preset: genre/disco-inferno
-  name: disco-inferno
-  bpm: 118
-  key: Am
-  notes: ''
-  pads:
-    1: KIK disco punchy one-shot
-    2: SNR disco tight one-shot
-    3: HAT disco shimmery one-shot
-    4: PRC disco cowbell one-shot
-    5: BRK disco groove loop
-    6: BRK disco four-on-the-floor loop
-    7: SYN disco strings loop
-    8: SYN disco piano loop
-    9: BAS disco groove loop
-    10: SYN disco guitar loop
-    11: PAD disco lush layer
-    12: VOX disco diva chop-ready
-bank_d:
-  preset: genre/boom-bap-cipher
-  name: boom-bap-cipher
-  bpm: 90
-  key: Dm
-  notes: ''
-  pads:
-    1: KIK hiphop heavy one-shot
-    2: SNR hiphop dusty one-shot
-    3: HAT hiphop lo-fi one-shot
-    4: PRC hiphop shaker one-shot
-    5: BRK hiphop dusty chop-ready
-    6: BRK hiphop vinyl loop
-    7: BRK soul nostalgic chop-ready
-    8: SYN hiphop jazz loop
-    9: BAS hiphop 808 loop
-    10: SYN hiphop dark loop
-    11: PAD hiphop dusty layer
-    12: VOX hiphop scratch one-shot
-bank_e:
-  preset: genre/caribbean-heat
-  name: caribbean-heat
-  bpm: 108
-  key: Cm
-  notes: ''
-  pads:
-    1: KIK dancehall deep one-shot
-    2: SNR dancehall rim one-shot
-    3: HAT dancehall tight one-shot
-    4: PRC latin conga one-shot
-    5: BRK dancehall riddim loop
-    6: BRK soca energetic loop
-    7: PRC latin bongo loop
-    8: SYN tropical bright loop
-    9: BAS dancehall deep loop
-    10: SYN tropical warm loop
-    11: PAD tropical airy layer
-    12: VOX dancehall ragga chop-ready
-bank_f:
-  preset: genre/electro-sweat
-  name: electro-sweat
-  bpm: 120
-  key: Dm
-  notes: ''
-  pads:
-    1: KIK electronic hard one-shot
-    2: SNR electronic clap one-shot
-    3: HAT electronic crispy one-shot
-    4: PRC electronic rim one-shot
-    5: BRK electronic minimal loop
-    6: BRK electronic aggressive loop
-    7: SYN electronic dirty loop
-    8: SYN electronic acid loop
-    9: BAS electronic aggressive loop
-    10: SYN electronic dark loop
-    11: PAD electronic tense layer
-    12: VOX electronic processed chop-ready
-bank_g:
-  preset: genre/neon-rave
   name: neon-rave
   bpm: 128
   key: F
-  notes: ''
+  notes: '(missing preset: soul-kitchen)'
   pads:
     1: KIK house punchy one-shot
     2: SNR house clap one-shot
@@ -131,61 +16,46 @@ bank_g:
     10: SYN house lead loop
     11: RSR house build transition
     12: FX house siren one-shot
-bank_h:
-  preset: genre/peak-hour
-  name: peak-hour
-  bpm: 125
+bank_b:
+  name: Brat Mode
+  bpm: 128
   key: Gm
-  notes: ''
+  notes: '(missing preset: funk-muscle)'
   pads:
-    1: KIK electronic heavy one-shot
-    2: SNR electronic hard one-shot
-    3: HAT electronic sharp one-shot
-    4: PRC electronic clap one-shot
-    5: BRK electronic hype loop
-    6: BRK electronic aggressive loop
-    7: SYN electronic big loop
-    8: FX electronic brass one-shot
-    9: BAS electronic massive loop
-    10: SYN electronic lead loop
-    11: RSR electronic build transition
-    12: FX electronic drop one-shot
+    1: KIK punchy clicky hard one-shot
+    2: SNR aggressive crushed loud one-shot
+    3: HAT rapid trap metallic one-shot
+    4: CLP distorted trashy big one-shot
+    5: BRK four-on-floor hard driving loop
+    6: BAS 808 distorted aggressive loop
+    7: SYN supersaw detuned buzzy loop
+    8: SYN lead harsh bitcrushed loop
+    9: SYN stab glitch metallic one-shot
+    10: PRC cowbell 808 noise one-shot
+    11: FX riser build siren loop
+    12: VOX chop attitude glitch chop-ready
+bank_c:
+  name: Bank C
+  notes: '(missing preset: disco-inferno)'
+bank_d:
+  name: Bank D
+  notes: '(missing preset: boom-bap-cipher)'
+bank_e:
+  name: Bank E
+  notes: '(missing preset: caribbean-heat)'
+bank_f:
+  name: Bank F
+  notes: '(missing preset: electro-sweat)'
+bank_g:
+  name: Bank G
+  notes: '(missing preset: neon-rave)'
+bank_h:
+  name: Bank H
+  notes: '(missing preset: peak-hour)'
 bank_i:
-  preset: genre/dub-cooldown
-  name: dub-cooldown
-  bpm: 100
-  key: Am
-  notes: ''
-  pads:
-    1: KIK dub deep one-shot
-    2: SNR dub rim one-shot
-    3: HAT dub smooth one-shot
-    4: PRC dub woodblock one-shot
-    5: BRK dub spacious loop
-    6: BRK dub groove loop
-    7: SYN dub melodica loop
-    8: SYN dub organ loop
-    9: BAS dub deep loop
-    10: SYN dub echo loop
-    11: PAD ambient spacious layer
-    12: FX dub echo transition
+  name: Bank I
+  notes: '(missing preset: dub-cooldown)'
 bank_j:
-  preset: genre/weapons-cache
-  name: weapons-cache
-  bpm: 120
-  key: XX
-  notes: ''
-  pads:
-    1: FX hype airhorn one-shot
-    2: FX hype siren one-shot
-    3: FX hype crowd one-shot
-    4: FX hype scratch one-shot
-    5: VOX hype drop one-shot
-    6: VOX hype shout one-shot
-    7: FX transition riser transition
-    8: FX transition sweep transition
-    9: FX impact drop one-shot
-    10: FX transition reverse transition
-    11: FX ambient noise layer
-    12: FX hype cash-register one-shot
+  name: Bank J
+  notes: '(missing preset: weapons-cache)'
 active_set: tiger-dust-block-party

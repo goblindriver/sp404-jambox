@@ -106,10 +106,17 @@ MOOD_TO_VIBE = {
     # → chill
     'chill': 'chill', 'cool': 'chill', 'detached': 'chill',
     'aloof': 'chill', 'nonchalant': 'chill', 'understated': 'chill',
+    # → warm (expanded per Chat review — production profile)
+    'groovy': 'warm', 'sensual': 'warm', 'sultry': 'warm',
+    'funky': 'warm', 'smooth': 'warm', 'silky': 'warm',
+    # → hype (expanded — production profile needs more positive-energy mappings)
+    'upbeat': 'hype', 'danceable': 'hype', 'festive': 'hype',
+    'triumphant': 'hype', 'swaggering': 'hype',
+    'confident': 'hype', 'fiery': 'hype',
     # → catch-all for unmapped
-    'dramatic': 'tense', 'cathartic': 'aggressive', 'fiery': 'hype',
-    'swaggering': 'gritty', 'confident': 'hype', 'rebellious': 'gritty',
-    'defiant': 'aggressive', 'provocative': 'gritty',
+    'dramatic': 'tense', 'cathartic': 'aggressive',
+    'rebellious': 'gritty', 'defiant': 'aggressive', 'provocative': 'gritty',
+    'bittersweet': 'nostalgic', 'joyous': 'playful',
 }
 
 # Style → genre dimension mapping
@@ -838,6 +845,547 @@ def _parse_loudness(extra_data_str, out):
                     pass
     except (json.JSONDecodeError, ValueError):
         pass
+
+
+# ── Movie/TV metadata types ──
+
+TYPE_MOVIE = 1
+TYPE_SHOW = 2
+TYPE_SEASON = 3
+TYPE_EPISODE = 4
+TYPE_EXTRA = 12
+
+TAG_DIRECTOR = 4
+TAG_WRITER = 5
+TAG_ACTOR = 6
+TAG_ROLE = 7
+
+# Movie genre → vibe mapping (for taste profiling)
+MOVIE_GENRE_TO_VIBE = {
+    'horror': 'dark', 'thriller': 'tense', 'action': 'aggressive',
+    'sci-fi': 'eerie', 'science fiction': 'eerie', 'drama': 'soulful',
+    'comedy': 'playful', 'romance': 'soulful', 'mystery': 'eerie',
+    'adventure': 'hype', 'fantasy': 'dreamy', 'animation': 'playful',
+    'war': 'aggressive', 'crime': 'gritty', 'documentary': 'mellow',
+    'family': 'playful', 'music': 'soulful', 'musical': 'hype',
+    'history': 'nostalgic', 'western': 'gritty', 'biography': 'soulful',
+}
+
+
+class PlexMediaDB:
+    """Read-only interface to the full Plex library (movies, TV, anime).
+
+    Provides taste profiling from viewing history and metadata,
+    plus clip location for audio extraction.
+
+    NEVER writes to the Plex database. Read-only.
+    """
+
+    def __init__(self, db_path=None):
+        self.db_path = db_path or PLEX_DB_PATH
+        if not os.path.exists(self.db_path):
+            raise FileNotFoundError(
+                f"Plex database not found at {self.db_path}. "
+                "Is Plex Media Server installed?"
+            )
+
+    def _connect(self):
+        """Open a read-only connection to the Plex database."""
+        uri = f"file:{self.db_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA busy_timeout=3000")
+        except sqlite3.DatabaseError:
+            pass
+        return conn
+
+    def _get_tags(self, conn, metadata_item_id, tag_type):
+        rows = conn.execute("""
+            SELECT t.tag FROM tags t
+            JOIN taggings tg ON t.id = tg.tag_id
+            WHERE tg.metadata_item_id = ? AND t.tag_type = ?
+        """, (metadata_item_id, tag_type)).fetchall()
+        return [r['tag'] for r in rows if isinstance(r['tag'], str) and r['tag']]
+
+    def stats(self):
+        """Full library stats: movies, shows, episodes, anime."""
+        conn = self._connect()
+        try:
+            counts = {}
+            for mtype, label in [(TYPE_MOVIE, 'movies'), (TYPE_SHOW, 'shows'),
+                                 (TYPE_EPISODE, 'episodes'), (TYPE_EXTRA, 'extras')]:
+                row = conn.execute(
+                    "SELECT COUNT(*) as c FROM metadata_items WHERE metadata_type=?",
+                    (mtype,)
+                ).fetchone()
+                counts[label] = row['c'] if row else 0
+
+            # Sections breakdown
+            sections = []
+            for row in conn.execute(
+                "SELECT id, name, section_type FROM library_sections"
+            ).fetchall():
+                sections.append({
+                    'id': row['id'], 'name': row['name'],
+                    'type': row['section_type'],
+                })
+
+            return {**counts, 'sections': sections}
+        finally:
+            conn.close()
+
+    def movies(self, limit=50, genre=None, sort='rating', search=None):
+        """Browse movies with optional genre filter and search."""
+        conn = self._connect()
+        try:
+            query = """
+                SELECT m.id, m.title, m.year, m.rating, m.audience_rating,
+                       m.duration, m.summary, m.content_rating, m.studio
+                FROM metadata_items m
+                WHERE m.metadata_type = ?
+            """
+            params = [TYPE_MOVIE]
+
+            if search:
+                query += " AND m.title LIKE ?"
+                params.append(f"%{search}%")
+
+            if genre:
+                query += """ AND m.id IN (
+                    SELECT tg.metadata_item_id FROM taggings tg
+                    JOIN tags t ON tg.tag_id = t.id
+                    WHERE t.tag_type = ? AND LOWER(t.tag) = LOWER(?)
+                )"""
+                params.extend([TAG_GENRE, genre])
+
+            if sort == 'rating':
+                query += " ORDER BY COALESCE(m.audience_rating, m.rating, 0) DESC"
+            elif sort == 'year':
+                query += " ORDER BY m.year DESC"
+            elif sort == 'title':
+                query += " ORDER BY m.title"
+            elif sort == 'random':
+                query += " ORDER BY RANDOM()"
+
+            query += " LIMIT ?"
+            params.append(limit)
+
+            results = []
+            for row in conn.execute(query, params).fetchall():
+                genres = self._get_tags(conn, row['id'], TAG_GENRE)
+                directors = self._get_tags(conn, row['id'], TAG_DIRECTOR)
+                vibes = sorted({MOVIE_GENRE_TO_VIBE.get(g.lower(), '')
+                               for g in genres} - {''})
+                results.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'year': row['year'],
+                    'rating': row['rating'],
+                    'audience_rating': row['audience_rating'],
+                    'duration_ms': row['duration'],
+                    'duration_str': _format_duration(row['duration']),
+                    'summary': (row['summary'] or '')[:300],
+                    'content_rating': row['content_rating'],
+                    'studio': row['studio'],
+                    'genres': genres,
+                    'directors': directors,
+                    'vibes': vibes,
+                })
+            return results
+        finally:
+            conn.close()
+
+    def movie(self, movie_id):
+        """Full movie detail including cast, file path, and extras."""
+        conn = self._connect()
+        try:
+            row = conn.execute("""
+                SELECT m.id, m.title, m.year, m.rating, m.audience_rating,
+                       m.duration, m.summary, m.content_rating, m.studio,
+                       m.originally_available_at
+                FROM metadata_items m
+                WHERE m.id = ? AND m.metadata_type = ?
+            """, (movie_id, TYPE_MOVIE)).fetchone()
+            if not row:
+                return None
+
+            genres = self._get_tags(conn, movie_id, TAG_GENRE)
+            directors = self._get_tags(conn, movie_id, TAG_DIRECTOR)
+            writers = self._get_tags(conn, movie_id, TAG_WRITER)
+            actors = self._get_tags(conn, movie_id, TAG_ACTOR)[:20]
+            vibes = sorted({MOVIE_GENRE_TO_VIBE.get(g.lower(), '')
+                           for g in genres} - {''})
+
+            # File path
+            file_path = None
+            file_row = conn.execute("""
+                SELECT mp.file, mp.size FROM media_parts mp
+                JOIN media_items mi ON mp.media_item_id = mi.id
+                WHERE mi.metadata_item_id = ?
+                ORDER BY mp.size DESC LIMIT 1
+            """, (movie_id,)).fetchone()
+            if file_row:
+                file_path = file_row['file']
+
+            # Media info (codec, resolution, bitrate)
+            media_info = None
+            mi_row = conn.execute("""
+                SELECT mi.bitrate, mi.width, mi.height, mi.container,
+                       mi.video_codec, mi.audio_codec, mi.audio_channels
+                FROM media_items mi
+                WHERE mi.metadata_item_id = ? LIMIT 1
+            """, (movie_id,)).fetchone()
+            if mi_row:
+                media_info = {
+                    'bitrate': mi_row['bitrate'],
+                    'resolution': f"{mi_row['width']}x{mi_row['height']}" if mi_row['width'] else None,
+                    'container': mi_row['container'],
+                    'video_codec': mi_row['video_codec'],
+                    'audio_codec': mi_row['audio_codec'],
+                    'audio_channels': mi_row['audio_channels'],
+                }
+
+            # Extras (trailers, behind-the-scenes, etc.)
+            extras = []
+            for ex in conn.execute("""
+                SELECT m.id, m.title, m.duration, m.tags_genre
+                FROM metadata_items m
+                WHERE m.parent_id = ? AND m.metadata_type = ?
+                ORDER BY m.title LIMIT 20
+            """, (movie_id, TYPE_EXTRA)).fetchall():
+                extras.append({
+                    'id': ex['id'],
+                    'title': ex['title'],
+                    'duration_ms': ex['duration'],
+                    'type': ex['tags_genre'] or 'extra',
+                })
+
+            return {
+                'id': row['id'],
+                'title': row['title'],
+                'year': row['year'],
+                'rating': row['rating'],
+                'audience_rating': row['audience_rating'],
+                'duration_ms': row['duration'],
+                'duration_str': _format_duration(row['duration']),
+                'summary': row['summary'],
+                'content_rating': row['content_rating'],
+                'studio': row['studio'],
+                'genres': genres,
+                'directors': directors,
+                'writers': writers,
+                'actors': actors,
+                'vibes': vibes,
+                'file_path': file_path,
+                'media': media_info,
+                'extras': extras,
+            }
+        finally:
+            conn.close()
+
+    def shows(self, section_id=None, limit=50, search=None):
+        """Browse TV shows and anime."""
+        conn = self._connect()
+        try:
+            query = """
+                SELECT m.id, m.title, m.year, m.rating, m.audience_rating,
+                       m.summary, m.library_section_id,
+                       (SELECT COUNT(*) FROM metadata_items e
+                        WHERE e.parent_id IN (
+                            SELECT s.id FROM metadata_items s
+                            WHERE s.parent_id = m.id AND s.metadata_type = ?
+                        ) AND e.metadata_type = ?) as episode_count
+                FROM metadata_items m
+                WHERE m.metadata_type = ?
+            """
+            params = [TYPE_SEASON, TYPE_EPISODE, TYPE_SHOW]
+
+            if section_id:
+                query += " AND m.library_section_id = ?"
+                params.append(section_id)
+
+            if search:
+                query += " AND m.title LIKE ?"
+                params.append(f"%{search}%")
+
+            query += " ORDER BY COALESCE(m.audience_rating, m.rating, 0) DESC LIMIT ?"
+            params.append(limit)
+
+            results = []
+            for row in conn.execute(query, params).fetchall():
+                genres = self._get_tags(conn, row['id'], TAG_GENRE)
+                vibes = sorted({MOVIE_GENRE_TO_VIBE.get(g.lower(), '')
+                               for g in genres} - {''})
+                # Determine if anime
+                is_anime = row['library_section_id'] == 4
+                results.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'year': row['year'],
+                    'rating': row['rating'],
+                    'audience_rating': row['audience_rating'],
+                    'summary': (row['summary'] or '')[:300],
+                    'genres': genres,
+                    'vibes': vibes,
+                    'episode_count': row['episode_count'],
+                    'is_anime': is_anime,
+                })
+            return results
+        finally:
+            conn.close()
+
+    def episodes(self, show_id, season=None, limit=50):
+        """List episodes for a show, with file paths for clip extraction."""
+        conn = self._connect()
+        try:
+            if season is not None:
+                # Get season metadata_item id
+                season_row = conn.execute("""
+                    SELECT id FROM metadata_items
+                    WHERE parent_id = ? AND metadata_type = ? AND "index" = ?
+                """, (show_id, TYPE_SEASON, season)).fetchone()
+                if not season_row:
+                    return []
+                parent_id = season_row['id']
+            else:
+                # Get all seasons
+                season_ids = [r['id'] for r in conn.execute("""
+                    SELECT id FROM metadata_items
+                    WHERE parent_id = ? AND metadata_type = ?
+                    ORDER BY "index"
+                """, (show_id, TYPE_SEASON)).fetchall()]
+                if not season_ids:
+                    return []
+                parent_id = None  # will query all
+
+            if parent_id:
+                query = """
+                    SELECT m.id, m.title, m."index" as ep_num, m.duration,
+                           m.summary, m.parent_id
+                    FROM metadata_items m
+                    WHERE m.parent_id = ? AND m.metadata_type = ?
+                    ORDER BY m."index" LIMIT ?
+                """
+                rows = conn.execute(query, (parent_id, TYPE_EPISODE, limit)).fetchall()
+            else:
+                placeholders = ','.join('?' * len(season_ids))
+                query = f"""
+                    SELECT m.id, m.title, m."index" as ep_num, m.duration,
+                           m.summary, m.parent_id
+                    FROM metadata_items m
+                    WHERE m.parent_id IN ({placeholders}) AND m.metadata_type = ?
+                    ORDER BY m.parent_id, m."index" LIMIT ?
+                """
+                rows = conn.execute(query, season_ids + [TYPE_EPISODE, limit]).fetchall()
+
+            results = []
+            for row in rows:
+                # Get file path
+                file_row = conn.execute("""
+                    SELECT mp.file FROM media_parts mp
+                    JOIN media_items mi ON mp.media_item_id = mi.id
+                    WHERE mi.metadata_item_id = ? LIMIT 1
+                """, (row['id'],)).fetchone()
+
+                results.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'episode': row['ep_num'],
+                    'duration_ms': row['duration'],
+                    'duration_str': _format_duration(row['duration']),
+                    'summary': (row['summary'] or '')[:200],
+                    'file_path': file_row['file'] if file_row else None,
+                })
+            return results
+        finally:
+            conn.close()
+
+    def taste_profile(self):
+        """Build a taste profile from the full library for RL training.
+
+        Analyzes genre distributions, viewing patterns, ratings, and
+        maps everything to the Jambox vibe/genre vocabulary.
+        """
+        conn = self._connect()
+        try:
+            profile = {
+                'movie_genres': {},
+                'movie_directors': {},
+                'movie_decades': {},
+                'tv_genres': {},
+                'anime_genres': {},
+                'vibe_weights': defaultdict(float),
+                'top_rated_movies': [],
+                'most_watched': [],
+            }
+
+            # Movie genre distribution
+            for row in conn.execute("""
+                SELECT t.tag, COUNT(*) as c FROM taggings tg
+                JOIN tags t ON tg.tag_id = t.id
+                JOIN metadata_items m ON tg.metadata_item_id = m.id
+                WHERE m.metadata_type = ? AND t.tag_type = ?
+                GROUP BY t.tag ORDER BY c DESC
+            """, (TYPE_MOVIE, TAG_GENRE)).fetchall():
+                profile['movie_genres'][row['tag']] = row['c']
+                vibe = MOVIE_GENRE_TO_VIBE.get(row['tag'].lower())
+                if vibe:
+                    profile['vibe_weights'][vibe] += row['c']
+
+            # Top directors
+            for row in conn.execute("""
+                SELECT t.tag, COUNT(*) as c FROM taggings tg
+                JOIN tags t ON tg.tag_id = t.id
+                JOIN metadata_items m ON tg.metadata_item_id = m.id
+                WHERE m.metadata_type = ? AND t.tag_type = ?
+                GROUP BY t.tag ORDER BY c DESC LIMIT 30
+            """, (TYPE_MOVIE, TAG_DIRECTOR)).fetchall():
+                profile['movie_directors'][row['tag']] = row['c']
+
+            # Decade distribution
+            for row in conn.execute("""
+                SELECT (year / 10) * 10 as decade, COUNT(*) as c
+                FROM metadata_items
+                WHERE metadata_type = ? AND year IS NOT NULL
+                GROUP BY decade ORDER BY decade
+            """, (TYPE_MOVIE,)).fetchall():
+                if row['decade']:
+                    profile['movie_decades'][f"{row['decade']}s"] = row['c']
+
+            # TV genres (section 2)
+            for row in conn.execute("""
+                SELECT t.tag, COUNT(*) as c FROM taggings tg
+                JOIN tags t ON tg.tag_id = t.id
+                JOIN metadata_items m ON tg.metadata_item_id = m.id
+                WHERE m.metadata_type = ? AND t.tag_type = ?
+                AND m.library_section_id = 2
+                GROUP BY t.tag ORDER BY c DESC
+            """, (TYPE_SHOW, TAG_GENRE)).fetchall():
+                profile['tv_genres'][row['tag']] = row['c']
+                vibe = MOVIE_GENRE_TO_VIBE.get(row['tag'].lower())
+                if vibe:
+                    profile['vibe_weights'][vibe] += row['c'] * 2  # TV shows weighted higher
+
+            # Anime genres (section 4)
+            for row in conn.execute("""
+                SELECT t.tag, COUNT(*) as c FROM taggings tg
+                JOIN tags t ON tg.tag_id = t.id
+                JOIN metadata_items m ON tg.metadata_item_id = m.id
+                WHERE m.metadata_type = ? AND t.tag_type = ?
+                AND m.library_section_id = 4
+                GROUP BY t.tag ORDER BY c DESC
+            """, (TYPE_SHOW, TAG_GENRE)).fetchall():
+                profile['anime_genres'][row['tag']] = row['c']
+
+            # Top rated movies (for taste signal)
+            for row in conn.execute("""
+                SELECT title, year, COALESCE(audience_rating, rating) as score
+                FROM metadata_items
+                WHERE metadata_type = ? AND COALESCE(audience_rating, rating) >= 8.0
+                ORDER BY score DESC LIMIT 50
+            """, (TYPE_MOVIE,)).fetchall():
+                profile['top_rated_movies'].append({
+                    'title': row['title'], 'year': row['year'],
+                    'score': row['score'],
+                })
+
+            # Most watched (play history)
+            for row in conn.execute("""
+                SELECT m.title, m.year, mis.view_count
+                FROM metadata_item_settings mis
+                JOIN metadata_items m ON mis.guid = m.guid
+                WHERE m.metadata_type = ? AND mis.view_count > 0
+                ORDER BY mis.view_count DESC LIMIT 30
+            """, (TYPE_MOVIE,)).fetchall():
+                profile['most_watched'].append({
+                    'title': row['title'], 'year': row['year'],
+                    'watches': row['view_count'],
+                })
+
+            # Normalize vibe weights to 0-1
+            vibe_total = sum(profile['vibe_weights'].values()) or 1
+            profile['vibe_weights'] = {
+                k: round(v / vibe_total, 3)
+                for k, v in sorted(profile['vibe_weights'].items(),
+                                   key=lambda x: -x[1])
+            }
+
+            return profile
+        finally:
+            conn.close()
+
+    def clip_candidates(self, movie_id=None, genre=None, min_duration_min=60,
+                        limit=50):
+        """Find movies/episodes suitable for audio clip extraction.
+
+        Returns items with file paths that exist on disk.
+        """
+        conn = self._connect()
+        try:
+            if movie_id:
+                rows = conn.execute("""
+                    SELECT m.id, m.title, m.year, m.metadata_type,
+                           mp.file, mp.size
+                    FROM metadata_items m
+                    JOIN media_items mi ON mi.metadata_item_id = m.id
+                    JOIN media_parts mp ON mp.media_item_id = mi.id
+                    WHERE m.id = ?
+                """, (movie_id,)).fetchall()
+            else:
+                query = """
+                    SELECT m.id, m.title, m.year, m.metadata_type,
+                           mp.file, mp.size
+                    FROM metadata_items m
+                    JOIN media_items mi ON mi.metadata_item_id = m.id
+                    JOIN media_parts mp ON mp.media_item_id = mi.id
+                    WHERE m.metadata_type IN (?, ?)
+                    AND m.duration > ?
+                """
+                params = [TYPE_MOVIE, TYPE_EPISODE, min_duration_min * 60 * 1000]
+
+                if genre:
+                    query += """ AND m.id IN (
+                        SELECT tg.metadata_item_id FROM taggings tg
+                        JOIN tags t ON tg.tag_id = t.id
+                        WHERE t.tag_type = ? AND LOWER(t.tag) = LOWER(?)
+                    )"""
+                    params.extend([TAG_GENRE, genre])
+
+                query += " ORDER BY RANDOM() LIMIT ?"
+                params.append(limit)
+                rows = conn.execute(query, params).fetchall()
+
+            results = []
+            for row in rows:
+                file_path = row['file']
+                if file_path and os.path.exists(file_path):
+                    genres = self._get_tags(conn, row['id'], TAG_GENRE)
+                    results.append({
+                        'id': row['id'],
+                        'title': row['title'],
+                        'year': row['year'],
+                        'type': 'movie' if row['metadata_type'] == TYPE_MOVIE else 'episode',
+                        'file_path': file_path,
+                        'size_gb': round(row['size'] / (1024**3), 1) if row['size'] else 0,
+                        'genres': genres,
+                    })
+            return results
+        finally:
+            conn.close()
+
+
+def _format_duration(ms):
+    """Format milliseconds to human-readable string."""
+    if not ms:
+        return '0:00'
+    total_seconds = ms // 1000
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
 
 
 # ── CLI for testing ──

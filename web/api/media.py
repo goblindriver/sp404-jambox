@@ -1,0 +1,242 @@
+"""Media browser — Plex-powered movie/TV/anime library for clip extraction.
+
+Extends the Plex integration beyond music to the full media library.
+Provides browsing, taste profiling, and audio clip extraction from
+movies and TV shows for sampling on the SP-404.
+"""
+import os
+import sys
+import threading
+import time
+from flask import Blueprint, jsonify, request
+
+media_bp = Blueprint('media', __name__)
+
+_scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            '..', 'scripts')
+if os.path.isdir(_scripts_dir):
+    sys.path.insert(0, os.path.abspath(_scripts_dir))
+
+_plex_media = None
+_plex_media_last_check = 0
+_RETRY_SECONDS = 60
+
+# Background extraction jobs
+_extract_jobs = {}
+
+
+def _get_media_db():
+    """Lazy-init PlexMediaDB, returns None if unavailable."""
+    global _plex_media, _plex_media_last_check
+    now = time.time()
+    if _plex_media is not None:
+        return _plex_media
+    if now - _plex_media_last_check < _RETRY_SECONDS:
+        return None
+    _plex_media_last_check = now
+    try:
+        from plex_client import PlexMediaDB
+        p = PlexMediaDB()
+        _plex_media = p
+    except Exception:
+        pass
+    return _plex_media
+
+
+@media_bp.route('/media/status')
+def media_status():
+    """Check media library availability and counts."""
+    db = _get_media_db()
+    if not db:
+        return jsonify({'available': False})
+    try:
+        s = db.stats()
+        return jsonify({'available': True, **s})
+    except Exception as e:
+        return jsonify({'available': False, 'error': str(e)})
+
+
+@media_bp.route('/media/movies')
+def list_movies():
+    """Browse movies. ?genre=Horror&sort=rating&search=alien&limit=50"""
+    db = _get_media_db()
+    if not db:
+        return jsonify({'error': 'Plex not available'}), 404
+    try:
+        genre = request.args.get('genre')
+        sort = request.args.get('sort', 'rating')
+        search = request.args.get('search')
+        limit = min(int(request.args.get('limit', 50)), 200)
+        movies = db.movies(limit=limit, genre=genre, sort=sort, search=search)
+        return jsonify({'movies': movies, 'count': len(movies)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@media_bp.route('/media/movie/<int:movie_id>')
+def movie_detail(movie_id):
+    """Full movie detail: cast, file path, extras, media info."""
+    db = _get_media_db()
+    if not db:
+        return jsonify({'error': 'Plex not available'}), 404
+    try:
+        movie = db.movie(movie_id)
+        if not movie:
+            return jsonify({'error': 'Movie not found'}), 404
+        return jsonify(movie)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@media_bp.route('/media/shows')
+def list_shows():
+    """Browse TV shows and anime. ?search=cowboy&section=4"""
+    db = _get_media_db()
+    if not db:
+        return jsonify({'error': 'Plex not available'}), 404
+    try:
+        search = request.args.get('search')
+        section_id = request.args.get('section')
+        section_id = int(section_id) if section_id else None
+        limit = min(int(request.args.get('limit', 50)), 200)
+        shows = db.shows(section_id=section_id, limit=limit, search=search)
+        return jsonify({'shows': shows, 'count': len(shows)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@media_bp.route('/media/show/<int:show_id>/episodes')
+def show_episodes(show_id):
+    """List episodes for a show. ?season=1&limit=50"""
+    db = _get_media_db()
+    if not db:
+        return jsonify({'error': 'Plex not available'}), 404
+    try:
+        season = request.args.get('season')
+        season = int(season) if season else None
+        limit = min(int(request.args.get('limit', 50)), 200)
+        eps = db.episodes(show_id, season=season, limit=limit)
+        return jsonify({'episodes': eps, 'count': len(eps)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@media_bp.route('/media/taste')
+def taste_profile():
+    """Build taste profile from full library for RL training."""
+    db = _get_media_db()
+    if not db:
+        return jsonify({'error': 'Plex not available'}), 404
+    try:
+        profile = db.taste_profile()
+        return jsonify(profile)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@media_bp.route('/media/genres')
+def movie_genres():
+    """List all movie genres with counts."""
+    db = _get_media_db()
+    if not db:
+        return jsonify({'error': 'Plex not available'}), 404
+    try:
+        profile = db.taste_profile()
+        return jsonify({
+            'movie_genres': profile.get('movie_genres', {}),
+            'tv_genres': profile.get('tv_genres', {}),
+            'anime_genres': profile.get('anime_genres', {}),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@media_bp.route('/media/extract', methods=['POST'])
+def extract_clips():
+    """Extract audio clips from a movie or episode.
+
+    POST body:
+        movie_id: int (or)
+        show_id: int + season: int (optional)
+        scan_minutes: int (default 10)
+        max_clips: int (default 20)
+    """
+    db = _get_media_db()
+    if not db:
+        return jsonify({'error': 'Plex not available'}), 404
+
+    data = request.get_json() or {}
+    movie_id = data.get('movie_id')
+    show_id = data.get('show_id')
+    season = data.get('season')
+    scan_minutes = min(int(data.get('scan_minutes', 10)), 60)
+    max_clips = min(int(data.get('max_clips', 20)), 50)
+
+    # Collect sources
+    sources = []
+    if movie_id:
+        detail = db.movie(int(movie_id))
+        if detail and detail.get('file_path'):
+            sources.append(detail)
+    elif show_id:
+        shows = db.shows(search=None, limit=100)
+        show = None
+        for s in shows:
+            if s['id'] == int(show_id):
+                show = s
+                break
+        if show:
+            eps = db.episodes(int(show_id), season=int(season) if season else None, limit=5)
+            for ep in eps:
+                ep['genres'] = show.get('genres', [])
+            sources = eps
+
+    if not sources:
+        return jsonify({'error': 'No sources found with accessible files'}), 404
+
+    # Run extraction in background
+    import uuid
+    job_id = str(uuid.uuid4())[:8]
+    _extract_jobs[job_id] = {
+        'status': 'running',
+        'sources': len(sources),
+        'clips': 0,
+        'started': time.time(),
+    }
+
+    def _run_extract():
+        try:
+            from extract_clips import extract_from_source, tag_extracted_clips
+            all_clips = []
+            for source in sources:
+                clips = extract_from_source(source, scan_minutes=scan_minutes,
+                                            max_clips=max_clips)
+                all_clips.extend(clips)
+                _extract_jobs[job_id]['clips'] = len(all_clips)
+
+            tag_extracted_clips(all_clips)
+            _extract_jobs[job_id]['status'] = 'complete'
+            _extract_jobs[job_id]['total_clips'] = len(all_clips)
+            _extract_jobs[job_id]['clip_details'] = all_clips
+        except Exception as e:
+            _extract_jobs[job_id]['status'] = 'error'
+            _extract_jobs[job_id]['error'] = str(e)
+
+    thread = threading.Thread(target=_run_extract, daemon=True)
+    thread.start()
+
+    return jsonify({
+        'ok': True,
+        'job_id': job_id,
+        'sources': len(sources),
+        'message': f'Extracting clips from {len(sources)} source(s)',
+    })
+
+
+@media_bp.route('/media/extract-status/<job_id>')
+def extract_status(job_id):
+    """Poll extraction job status."""
+    job = _extract_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)

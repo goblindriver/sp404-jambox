@@ -29,6 +29,7 @@ from api.music import music_bp
 from api.presets import presets_bp
 from api.vibe import vibe_bp
 from api.pattern import pattern_bp
+from api.media import media_bp
 
 app.register_blueprint(banks_bp, url_prefix='/api')
 app.register_blueprint(audio_bp, url_prefix='/api')
@@ -39,6 +40,7 @@ app.register_blueprint(music_bp, url_prefix='/api')
 app.register_blueprint(presets_bp, url_prefix='/api')
 app.register_blueprint(vibe_bp, url_prefix='/api')
 app.register_blueprint(pattern_bp, url_prefix='/api')
+app.register_blueprint(media_bp, url_prefix='/api')
 
 
 @app.route('/')
