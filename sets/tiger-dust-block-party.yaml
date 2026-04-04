@@ -3,16 +3,16 @@ display_name: "Tiger Dust Block Party"
 description: "The ultimate pickup-and-perform set. Ten banks designed as the arc of the best block party you've ever been to — from golden hour soul through peak-hour madness to dub cooldown. Every bank harmonizes with its neighbors. Every pad is placed for performance. Grab the SD card and go."
 tags: [party, performance, complete, block-party]
 banks:
-  A: genre/soul-kitchen
-  B: genre/funk-muscle
-  C: genre/disco-inferno
-  D: genre/boom-bap-cipher
-  E: genre/caribbean-heat
-  F: genre/electro-sweat
-  G: genre/neon-rave
-  H: genre/peak-hour
-  I: genre/dub-cooldown
-  J: genre/weapons-cache
+  A: soul-kitchen
+  B: funk-muscle
+  C: disco-inferno
+  D: boom-bap-cipher
+  E: caribbean-heat
+  F: electro-sweat
+  G: neon-rave
+  H: peak-hour
+  I: dub-cooldown
+  J: weapons-cache
 
 # Performance Notes
 #
@@ -36,11 +36,12 @@ banks:
 #   C→I share Am — easy harmonic bridge from disco back to cooldown
 #   D→F share Dm — hip-hop and electro can crossfade smoothly
 #
-# PAD CONVENTION (all banks):
+# PAD CONVENTION (all banks, 13 pads each):
 #   Pads 1-4:   Drum one-shots (kick, snare, hat, perc)
 #   Pads 5-8:   Loops & breaks (choppable rhythm, melodic loops)
 #   Pads 9-10:  Melodic content (bass, chords, leads)
 #   Pads 11-12: Texture/FX (risers, transitions, ambient, vocal chops)
+#   Sub Pad:    Wildcard — full beat loop, signature sound, or go-to transition
 #
 # QUICK TRANSITIONS:
 #   Soul Kitchen → Funk Muscle: same family (G/Em), +14 BPM — gradual build

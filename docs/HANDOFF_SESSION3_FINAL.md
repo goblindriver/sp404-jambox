@@ -194,6 +194,8 @@ New default performance set. 10 banks designed as the arc of a block party from 
 | `CLAUDE.md` | Code agent primary context (full refresh) | Repo root |
 | `SMART_RETAG_SPEC.md` | LLM tagger system prompt, quality rubric, trim policy, feature store, multi-resolution similarity | `docs/` |
 | `OPTIMIZATION_PLAN.md` | 4-tier optimization roadmap with Phase 0 smart retag | `docs/` |
+| `BUG_HUNT_2_ARCHITECTURE.md` | Architecture-level bugs, scaling concerns, optimization opportunities | `docs/` |
+| `SP404A_Field_Manual_reviewed.docx` | Complete SP-404A reference — effects, techniques, pad layouts, history. **#1 LLM training data source.** | `docs/` (convert to .md) |
 | `CODE_BRIEF_optimization_measurements.md` | Measurement assignments for Code agent | `docs/briefs/` |
 | `CODE_BRIEF_bug_fixes.md` | Bug fix list (all complete) | `docs/briefs/` |
 | `CODE_BRIEF_doc_ingest.md` | Doc delivery pipeline spec (shipped) | `docs/briefs/` |
@@ -206,6 +208,7 @@ New default performance set. 10 banks designed as the arc of a block party from 
 
 ## Hardware Context
 
+- **Roland SP-404A** — 12 pads + 1 sub pad per bank, 10 banks (130 pad slots), Banks A-B internal memory
 - **Apple Silicon** (M-series, specific chip unknown)
 - MLX for local fine-tuning (QLoRA)
 - Ollama for local inference (Metal acceleration)
