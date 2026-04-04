@@ -22,7 +22,6 @@ def _load_module(module_name, relative_path):
 
 
 import dedup_library
-import freesound_client
 import library_health
 import migrate_presets
 from spedit404.binary import write_binary
@@ -34,25 +33,6 @@ legacy_synth_core = _load_module("legacy_synth_core_test", "scripts/legacy/synth
 
 
 class UtilityScriptsTests(unittest.TestCase):
-    def test_setup_oauth_rejects_missing_access_token(self):
-        response = Mock(status_code=200)
-        response.json.return_value = {}
-
-        with patch.object(freesound_client, "_get_client_id", return_value="client"), patch.object(freesound_client, "_get_client_secret", return_value="secret"), patch("builtins.input", return_value="auth-code"), patch.object(freesound_client.webbrowser, "open"), patch.object(freesound_client, "_load_env", return_value={}), patch.object(freesound_client, "_save_env") as save_env, patch.object(freesound_client.requests, "post", return_value=response):
-            ok = freesound_client.setup_oauth()
-
-        self.assertFalse(ok)
-        save_env.assert_not_called()
-
-    def test_search_returns_empty_list_for_invalid_json(self):
-        response = Mock(status_code=200)
-        response.json.side_effect = ValueError("bad json")
-
-        with patch.object(freesound_client, "_get_api_key", return_value="key"), patch.object(freesound_client.requests, "get", return_value=response):
-            results = freesound_client.search("snare")
-
-        self.assertEqual(results, [])
-
     def test_organize_library_import_has_no_side_effects(self):
         script_path = os.path.join(SCRIPTS_DIR, "organize_library.py")
         with tempfile.TemporaryDirectory() as tempdir:

@@ -118,7 +118,6 @@ def load_settings(repo_dir):
         "TAGS_FILE": os.path.join(sample_library, "_tags.json"),
         "MUSIC_INDEX_FILE": os.path.join(sample_library, "_music_index.json"),
         "STEMS_DIR": os.path.join(sample_library, "Stems"),
-        "FREESOUND_DIR": os.path.join(sample_library, "Freesound"),
         "STAGING_DIR": os.path.join(repo_dir, "_CARD_STAGING"),
         "SMPL_DIR": os.path.join(repo_dir, "sd-card-template", "ROLAND", "SP-404SX", "SMPL"),
         "CONFIG_PATH": os.path.join(repo_dir, "bank_config.yaml"),

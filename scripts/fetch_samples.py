@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
 Fetch samples for the SP-404 based on bank_config.yaml.
-1. Search local library TAG DATABASE for matches (not just filenames)
-2. Fall back to Freesound.org for missing sounds
-3. Download to library, convert, and stage for SD card
+Search local library TAG DATABASE for matches and stage for SD card.
 
 Usage:
     python scripts/fetch_samples.py              # all banks
     python scripts/fetch_samples.py --bank b     # single bank
     python scripts/fetch_samples.py --bank b --pad 1  # single pad
 """
-import os, sys, glob, re, json, yaml, argparse, time
+import os, sys, glob, re, json, yaml, argparse
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
@@ -20,14 +18,12 @@ from jambox_config import load_settings_for_script
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from jambox_tuning import SCORE_VERSION, load_scoring_config
 from wav_utils import convert_and_tag, build_sp404_wav
-import freesound_client as fs
 
 SETTINGS = load_settings_for_script(__file__)
 SCORING_CONFIG = load_scoring_config()
 SCORING_WEIGHTS = SCORING_CONFIG["weights"]
 SCORING_VERSION = SCORE_VERSION
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
-FREESOUND_DIR = SETTINGS["FREESOUND_DIR"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 CONFIG_PATH = SETTINGS["CONFIG_PATH"]
 STAGING = SETTINGS["STAGING_DIR"]
@@ -342,82 +338,19 @@ def clear_staging_wavs():
 
 def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_files):
     """Fetch a sample for one pad. Returns the path to the staged file or None."""
-    bank_name = bank_config.get('name', bank_letter)
     sp404_name = f"{bank_letter.upper()}{pad_number:07d}.WAV"
     staged_path = os.path.join(STAGING, sp404_name)
 
-    # 1. Search local library via tag database
+    # Search local library via tag database
     local_path, score = search_local(pad_query, bank_config, tag_db, used_files)
     if local_path:
         print(f"    LOCAL (score={score}): {os.path.relpath(local_path, LIBRARY)}")
         if convert_and_tag(local_path, staged_path, bank_letter.upper(), pad_number):
             used_files.add(local_path)  # mark as used
             return staged_path
-        print(f"    Conversion failed, trying Freesound...")
+        print(f"    Conversion failed")
 
-    # 2. Search Freesound
-    parsed = parse_pad_query(pad_query)
-    is_oneshot = parsed["playability"] == "one-shot" or pad_number <= 4
-    dur_min = 0.1 if is_oneshot else 1.0
-    dur_max = 10.0 if is_oneshot else 60.0
-
-    # Build a focused search query (type + top keywords)
-    search_words = []
-    if parsed["type_code"]:
-        # Map type code to a search-friendly word
-        tc_search = {
-            "KIK": "kick", "SNR": "snare", "HAT": "hihat", "CLP": "clap",
-            "CYM": "cymbal", "RIM": "rimshot", "PRC": "percussion",
-            "BRK": "drum loop break", "BAS": "bass", "GTR": "guitar",
-            "KEY": "piano keys", "SYN": "synth", "PAD": "pad ambient",
-            "STR": "strings", "BRS": "brass horn", "PLK": "pluck",
-            "WND": "woodwind", "VOX": "vocal voice", "SMP": "sample loop",
-            "FX": "sound effect", "SFX": "stab hit impact", "RSR": "riser sweep",
-            "AMB": "ambient atmosphere", "FLY": "foley", "TPE": "tape vinyl",
-        }.get(parsed["type_code"], "")
-        search_words.append(tc_search)
-    search_words.extend(list(parsed["keywords"])[:4])
-    search_query = " ".join(search_words)
-
-    print(f"    FREESOUND: searching '{search_query}'...")
-    time.sleep(0.3)
-
-    dl_dir = os.path.join(FREESOUND_DIR, re.sub(r'[^\w\-]', '_', bank_name))
-    os.makedirs(dl_dir, exist_ok=True)
-    dl_base = re.sub(r'[^\w\-]', '_', pad_query)[:60]
-    dl_path = os.path.join(dl_dir, f"{bank_letter}{pad_number}_{dl_base}")
-
-    downloaded, sound_info = fs.search_and_download(
-        search_query, dl_path, duration_min=dur_min, duration_max=dur_max,
-    )
-
-    if not downloaded:
-        # Try simpler query
-        simple_words = search_query.split()[:3]
-        simple_query = ' '.join(simple_words)
-        print(f"    FREESOUND: retrying '{simple_query}'...")
-        time.sleep(0.3)
-        downloaded, sound_info = fs.search_and_download(
-            simple_query, dl_path, duration_min=dur_min, duration_max=dur_max,
-        )
-
-    if downloaded and sound_info:
-        print(f"    FOUND: '{sound_info['name']}' by {sound_info['username']} ({sound_info['duration']:.1f}s)")
-
-        attr_path = dl_path + '.attribution.txt'
-        with open(attr_path, 'w') as f:
-            f.write(f"Sound: {sound_info['name']}\n")
-            f.write(f"Author: {sound_info['username']}\n")
-            f.write(f"License: {sound_info['license']}\n")
-            f.write(f"URL: https://freesound.org/people/{sound_info['username']}/sounds/{sound_info['id']}/\n")
-
-        if convert_and_tag(downloaded, staged_path, bank_letter.upper(), pad_number):
-            used_files.add(downloaded)
-            return staged_path
-        print(f"    Conversion failed for {downloaded}")
-    else:
-        print(f"    NO MATCH found on Freesound")
-
+    print(f"    NO MATCH found in local library")
     return None
 
 
@@ -449,7 +382,6 @@ def main():
     parser = argparse.ArgumentParser(description='Fetch samples for SP-404 banks')
     parser.add_argument('--bank', '-b', help='Single bank letter to fetch (e.g., b)')
     parser.add_argument('--pad', '-p', type=int, help='Single pad number (use with --bank)')
-    parser.add_argument('--freesound-only', action='store_true', help='Skip local library search')
     args = parser.parse_args()
     if args.pad is not None and not args.bank:
         parser.error('--pad requires --bank')
@@ -458,7 +390,6 @@ def main():
 
     config = load_config()
     os.makedirs(STAGING, exist_ok=True)
-    os.makedirs(FREESOUND_DIR, exist_ok=True)
     clear_staging_wavs()
 
     # Load tag database once

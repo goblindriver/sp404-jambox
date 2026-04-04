@@ -78,7 +78,6 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
         _jobs[job_id]['status'] = 'running'
         config = fs.load_config()
         os.makedirs(fs.STAGING, exist_ok=True)
-        os.makedirs(fs.FREESOUND_DIR, exist_ok=True)
         _clear_staging_wavs(fs.STAGING)
 
         # Load tag database and init deduplication set
