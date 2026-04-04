@@ -374,7 +374,7 @@ async function checkSDCard() {
         const data = await api('/api/sdcard/status');
         const dot = document.querySelector('.sd-dot');
         const text = document.querySelector('.sd-text');
-        const deployBtn = document.getElementById('btn-deploy');
+        const deployBtn = document.getElementById('btn-export');
 
         if (data.mounted) {
             dot.className = 'sd-dot mounted';
