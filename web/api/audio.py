@@ -87,30 +87,18 @@ def _convert_to_pad(source, bank, pad):
     os.makedirs(smpl_dir, exist_ok=True)
     target = os.path.join(smpl_dir, fname)
 
-    try:
-        subprocess.run([
-            _ffmpeg_bin(), '-y', '-i', source,
-            '-ar', '44100', '-ac', '1', '-sample_fmt', 's16',
-            '-c:a', 'pcm_s16le', target,
-        ], capture_output=True, text=True, timeout=30, check=True)
-    except subprocess.CalledProcessError as e:
-        return None, f'Convert failed: {e.stderr[:200]}'
-    except FileNotFoundError:
-        return None, 'ffmpeg not found'
-    except subprocess.TimeoutExpired:
-        return None, 'Convert timed out'
+    scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
 
     try:
-        scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
-        from wav_utils import inject_rlnd, trim_silence
-        bank_idx = ord(bank.upper()) - ord('A')
-        pad_idx = bank_idx * 12 + (int(pad) - 1)
-        trim_silence(target)
-        inject_rlnd(target, pad_idx)
-    except Exception:
-        pass  # Non-fatal: file still works without RLND
+        from wav_utils import convert_and_tag
+        if not convert_and_tag(source, target, bank.upper(), int(pad)):
+            return None, 'Conversion failed (convert_and_tag returned False)'
+    except FileNotFoundError:
+        return None, 'ffmpeg not found'
+    except Exception as e:
+        return None, 'Convert failed: %s' % str(e)[:200]
 
     return target, None
 

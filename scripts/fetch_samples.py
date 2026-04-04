@@ -301,6 +301,8 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
                 "duration": entry.get("duration"),
             })
         cached_results.sort(key=lambda item: item["score"], reverse=True)
+        # Only cache top 100 results — no need to store all 20k+ scored entries
+        cached_results = cached_results[:100]
         cache_entries[cache_key] = cached_results
         save_score_cache(LIBRARY, cache_entries)
 

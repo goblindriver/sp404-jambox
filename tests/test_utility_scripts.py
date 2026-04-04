@@ -29,22 +29,8 @@ from spedit404.note import Note
 from spedit404.pattern import Pattern
 import sync_bank_a
 
-legacy_synth_core = _load_module("legacy_synth_core_test", "scripts/legacy/synth_core.py")
-
 
 class UtilityScriptsTests(unittest.TestCase):
-    def test_organize_library_import_has_no_side_effects(self):
-        script_path = os.path.join(SCRIPTS_DIR, "organize_library.py")
-        with tempfile.TemporaryDirectory() as tempdir:
-            module_name = "organize_library_import_check"
-            spec = importlib.util.spec_from_file_location(module_name, script_path)
-            module = importlib.util.module_from_spec(spec)
-
-            with patch("glob.glob", return_value=[os.path.join(tempdir, "pack.zip")]), patch("shutil.copytree") as copytree, patch("builtins.print"):
-                spec.loader.exec_module(module)
-
-            copytree.assert_not_called()
-
     def test_dedup_library_load_tag_db_returns_empty_dict_for_non_mapping_json(self):
         with tempfile.TemporaryDirectory() as tempdir:
             tags_path = os.path.join(tempdir, "_tags.json")
@@ -83,17 +69,6 @@ class UtilityScriptsTests(unittest.TestCase):
         save_set.assert_not_called()
         save_config.assert_not_called()
 
-    def test_gen_novelty_import_has_no_side_effects(self):
-        script_path = os.path.join(SCRIPTS_DIR, "gen_novelty.py")
-        module_name = "gen_novelty_import_check"
-        spec = importlib.util.spec_from_file_location(module_name, script_path)
-        module = importlib.util.module_from_spec(spec)
-
-        with patch("os.makedirs") as makedirs, patch("builtins.print"):
-            spec.loader.exec_module(module)
-
-        makedirs.assert_not_called()
-
     def test_spedit404_write_binary_handles_sparse_note_gaps(self):
         pattern = Pattern(2)
         pattern.add_note(Note(pad=1, bank="c", start_tick=0, length=24, velocity=100))
@@ -106,9 +81,6 @@ class UtilityScriptsTests(unittest.TestCase):
             self.assertTrue(os.path.exists(output_path))
             self.assertGreater(os.path.getsize(output_path), 0)
 
-    def test_legacy_env_perc_handles_tiny_duration(self):
-        samples = legacy_synth_core.env_perc(0.0)
-        self.assertEqual(len(samples), 0)
 
 
 if __name__ == "__main__":

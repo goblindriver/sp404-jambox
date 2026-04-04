@@ -68,7 +68,15 @@ def load_score_cache(library_root):
     return entries if isinstance(entries, dict) else {}
 
 
+MAX_SCORE_CACHE_ENTRIES = 200
+
+
 def save_score_cache(library_root, entries):
+    # Prune to keep only the most recent entries
+    if len(entries) > MAX_SCORE_CACHE_ENTRIES:
+        keys = list(entries.keys())
+        for k in keys[:-MAX_SCORE_CACHE_ENTRIES]:
+            del entries[k]
     _save_json(_cache_path(library_root, SCORE_CACHE_NAME), {"entries": entries})
 
 

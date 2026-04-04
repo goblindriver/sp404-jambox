@@ -61,13 +61,13 @@ class AudioSdcardApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["error"], "pad must be an integer")
 
-    def test_convert_to_pad_reports_timeout(self):
+    def test_convert_to_pad_reports_failure(self):
         with self.app.app_context():
-            with patch("api.audio.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=30)):
+            with patch("wav_utils.convert_and_tag", return_value=False):
                 target, error = __import__("api.audio", fromlist=[""])._convert_to_pad("/tmp/source.wav", "a", 1)
 
         self.assertIsNone(target)
-        self.assertEqual(error, "Convert timed out")
+        self.assertIn("failed", error.lower())
 
     def test_audio_upload_rejects_missing_file(self):
         response = self.client.post(
