@@ -205,7 +205,45 @@ def _build_prompt(filepath, features):
 
 
 _llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
-              'empty': 0, 'parse_fail': 0, 'exception': 0}
+              'empty': 0, 'parse_fail': 0, 'exception': 0, 'incomplete': 0}
+
+# Map common model typos / synonyms onto allowed vocab (before whitelist filter).
+_GENRE_ALIASES = {
+    "hip-hop": "hiphop", "hip hop": "hiphop", "hiphop": "hiphop",
+    "lofi": "lo-fi", "lo fi": "lo-fi", "lo-fi-hip-hop": "lo-fi-hiphop",
+    "r&b": "rnb", "rnb": "rnb",
+    "edm": "electronic", "dance": "house",
+}
+_VIBE_ALIASES = {
+    "energetic": "hype", "energy": "hype", "happy": "playful", "fun": "playful",
+    "sad": "melancholic", "scary": "eerie", "angry": "aggressive",
+    "relaxed": "chill", "calm": "mellow", "groovy": "soulful",
+}
+_TEXTURE_ALIASES = {
+    "lofi": "lo-fi", "crisp": "crispy", "wide": "airy",
+}
+
+
+def _extract_json_object(text):
+    """Best-effort: find first balanced {...} in model output."""
+    if not text:
+        return None
+    start = text.find('{')
+    if start < 0:
+        return None
+    depth = 0
+    for i, c in enumerate(text[start:], start):
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                chunk = text[start:i + 1]
+                try:
+                    return json.loads(chunk)
+                except json.JSONDecodeError:
+                    return None
+    return None
 
 
 def _retag_llm_read_timeout_seconds():
@@ -289,6 +327,10 @@ def _call_llm(prompt, retries=None):
                     _llm_stats['success'] += 1
                     return result
                 except json.JSONDecodeError:
+                    extracted = _extract_json_object(content)
+                    if isinstance(extracted, dict):
+                        _llm_stats['success'] += 1
+                        return extracted
                     _llm_stats['parse_fail'] += 1
                     print("  LLM parse fail (attempt %d/%d): %s..." % (
                         attempt + 1, retries + 1, content[:120]), file=sys.stderr)
@@ -315,6 +357,42 @@ def _call_llm(prompt, retries=None):
     return None
 
 
+def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):
+    """Call LLM; if output is too thin for fetch, retry with stricter instructions."""
+    prompt = _build_prompt(full_path, features)
+    raw = _call_llm(prompt)
+    validated = _validate_llm_tags(raw) if raw else {}
+    if _enrichment_usable(validated):
+        return validated
+    for _ in range(repair_attempts):
+        if verbose:
+            print("  LLM repair pass (incomplete JSON / missing dimensions)...", flush=True)
+        raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX)
+        validated = _validate_llm_tags(raw2) if raw2 else {}
+        if _enrichment_usable(validated):
+            return validated
+    return validated
+
+
+def _normalize_vocab_token(dim, token):
+    t = str(token).strip().lower()
+    if not t:
+        return None
+    if dim == 'genre':
+        t = _GENRE_ALIASES.get(t, t)
+        if t in VALID_GENRES:
+            return t
+    elif dim == 'vibe':
+        t = _VIBE_ALIASES.get(t, t)
+        if t in VALID_VIBES:
+            return t
+    elif dim == 'texture':
+        t = _TEXTURE_ALIASES.get(t, t)
+        if t in VALID_TEXTURES:
+            return t
+    return None
+
+
 def _validate_llm_tags(llm_tags):
     """Validate and sanitize LLM output against allowed vocabularies."""
     if not isinstance(llm_tags, dict):
@@ -334,7 +412,7 @@ def _validate_llm_tags(llm_tags):
     if energy in VALID_ENERGIES:
         result['energy'] = energy
 
-    for dim, valid_set in [('vibe', VALID_VIBES), ('texture', VALID_TEXTURES), ('genre', VALID_GENRES)]:
+    for dim in ('vibe', 'texture', 'genre'):
         raw = llm_tags.get(dim, [])
         if isinstance(raw, str):
             raw = [r.strip().lower() for r in raw.split(',')]
@@ -342,9 +420,13 @@ def _validate_llm_tags(llm_tags):
             raw = [str(r).strip().lower() for r in raw]
         else:
             raw = []
-        valid = [v for v in raw if v in valid_set]
-        if valid:
-            result[dim] = valid[:3]
+        seen = []
+        for v in raw:
+            n = _normalize_vocab_token(dim, v)
+            if n and n not in seen:
+                seen.append(n)
+        if seen:
+            result[dim] = seen[:3]
 
     for field in ('sonic_description', 'instrument_hint'):
         val = llm_tags.get(field)
@@ -365,9 +447,44 @@ def _validate_llm_tags(llm_tags):
     return result
 
 
-def _merge_tags(existing_entry, llm_tags, features, rel_path):
-    """Merge validated LLM tags and features into a tag entry."""
+def _enrichment_usable(llm_tags):
+    """True when LLM output is worth marking smart_retag_v1 (fetch + browse quality)."""
+    if not llm_tags:
+        return False
+    sonic = (llm_tags.get('sonic_description') or '').strip()
+    if len(sonic) < 8:
+        return False
+    if 'quality_score' not in llm_tags:
+        return False
+    dims = (llm_tags.get('vibe') or []) + (llm_tags.get('texture') or []) + (llm_tags.get('genre') or [])
+    if len(dims) < 1:
+        return False
+    if 'type_code' not in llm_tags or 'playability' not in llm_tags:
+        return False
+    if 'energy' not in llm_tags:
+        return False
+    return True
+
+
+SMART_RETAG_REPAIR_SUFFIX = """
+
+CRITICAL — previous reply was incomplete or used wrong vocabulary. Reply with ONLY one JSON object (no markdown).
+Required keys (all must be present):
+  "type_code", "playability", "vibe" (array, 1-3 strings), "texture" (array, 1-2),
+  "genre" (array, 1-2), "energy", "sonic_description" (one sentence, non-empty),
+  "quality_score" (integer 1-5), "instrument_hint" (string or null).
+Use EXACT spellings from the system prompt vocabulary for vibe, texture, genre, type_code, playability, energy.
+"""
+
+
+def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_complete=True):
+    """Merge validated LLM tags and features into a tag entry.
+
+    If mark_smart_retag_complete is False, features are stored but we do not claim
+    a finished smart_retag (tag_source stays honest; row can be retried).
+    """
     entry = dict(existing_entry) if existing_entry else {}
+    prev_source = existing_entry.get('tag_source') if existing_entry else None
 
     # LLM tags overwrite filename-inferred ones
     for key in ('type_code', 'playability', 'vibe', 'texture', 'genre',
@@ -418,8 +535,19 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path):
         tags.add("%dbpm" % int(entry['bpm']))
     entry['tags'] = sorted(tags)
 
-    entry['tag_source'] = 'smart_retag_v1'
-    entry['tagged_at'] = datetime.now().isoformat()
+    if mark_smart_retag_complete:
+        entry['tag_source'] = 'smart_retag_v1'
+        entry.pop('smart_retag_pending', None)
+        entry['tagged_at'] = datetime.now().isoformat()
+    else:
+        entry.pop('retag_model', None)
+        if prev_source == 'smart_retag_v1':
+            entry['tag_source'] = 'auto'
+        elif prev_source:
+            entry['tag_source'] = prev_source
+        else:
+            entry.pop('tag_source', None)
+        entry['smart_retag_pending'] = True
     entry['path'] = rel_path
 
     return entry
@@ -490,13 +618,30 @@ def _sort_by_demand(files, tag_db):
 
 # ── Core batch processing ──
 
+def _entry_needs_smart_retag(entry):
+    """False only for rows that already have full LLM enrichment (fetch-ready)."""
+    if entry.get('tag_source') != 'smart_retag_v1':
+        return True
+    if entry.get('smart_retag_pending'):
+        return True
+    if not (entry.get('sonic_description') or '').strip():
+        return True
+    if entry.get('quality_score') is None:
+        return True
+    if not (entry.get('vibe') or entry.get('texture') or entry.get('genre')):
+        return True
+    return False
+
+
 def retag_batch(files, tag_db, dry_run=False, verbose=True):
     """Process a batch through feature extraction + LLM tagging.
 
-    Returns (tagged, quarantined, errors).
+    Returns (tagged, quarantined, errors, incomplete_n, completed_rel_paths).
+    completed_rel_paths: rows safe to mark in resume checkpoint (omits LLM-incomplete when endpoint set).
     """
-    tagged = quarantined = errors = 0
+    tagged = quarantined = errors = incomplete_n = 0
     llm_failures = 0
+    completed_rel_paths = []
 
     for rel_path, full_path in files:
         fname = os.path.basename(rel_path)
@@ -507,6 +652,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
             if verbose:
                 print("  SKIP (no features): %s" % fname)
             errors += 1
+            completed_rel_paths.append(rel_path)
             continue
 
         if dry_run:
@@ -516,30 +662,42 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
                     features.get('spectral_centroid', 0),
                     features.get('onset_count', 0)))
             tagged += 1
+            completed_rel_paths.append(rel_path)
             continue
 
-        # 2. Build prompt and call LLM
-        prompt = _build_prompt(full_path, features)
-        raw_llm = _call_llm(prompt)
-        llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
+        # 2. LLM (with repair passes when output is too thin for fetch)
+        if LLM_ENDPOINT:
+            llm_tags = _llm_tag_with_repair(full_path, features, verbose=verbose)
+            usable = _enrichment_usable(llm_tags)
+            if not usable:
+                incomplete_n += 1
+                _llm_stats['incomplete'] += 1
+                if llm_tags and verbose:
+                    print("  INCOMPLETE (not checkpointed, will retry on next run): %s" % fname, flush=True)
+        else:
+            llm_tags = {}
+            usable = False
 
         if not llm_tags:
             llm_failures += 1
 
-        # 3. Merge into tag DB
+        # Only promote to smart_retag_v1 when enrichment is fetch-usable; without LLM we still checkpoint.
+        mark_smart = bool(usable) if LLM_ENDPOINT else False
         existing = tag_db.get(rel_path, {})
-        entry = _merge_tags(existing, llm_tags, features, rel_path)
-        # Track whether LLM enrichment succeeded
-        entry['retag_model'] = LLM_MODEL if llm_tags else None
+        entry = _merge_tags(
+            existing, llm_tags, features, rel_path,
+            mark_smart_retag_complete=mark_smart,
+        )
+        entry['retag_model'] = LLM_MODEL if (usable and LLM_ENDPOINT) else None
         tag_db[rel_path] = entry
 
-        quality = entry.get('quality_score', 3)
+        qs = entry.get('quality_score')
         tc = entry.get('type_code', '?')
         vibe_str = ','.join(entry.get('vibe', [])[:2])
         desc = (entry.get('sonic_description') or '')[:50]
 
-        # 4. Quarantine low quality
-        if quality <= 2:
+        # 3. Quarantine — only when we trust quality_score from a full LLM pass
+        if usable and qs is not None and qs <= 2:
             os.makedirs(QUARANTINE_DIR, exist_ok=True)
             q_dest = os.path.join(QUARANTINE_DIR, os.path.basename(full_path))
             if not os.path.exists(q_dest):
@@ -547,20 +705,34 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
                     shutil.move(full_path, q_dest)
                     quarantined += 1
                     if verbose:
-                        print("  QUARANTINE q=%d %s: %s — %s" % (quality, tc, fname, desc))
+                        print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc))
                 except OSError:
                     pass
+            completed_rel_paths.append(rel_path)
             continue
 
         tagged += 1
-        src = "LLM" if llm_tags else "features"
+        if usable:
+            src = "LLM"
+            q_show = qs if qs is not None else "?"
+        elif LLM_ENDPOINT:
+            src = "features" if not llm_tags else "THIN"
+            q_show = qs if qs is not None else "?"
+        else:
+            src = "features"
+            q_show = qs if qs is not None else "?"
         if verbose:
-            print("  %s q=%d %s [%s]: %s — %s" % (src, quality, tc, vibe_str, fname, desc))
+            print("  %s q=%s %s [%s]: %s — %s" % (src, q_show, tc, vibe_str, fname, desc))
+
+        if mark_smart or not LLM_ENDPOINT:
+            completed_rel_paths.append(rel_path)
 
     if llm_failures and verbose:
-        print("  [batch LLM failures: %d/%d]" % (llm_failures, len(files)))
+        print("  [batch LLM empty/fail: %d/%d]" % (llm_failures, len(files)))
+    if incomplete_n and verbose and LLM_ENDPOINT:
+        print("  [batch incomplete (will retry): %d/%d]" % (incomplete_n, len(files)))
 
-    return tagged, quarantined, errors
+    return tagged, quarantined, errors, incomplete_n, completed_rel_paths
 
 
 def retag_single(rel_path, full_path, existing_entry=None):
@@ -579,12 +751,14 @@ def retag_single(rel_path, full_path, existing_entry=None):
     if not features:
         return None
 
-    prompt = _build_prompt(full_path, features)
-    raw_llm = _call_llm(prompt)
-    llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
-
+    llm_tags = _llm_tag_with_repair(full_path, features, verbose=False, repair_attempts=2)
+    usable = _enrichment_usable(llm_tags)
     existing = existing_entry or {}
-    entry = _merge_tags(existing, llm_tags, features, rel_path)
+    entry = _merge_tags(
+        existing, llm_tags, features, rel_path,
+        mark_smart_retag_complete=usable,
+    )
+    entry['retag_model'] = LLM_MODEL if usable else None
     return entry
 
 
@@ -608,6 +782,11 @@ def run(args):
             print("No checkpoint found. Use --all to start fresh.")
             sys.exit(1)
         done = set(cp.get('processed_files', []))
+        # Old checkpoints marked thin LLM rows "done" — put them back in the queue.
+        requeue = {r for r in done if _entry_needs_smart_retag(tag_db.get(r, {}))}
+        if requeue:
+            print("Re-queuing %d checkpointed rows missing full enrichment" % len(requeue))
+            done -= requeue
         all_files = _walk_library()
         files = [(r, f) for r, f in all_files if r not in done]
         print("Resuming: %d remaining of %d" % (len(files), len(all_files)))
@@ -621,14 +800,13 @@ def run(args):
         files = _walk_library()
         print("Library: %d files" % len(files))
 
-    # Skip already smart-tagged unless --force
+    # Skip rows that already have full enrichment unless --force
     if not args.force:
         before = len(files)
-        files = [(r, f) for r, f in files
-                 if tag_db.get(r, {}).get('tag_source') != 'smart_retag_v1']
+        files = [(r, f) for r, f in files if _entry_needs_smart_retag(tag_db.get(r, {}))]
         skipped = before - len(files)
         if skipped:
-            print("Skipping %d already tagged (--force to redo)" % skipped)
+            print("Skipping %d fetch-ready smart_retag rows (--force to redo)" % skipped)
 
     # Sort by preset demand
     files = _sort_by_demand(files, tag_db)
@@ -650,7 +828,7 @@ def run(args):
             flush=True,
         )
 
-    total_tagged = total_quarantined = total_errors = 0
+    total_tagged = total_quarantined = total_errors = total_incomplete = 0
     processed_files = []
     t0 = time.time()
     run_started_at = datetime.now().isoformat()
@@ -667,13 +845,14 @@ def run(args):
         print("=== Batch %d/%d  |  %.0f/min  |  ETA %.0fm ===" % (
             batch_num, total_batches, rate * 60, eta))
 
-        t, q, e = retag_batch(batch, tag_db, dry_run=args.dry_run,
-                               verbose=not args.quiet)
+        t, q, e, inc, batch_done = retag_batch(
+            batch, tag_db, dry_run=args.dry_run, verbose=not args.quiet)
         total_tagged += t
         total_quarantined += q
         total_errors += e
+        total_incomplete += inc
 
-        for rel, _ in batch:
+        for rel in batch_done:
             processed_files.append(rel)
 
         # Save after each batch
@@ -696,17 +875,17 @@ def run(args):
     elapsed = time.time() - t0
     print("\n" + "=" * 60)
     print("Smart Retag Complete")
-    print("  Processed: %d  Tagged: %d  Quarantined: %d  Errors: %d" % (
-        len(processed_files), total_tagged, total_quarantined, total_errors))
+    print("  Checkpointed: %d  Tagged: %d  Quarantined: %d  Errors: %d  LLM-incomplete: %d" % (
+        len(processed_files), total_tagged, total_quarantined, total_errors, total_incomplete))
     print("  Time: %.1f min  Rate: %.0f files/min" % (
         elapsed / 60, len(processed_files) / max(elapsed / 60, 0.01)))
     print("  Tag DB: %d entries" % len(tag_db))
     if _llm_stats['calls']:
         s = _llm_stats
-        print("  LLM: %d calls, %d ok (%.0f%%), %d timeout, %d parse fail, %d empty, %d http err" % (
+        print("  LLM: %d calls, %d ok (%.0f%%), %d incomplete rows, %d timeout, %d parse fail, %d empty, %d http err" % (
             s['calls'], s['success'],
             s['success'] / max(s['calls'], 1) * 100,
-            s['timeout'], s['parse_fail'], s['empty'], s['http_error']))
+            s['incomplete'], s['timeout'], s['parse_fail'], s['empty'], s['http_error']))
 
 
 def run_revibe(args):
@@ -785,9 +964,6 @@ def run_revibe(args):
             if entry.get(k) is not None:
                 features[k] = entry[k]
 
-        # Build prompt from stored features (no librosa call)
-        prompt = _build_prompt(full_path, features)
-
         if args.dry_run:
             if not args.quiet:
                 fname = os.path.basename(rel_path)
@@ -796,11 +972,8 @@ def run_revibe(args):
             updated += 1
             continue
 
-        # Call LLM with updated prompt
-        raw_llm = _call_llm(prompt)
-        llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
-
-        if not llm_tags:
+        llm_tags = _llm_tag_with_repair(full_path, features, verbose=not args.quiet)
+        if not _enrichment_usable(llm_tags):
             errors += 1
             continue
 
@@ -868,14 +1041,12 @@ def run_retry_llm_failures(args):
     tag_db = _load_tags()
     print("Tag DB: %d entries" % len(tag_db))
 
-    # Find entries with features but no LLM enrichment
+    # Entries with extracted features that still need full LLM enrichment
     candidates = []
     for rel_path, entry in tag_db.items():
-        stored_features = entry.get('features')
-        if not stored_features:
+        if not entry.get('features'):
             continue
-        # No sonic_description means LLM never succeeded
-        if entry.get('sonic_description'):
+        if not _entry_needs_smart_retag(entry):
             continue
         full_path = os.path.join(LIBRARY, rel_path)
         if os.path.exists(full_path):
@@ -888,7 +1059,7 @@ def run_retry_llm_failures(args):
         print("Limited to %d" % args.limit)
 
     if not candidates:
-        print("All files with features already have LLM enrichment.")
+        print("No rows need full enrichment (or no on-disk files match).")
         return
 
     print("Retrying LLM on %d files...\n" % len(candidates))
@@ -912,8 +1083,6 @@ def run_retry_llm_failures(args):
             if entry.get(k) is not None:
                 features[k] = entry[k]
 
-        prompt = _build_prompt(full_path, features)
-
         if args.dry_run:
             fname = os.path.basename(rel_path)
             if not args.quiet:
@@ -921,50 +1090,29 @@ def run_retry_llm_failures(args):
             success += 1
             continue
 
-        raw_llm = _call_llm(prompt)
-        llm_tags = _validate_llm_tags(raw_llm) if raw_llm else {}
+        llm_tags = _llm_tag_with_repair(full_path, features, verbose=not args.quiet)
+        usable = _enrichment_usable(llm_tags)
+        existing = dict(entry)
+        new_entry = _merge_tags(
+            existing, llm_tags, features, rel_path,
+            mark_smart_retag_complete=usable,
+        )
+        tag_db[rel_path] = new_entry
+        entry = new_entry
 
-        if not llm_tags:
+        if usable:
+            success += 1
+        else:
             errors += 1
-            continue
-
-        # Merge LLM tags into existing entry
-        for key in ('type_code', 'playability', 'vibe', 'texture', 'genre',
-                    'energy', 'sonic_description', 'quality_score', 'instrument_hint'):
-            if key in llm_tags:
-                entry[key] = llm_tags[key]
-
-        # Rebuild flat tags
-        tags = set()
-        if entry.get('type_code'):
-            tags.add(entry['type_code'])
-        for v in entry.get('vibe', []):
-            tags.add(v)
-        for t in entry.get('texture', []):
-            tags.add(t)
-        for g in entry.get('genre', []):
-            tags.add(g)
-        if entry.get('source'):
-            tags.add(entry['source'])
-        if entry.get('energy'):
-            tags.add(entry['energy'])
-        if entry.get('playability'):
-            tags.add(entry['playability'])
-        if entry.get('bpm'):
-            tags.add("%dbpm" % int(entry['bpm']))
-        entry['tags'] = sorted(tags)
-        entry['retag_model'] = LLM_MODEL
-        entry['tagged_at'] = datetime.now().isoformat()
-        tag_db[rel_path] = entry
-        success += 1
 
         if not args.quiet:
             fname = os.path.basename(rel_path)
             tc = entry.get('type_code', '?')
             vibe_str = ','.join(entry.get('vibe', [])[:2])
             desc = (entry.get('sonic_description') or '')[:50]
-            print("  LLM q=%s %s [%s]: %s — %s" % (
-                entry.get('quality_score', '?'), tc, vibe_str, fname, desc))
+            tag = "LLM" if usable else "INCOMPLETE"
+            print("  %s q=%s %s [%s]: %s — %s" % (
+                tag, entry.get('quality_score', '?'), tc, vibe_str, fname, desc))
 
     if not args.dry_run:
         _save_tags(tag_db)
