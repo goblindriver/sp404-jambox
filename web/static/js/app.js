@@ -1122,12 +1122,7 @@ function renderActiveTags() {
 async function fetchByTags() {
     const params = [];
     for (const [dim, vals] of Object.entries(state.activeFilters)) {
-        // BPM uses flat tag search
-        if (dim === 'bpm') {
-            for (const v of vals) params.push(`tag=${encodeURIComponent(v)}`);
-        } else {
-            for (const v of vals) params.push(`${dim}=${encodeURIComponent(v)}`);
-        }
+        for (const v of vals) params.push(`${dim}=${encodeURIComponent(v)}`);
     }
     const data = await api(`/api/library/by-tag?${params.join('&')}&limit=50`);
     renderTagResults(data);

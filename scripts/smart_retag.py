@@ -103,11 +103,11 @@ You will receive:
 Respond with ONLY a JSON object. No explanation, no markdown, no preamble. Do not wrap in code fences.
 
 {
-  "type_code": "<one of: KIK, SNR, HAT, PRC, BAS, SYN, PAD, VOX, FX, BRK, RSR, GTR, HRN, KEY, STR>",
-  "playability": "<one of: one-shot, loop, chop-ready, layer, transition>",
-  "vibe": ["<1-3 tags from: dark, warm, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty, ethereal, triumphant, melancholic, tense>"],
-  "texture": ["<1-2 tags from: dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crispy, glassy, muddy, vinyl, tape, digital, organic>"],
-  "genre": ["<1-2 tags from: funk, soul, disco, house, electronic, hiphop, dub, ambient, jazz, rock, punk, dancehall, latin, pop, rnb, industrial, boom-bap, lo-fi, tropical, afrobeat>"],
+  "type_code": "<one of: KIK, SNR, HAT, CLP, CYM, RIM, PRC, BRK, DRM, BAS, GTR, KEY, SYN, PAD, STR, BRS, PLK, WND, VOX, SMP, FX, SFX, AMB, FLY, TPE, RSR, HRN>",
+  "playability": "<one of: one-shot, loop, chop-ready, chromatic, layer, transition>",
+  "vibe": ["<1-3 tags from: dark, warm, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty, ethereal, triumphant, melancholic, tense, chill, uplifting>"],
+  "texture": ["<1-2 tags from: dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crispy, glassy, muddy, vinyl, tape, digital, organic, crunchy, warbly, bright, thick, thin, filtered>"],
+  "genre": ["<1-2 tags from: funk, soul, disco, house, electronic, hiphop, dub, ambient, jazz, rock, punk, dancehall, latin, pop, rnb, industrial, boom-bap, lo-fi, tropical, afrobeat, lo-fi-hiphop, trap, drill, gospel, uk-garage, footwork, city-pop, psychedelic, reggae, classical, world>"],
   "energy": "<one of: low, mid, high>",
   "sonic_description": "<1 sentence describing the sound character>",
   "quality_score": <1-5 integer>,
@@ -133,6 +133,18 @@ RULES:
   - HRN: mid-high centroid, brass formant structure, sustained
   - KEY: mid centroid, percussive onset with sustained harmonics
   - STR: mid centroid, bowed onset, rich harmonic series, sustained
+  - CLP: mid-high centroid, sharp onset, very short, less broadband than SNR
+  - CYM: high centroid, long decay, metallic resonance
+  - RIM: high centroid, very sharp short onset, minimal sustain
+  - DRM: use only when the sample is a full drum kit or multi-drum element
+  - BRS: mid-high centroid, brass ensemble, sustained (prefer HRN for solo brass)
+  - PLK: mid centroid, plucked single onset, quick decay
+  - WND: mid centroid, breathy formant, sustained
+  - SMP: multi-layered, mixed elements, or full production sample
+  - SFX: stabs, hits, impacts, risers that are clearly designed sound effects
+  - AMB: very low onset_count, evolving texture, no clear transients
+  - FLY: vinyl/tape artifacts, transitional noise, foley
+  - TPE: tape-based textures, wow/flutter, lo-fi character
 - playability heuristics:
   - Duration <2s and strong single onset -> one-shot
   - Duration >2s with rhythmic onsets (onset_count > 4) -> loop or chop-ready
@@ -216,7 +228,11 @@ def _call_llm(prompt, retries=2):
             )
             if resp.status_code != 200:
                 _llm_stats['http_error'] += 1
-                print("  LLM HTTP %d" % resp.status_code, file=sys.stderr)
+                print("  LLM HTTP %d (attempt %d/%d)" % (
+                    resp.status_code, attempt + 1, retries + 1), file=sys.stderr)
+                if attempt < retries:
+                    time.sleep(3 * (attempt + 1))
+                    continue
                 return None
 
             data = resp.json()
@@ -254,7 +270,11 @@ def _call_llm(prompt, retries=2):
                     return result
                 except json.JSONDecodeError:
                     _llm_stats['parse_fail'] += 1
-                    print("  LLM parse fail: %s..." % content[:120], file=sys.stderr)
+                    print("  LLM parse fail (attempt %d/%d): %s..." % (
+                        attempt + 1, retries + 1, content[:120]), file=sys.stderr)
+                    if attempt < retries:
+                        time.sleep(2 * (attempt + 1))
+                        continue
                     return None
 
         except requests.exceptions.Timeout:
@@ -606,6 +626,7 @@ def run(args):
     total_tagged = total_quarantined = total_errors = 0
     processed_files = []
     t0 = time.time()
+    run_started_at = datetime.now().isoformat()
 
     for i in range(0, len(files), BATCH_SIZE):
         batch = files[i:i + BATCH_SIZE]
@@ -632,7 +653,7 @@ def run(args):
         if not args.dry_run:
             _save_tags(tag_db)
             _save_checkpoint({
-                'started_at': datetime.now().isoformat() if i == 0 else None,
+                'started_at': run_started_at,
                 'last_updated': datetime.now().isoformat(),
                 'total_files': len(files),
                 'processed': len(processed_files),

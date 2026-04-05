@@ -243,7 +243,20 @@ def by_tag():
         if vals:
             dim_filters[dim] = set(v.lower() for v in vals)
 
-    if not tags and not dim_filters:
+    # BPM filter (numeric, parsed from "120bpm" or raw "120")
+    bpm_filter = None
+    bpm_vals = request.args.getlist('bpm')
+    if bpm_vals:
+        import re
+        bpm_nums = []
+        for v in bpm_vals:
+            m = re.match(r'(\d+)', v)
+            if m:
+                bpm_nums.append(int(m.group(1)))
+        if bpm_nums:
+            bpm_filter = bpm_nums
+
+    if not tags and not dim_filters and not bpm_filter:
         return jsonify({'error': 'Provide at least one filter', 'results': []})
 
     tags_set = set(t.lower() for t in tags) if tags else set()
@@ -262,6 +275,12 @@ def by_tag():
         if tags_set:
             entry_tags = set(t.lower() for t in entry.get('tags', []))
             if not tags_set.issubset(entry_tags):
+                continue
+
+        # Check BPM filter (within ±5 BPM of any selected value)
+        if bpm_filter:
+            entry_bpm = entry.get('bpm')
+            if not entry_bpm or not any(abs(entry_bpm - b) <= 5 for b in bpm_filter):
                 continue
 
         # Check dimension filters (AND across dimensions, OR within)

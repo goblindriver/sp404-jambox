@@ -37,7 +37,7 @@ SMPL_DIR = SETTINGS["SMPL_DIR"]
 TYPE_CODES = {
     "KIK", "SNR", "HAT", "CLP", "CYM", "RIM", "PRC", "BRK", "DRM",
     "BAS", "GTR", "KEY", "SYN", "PAD", "STR", "BRS", "PLK", "WND", "VOX", "SMP",
-    "FX", "SFX", "AMB", "FLY", "TPE", "RSR",
+    "FX", "SFX", "AMB", "FLY", "TPE", "RSR", "HRN",
 }
 
 # Playability keywords
@@ -137,6 +137,7 @@ def score_from_tags(entry, parsed_query, bank_config):
                 "SYN": {"PAD", "KEY"}, "PAD": {"SYN", "AMB"}, "KEY": {"SYN"},
                 "FX": {"SFX", "RSR"}, "SFX": {"FX"}, "RSR": {"FX"},
                 "AMB": {"PAD", "TPE"}, "TPE": {"AMB"},
+                "HRN": {"BRS"}, "BRS": {"HRN"},
             }
             if entry_tc in related.get(q["type_code"], set()):
                 score += weights["type_related"]  # related but not exact

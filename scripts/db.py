@@ -16,6 +16,7 @@ Usage:
 import json
 import os
 import sqlite3
+import threading
 from datetime import datetime
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -119,13 +120,19 @@ CREATE INDEX IF NOT EXISTS idx_dpo_sample ON dpo_pairs(sample_id);
 """
 
 # Tag keys that are lists in _tags.json (multi-valued)
-LIST_TAG_KEYS = {'vibe', 'texture', 'genre', 'production_tag'}
+LIST_TAG_KEYS = {'vibe', 'texture', 'genre', 'production_tag', 'plex_moods', 'plex_styles'}
 # Tag keys that are scalars
 SCALAR_TAG_KEYS = {
     'type_code', 'playability', 'energy', 'source', 'scene',
     # Re-vibe pass sub-dimensions + composite
     'danceability', 'warmth', 'soul', 'tension', 'texture_fit', 'vibe_score',
     'set_context', 'production_fit',
+    # Retag provenance
+    'tag_source', 'tagged_at', 'retag_model',
+    # Plex / provenance metadata
+    'plex_id', 'plex_play_count',
+    'source_artist', 'source_album', 'source_title', 'source_year',
+    'parent', 'cowork_source',
 }
 
 
@@ -135,16 +142,18 @@ class JamboxDB:
     def __init__(self, db_path=None):
         self.db_path = db_path or DEFAULT_DB_PATH
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        self._conn = None
+        self._local = threading.local()
         self._ensure_schema()
 
     def _connect(self):
-        if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path, timeout=30)
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA foreign_keys=ON")
-            self._conn.row_factory = sqlite3.Row
-        return self._conn
+        conn = getattr(self._local, 'conn', None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=30)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
+        return conn
 
     def _ensure_schema(self):
         conn = self._connect()
@@ -159,9 +168,10 @@ class JamboxDB:
         conn.commit()
 
     def close(self):
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        conn = getattr(self._local, 'conn', None)
+        if conn:
+            conn.close()
+            self._local.conn = None
 
     # ── Sample CRUD ──
 
@@ -517,7 +527,7 @@ class JamboxDB:
 
             for key in SCALAR_TAG_KEYS:
                 val = entry.get(key)
-                if val:
+                if val is not None:
                     tag_rows.append((sample_id, key, str(val), None, mv, now))
 
             for key in LIST_TAG_KEYS:
@@ -611,7 +621,7 @@ class JamboxDB:
         for s in samples:
             entry = {
                 'path': s['filepath'],
-                'duration': s['duration_ms'] / 1000.0 if s['duration_ms'] else None,
+                'duration': s['duration_ms'] / 1000.0 if s['duration_ms'] is not None else None,
                 'bpm': s['bpm'],
                 'bpm_source': s['bpm_source'],
                 'key': s['key'],
@@ -632,7 +642,9 @@ class JamboxDB:
                     flat_tags.add(v)
                 elif k in SCALAR_TAG_KEYS:
                     entry[k] = v
-                    flat_tags.add(v)
+                    # Only add non-numeric scalars to flat tags (skip scores, timestamps, etc.)
+                    if k in ('type_code', 'playability', 'energy', 'source', 'scene', 'production_fit'):
+                        flat_tags.add(v)
                 elif k == 'quality_score':
                     try:
                         entry[k] = int(v)

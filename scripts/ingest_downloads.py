@@ -905,24 +905,18 @@ def ingest_single_file(filepath, dry_run=False):
 
 
 def _store_source_context(wav_path, context):
-    """Store Cowork source context in _tags.json for a file (with file locking)."""
+    """Store Cowork source context in tag DB for a file."""
+    from jambox_config import load_tag_db, save_tag_db
     tags_path = os.path.join(LIBRARY, '_tags.json')
-    if not os.path.exists(tags_path):
-        return
     try:
-        with open(tags_path, 'r+') as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            tags = json.load(f)
-            rel = os.path.relpath(wav_path, LIBRARY)
-            if rel in tags:
-                tags[rel]['cowork_source'] = context
-            else:
-                tags[rel] = {'cowork_source': context}
-            f.seek(0)
-            f.truncate()
-            json.dump(tags, f, indent=2)
-            fcntl.flock(f, fcntl.LOCK_UN)
-    except (json.JSONDecodeError, IOError):
+        tags = load_tag_db(tags_path)
+        rel = os.path.relpath(wav_path, LIBRARY)
+        if rel in tags:
+            tags[rel]['cowork_source'] = context
+        else:
+            tags[rel] = {'cowork_source': context}
+        save_tag_db(tags_path, tags)
+    except Exception:
         pass
 
 

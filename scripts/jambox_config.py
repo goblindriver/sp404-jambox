@@ -272,6 +272,11 @@ def save_tag_db(tags_file, db):
         "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
         [(k, json.dumps(v)) for k, v in db.items()]
     )
+    # Remove stale rows (files no longer in the db dict)
+    existing = {r[0] for r in conn.execute("SELECT rel_path FROM tags").fetchall()}
+    stale = existing - set(db.keys())
+    if stale:
+        conn.executemany("DELETE FROM tags WHERE rel_path=?", [(k,) for k in stale])
     conn.commit()
     conn.close()
 

@@ -36,12 +36,9 @@ def load_tags():
 
 
 def save_tags(tags):
-    """Write _tags.json."""
-    os.makedirs(os.path.dirname(TAGS_FILE), exist_ok=True)
-    tmp_path = TAGS_FILE + '.tmp'
-    with open(tmp_path, 'w') as f:
-        json.dump(tags, f, indent=2)
-    os.replace(tmp_path, TAGS_FILE)
+    """Write tag database via jambox_config (SQLite + JSON)."""
+    from jambox_config import save_tag_db
+    save_tag_db(TAGS_FILE, tags)
 
 
 def convert_wav_to_flac(wav_path):
@@ -87,11 +84,6 @@ def find_wavs(subpath=None):
     for root, dirs, files in os.walk(base):
         # Skip special directories
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-
-        rel_root = os.path.relpath(root, LIBRARY)
-        if rel_root.startswith('Freesound'):
-            # Include Freesound files too
-            pass
 
         for f in sorted(files):
             if f.lower().endswith('.wav'):

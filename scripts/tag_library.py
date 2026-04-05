@@ -691,24 +691,16 @@ def walk_library():
 
 
 def load_existing_tags():
-    """Load existing tag database if it exists."""
-    if os.path.exists(TAGS_FILE):
-        try:
-            with open(TAGS_FILE, "r") as fh:
-                payload = json.load(fh)
-        except (json.JSONDecodeError, IOError):
-            pass
-        else:
-            if isinstance(payload, dict):
-                return payload
-    return {}
+    """Load existing tag database (prefers SQLite, falls back to JSON)."""
+    from jambox_config import load_tag_db
+    return load_tag_db(TAGS_FILE)
 
 
 def save_tags(db):
-    """Save tag database to JSON."""
-    with open(TAGS_FILE, "w") as fh:
-        json.dump(db, fh, indent=1, sort_keys=True)
-    print(f"Saved {len(db)} entries to {TAGS_FILE}")
+    """Save tag database via jambox_config (SQLite + JSON)."""
+    from jambox_config import save_tag_db
+    save_tag_db(TAGS_FILE, db)
+    print(f"Saved {len(db)} entries to tag DB")
 
 
 def print_summary(db):
