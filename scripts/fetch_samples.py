@@ -8,7 +8,7 @@ Usage:
     python scripts/fetch_samples.py --bank b     # single bank
     python scripts/fetch_samples.py --bank b --pad 1  # single pad
 """
-import os, sys, glob, re, json, yaml, argparse, hashlib
+import os, sys, re, json, yaml, argparse, hashlib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
@@ -17,7 +17,7 @@ sys.path.insert(0, SCRIPT_DIR)
 from jambox_config import is_long_hold_rel_path, load_settings_for_script
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from jambox_tuning import SCORE_VERSION, load_scoring_config
-from wav_utils import convert_and_tag, build_sp404_wav
+from wav_utils import convert_and_tag
 from tag_vocab import (
     TYPE_CODES as _VOCAB_TYPE_CODES,
     PLAYABILITIES as _VOCAB_PLAYABILITIES,
@@ -404,30 +404,6 @@ def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_file
 
     print(f"    NO MATCH found in local library")
     return None
-
-
-def fetch_bank(bank_letter, bank_config, tag_db, used_files):
-    """Fetch all samples for one bank."""
-    name = bank_config.get('name', bank_letter)
-    pads = bank_config.get('pads', {})
-    if not pads:
-        return 0
-
-    print(f"\n=== Bank {bank_letter.upper()}: {name} ===")
-    bpm = bank_config.get('bpm', '')
-    key = bank_config.get('key', '')
-    if bpm or key:
-        print(f"    Target: {bpm} BPM, Key: {key}")
-
-    fetched = 0
-    for pad_num, pad_query in pads.items():
-        pad_num = int(pad_num)
-        print(f"  Pad {pad_num}: {pad_query}")
-        result = fetch_pad(bank_letter, pad_num, pad_query, bank_config, tag_db, used_files)
-        if result:
-            fetched += 1
-    print(f"  → {fetched}/{len(pads)} pads filled")
-    return fetched
 
 
 def main():

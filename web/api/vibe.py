@@ -168,7 +168,7 @@ def generate_vibe():
         return jsonify({"ok": False, "error": f"Vibe generation failed to start: {exc}"}), 500
 
 
-def _run_populate_bank(job_id, repo_dir, settings, prompt_data, preset_override=None, session_id=None):
+def _run_populate_bank(job_id, repo_dir, prompt_data, preset_override=None, session_id=None):
     """Background worker: generate preset from vibe, load into bank, fetch samples."""
     try:
         scripts_dir = os.path.join(repo_dir, "scripts")
@@ -295,8 +295,7 @@ def populate_bank():
     }
 
     repo_dir = current_app.config["REPO_DIR"]
-    settings = dict(current_app.config)
-    t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, settings, prompt_data))
+    t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data))
     t.daemon = True
     t.start()
 
@@ -320,7 +319,6 @@ def apply_bank():
 
     job_id = _create_vibe_job(bank, preset.get("vibe", ""))
     repo_dir = current_app.config["REPO_DIR"]
-    settings = dict(current_app.config)
     prompt_data = {
         "prompt": preset.get("vibe", ""),
         "bpm": preset.get("bpm"),
@@ -331,7 +329,7 @@ def apply_bank():
     session_id = payload.get("session_id")
     if session_id:
         vts.update_review(session_id, preset, reviewed_parsed, payload.get("fetch", True), bank)
-    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, settings, prompt_data, preset, session_id))
+    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, preset, session_id))
     thread.daemon = True
     thread.start()
 

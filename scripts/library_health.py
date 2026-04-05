@@ -17,7 +17,6 @@ Usage:
 import argparse
 import json
 import os
-import struct
 import subprocess
 import sys
 import time
@@ -27,31 +26,31 @@ from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script, save_tag_
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
-FFPROBE = SETTINGS["FFPROBE_BIN"]
 FFMPEG = SETTINGS["FFMPEG_BIN"]
 SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", LONG_HOLD_DIRNAME}
 
 
-def read_pcm_from_wav(filepath):
-    """Read raw 16-bit PCM data from a WAV file. Returns numpy array or None."""
+def read_pcm_samples(filepath, max_seconds=60):
+    """Decode audio to float32 PCM samples via ffmpeg. Caps at max_seconds to limit RAM.
+
+    Handles WAV, FLAC, MP3, AIF, and any format ffmpeg supports.
+    Returns numpy array of float32 samples in [-1, 1] or None on failure.
+    """
     try:
-        with open(filepath, 'rb') as f:
-            data = f.read()
-
-        # Find data chunk
-        idx = data.find(b'data')
-        if idx < 0:
+        cmd = [
+            FFMPEG, "-y", "-i", filepath,
+            "-t", str(max_seconds),
+            "-ar", "44100", "-ac", "1", "-f", "s16le", "-acodec", "pcm_s16le",
+            "pipe:1",
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, timeout=30,
+        )
+        if result.returncode != 0 or len(result.stdout) < 4:
             return None
-        size = struct.unpack_from('<I', data, idx + 4)[0]
-        pcm = data[idx + 8:idx + 8 + size]
-
-        if len(pcm) < 4:
-            return None
-
-        samples = np.frombuffer(pcm[:len(pcm) - len(pcm) % 2], dtype=np.int16)
+        samples = np.frombuffer(result.stdout, dtype=np.int16)
         return samples.astype(np.float32) / 32768.0
-
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError, ValueError):
         return None
 
 
@@ -206,11 +205,10 @@ def main():
         if not os.path.exists(full_path):
             continue
 
-        # Only read WAVs directly (skip AIF/MP3 — they need ffmpeg decode)
-        if not full_path.lower().endswith('.wav'):
+        if not full_path.lower().endswith(('.wav', '.flac', '.mp3', '.aif', '.aiff', '.ogg')):
             continue
 
-        samples = read_pcm_from_wav(full_path)
+        samples = read_pcm_samples(full_path)
         if samples is None:
             continue
 

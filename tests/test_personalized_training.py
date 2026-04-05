@@ -90,6 +90,8 @@ class VibeRetrievalTests(unittest.TestCase):
         self.assertEqual(examples[0]["prompt"], "dusty funk drums")
 
     def test_library_hints_handles_tag_db_failure(self):
+        vibe_retrieval._tag_freq_cache["index"] = None
+        vibe_retrieval._tag_freq_cache["mtime"] = 0
         with patch("vibe_retrieval.fetch_samples.load_tag_db", side_effect=ValueError("bad tag db")):
             hints = vibe_retrieval.library_hints("dusty funk", limit=3)
 

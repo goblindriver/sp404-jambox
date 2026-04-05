@@ -58,12 +58,8 @@ def _recent_candidates(db):
     for rel_path, entry in db.items():
         if is_long_hold_rel_path(rel_path):
             continue
-        full_path = os.path.join(SETTINGS["SAMPLE_LIBRARY"], rel_path)
-        if not os.path.exists(full_path):
-            continue
-        try:
-            mtime = os.path.getmtime(full_path)
-        except OSError:
+        mtime = entry.get("mtime", 0)
+        if not mtime:
             continue
         candidates.append((mtime, rel_path, entry))
     candidates.sort(reverse=True)

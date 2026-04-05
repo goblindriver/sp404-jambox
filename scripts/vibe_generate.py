@@ -410,9 +410,11 @@ def generate_vibe_suggestions(prompt_data):
     )
     llm_tags = llm_result["tags"]
     query = _build_query(prompt_data, llm_tags)
+    tag_db = fetch_samples.load_tag_db()
     matches = fetch_samples.rank_library_matches(
         query,
         bank_config={"bpm": bpm, "key": key},
+        tag_db=tag_db,
         limit=limit,
         min_score=min_score,
     )

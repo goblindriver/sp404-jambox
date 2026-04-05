@@ -250,7 +250,7 @@ def find_splittable_files(search_dir=None):
     for root, dirs, files in os.walk(scan_dir):
         # Skip utility dirs
         dirs[:] = [d for d in dirs if d not in {
-            "_RAW-DOWNLOADS", "_GOLD", "_DUPES", "Stems", "Freesound", LONG_HOLD_DIRNAME,
+            "_RAW-DOWNLOADS", "_GOLD", "_DUPES", "Stems", LONG_HOLD_DIRNAME,
         } and not d.startswith(".")]
         for f in files:
             ext = os.path.splitext(f)[1].lower()

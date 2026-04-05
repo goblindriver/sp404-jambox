@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 import fetch_samples
@@ -12,6 +13,8 @@ from jambox_config import is_long_hold_rel_path
 
 
 STOP_WORDS = {"a", "an", "the", "and", "or", "with", "for", "of", "to", "in", "on"}
+
+_tag_freq_cache = {"mtime": 0, "index": None}
 
 
 def _tokenize(text):
@@ -77,40 +80,89 @@ def retrieve_preset_examples(prompt, limit=4):
     return results[:limit]
 
 
+def _build_tag_freq_index(tag_db):
+    """Pre-compute per-keyword → {type_code, genre, vibe} frequency maps.
+
+    Returns a dict: keyword → {"types": Counter, "genres": Counter, "vibes": Counter}
+    Built once, reused across requests until DB changes.
+    """
+    index = {}
+    for rel_path, entry in tag_db.items():
+        if is_long_hold_rel_path(rel_path):
+            continue
+        keywords = set()
+        for key in ("tags", "genre", "vibe", "texture"):
+            for value in entry.get(key, []):
+                keywords.add(str(value).lower())
+
+        tc = entry.get("type_code")
+        genres = [str(g).lower() for g in entry.get("genre", [])]
+        vibes = [str(v).lower() for v in entry.get("vibe", [])]
+
+        for kw in keywords:
+            if kw not in index:
+                index[kw] = {"types": {}, "genres": {}, "vibes": {}}
+            bucket = index[kw]
+            if tc:
+                bucket["types"][tc] = bucket["types"].get(tc, 0) + 1
+            for g in genres:
+                bucket["genres"][g] = bucket["genres"].get(g, 0) + 1
+            for v in vibes:
+                bucket["vibes"][v] = bucket["vibes"].get(v, 0) + 1
+    return index
+
+
+def _get_tag_freq_index():
+    """Return cached frequency index, rebuilding only when tag DB file changes."""
+    tags_path = fetch_samples.TAGS_FILE
+    try:
+        current_mtime = os.path.getmtime(tags_path)
+    except OSError:
+        current_mtime = 0
+
+    if _tag_freq_cache["index"] is not None and _tag_freq_cache["mtime"] >= current_mtime:
+        return _tag_freq_cache["index"]
+
+    try:
+        tag_db = fetch_samples.load_tag_db()
+    except (FileNotFoundError, OSError, ValueError):
+        _tag_freq_cache["index"] = None
+        _tag_freq_cache["mtime"] = 0
+        return {}
+    if not isinstance(tag_db, dict):
+        _tag_freq_cache["index"] = None
+        _tag_freq_cache["mtime"] = 0
+        return {}
+
+    index = _build_tag_freq_index(tag_db)
+    _tag_freq_cache["mtime"] = current_mtime
+    _tag_freq_cache["index"] = index
+    return index
+
+
 def library_hints(prompt, limit=6):
     tokens = _tokenize(prompt)
     if not tokens:
         return {"type_codes": [], "genres": [], "vibes": []}
 
-    try:
-        tag_db = fetch_samples.load_tag_db()
-    except (FileNotFoundError, OSError, ValueError):
-        return {"type_codes": [], "genres": [], "vibes": []}
-    if not isinstance(tag_db, dict):
+    index = _get_tag_freq_index()
+    if not index:
         return {"type_codes": [], "genres": [], "vibes": []}
 
     type_counts = {}
     genre_counts = {}
     vibe_counts = {}
 
-    for rel_path, entry in tag_db.items():
-        if is_long_hold_rel_path(rel_path):
+    for token in tokens:
+        bucket = index.get(token)
+        if not bucket:
             continue
-        search_space = set()
-        for key in ("tags", "genre", "vibe", "texture"):
-            for value in entry.get(key, []):
-                search_space.add(str(value).lower())
-        if not (tokens & search_space):
-            continue
-        type_code = entry.get("type_code")
-        if type_code:
-            type_counts[type_code] = type_counts.get(type_code, 0) + 1
-        for genre in entry.get("genre", []):
-            genre = str(genre).lower()
-            genre_counts[genre] = genre_counts.get(genre, 0) + 1
-        for vibe in entry.get("vibe", []):
-            vibe = str(vibe).lower()
-            vibe_counts[vibe] = vibe_counts.get(vibe, 0) + 1
+        for tc, count in bucket["types"].items():
+            type_counts[tc] = type_counts.get(tc, 0) + count
+        for g, count in bucket["genres"].items():
+            genre_counts[g] = genre_counts.get(g, 0) + count
+        for v, count in bucket["vibes"].items():
+            vibe_counts[v] = vibe_counts.get(v, 0) + count
 
     sort_counts = lambda data: [key for key, _count in sorted(data.items(), key=lambda item: item[1], reverse=True)[:limit]]
     return {
