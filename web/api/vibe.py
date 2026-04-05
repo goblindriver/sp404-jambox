@@ -211,8 +211,10 @@ def _run_populate_bank(job_id, repo_dir, settings, prompt_data, preset_override=
             bank_config = config.get(bank_key, {})
 
             if bank_config and bank_config.get("pads"):
+                from jambox_cache import load_score_cache, save_score_cache
                 tag_db = fs.load_tag_db()
                 used_files = set()
+                score_cache = load_score_cache(fs.LIBRARY)
                 os.makedirs(fs.STAGING, exist_ok=True)
 
                 fetched = 0
@@ -220,9 +222,10 @@ def _run_populate_bank(job_id, repo_dir, settings, prompt_data, preset_override=
                 for pad_num, pad_query in bank_config["pads"].items():
                     pad_num = int(pad_num)
                     _vibe_jobs[job_id]["progress"] = f"Fetching Pad {pad_num}/{total}: {pad_query[:30]}"
-                    result_path = fs.fetch_pad(bank, pad_num, pad_query, bank_config, tag_db, used_files)
+                    result_path = fs.fetch_pad(bank, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                     if result_path:
                         fetched += 1
+                save_score_cache(fs.LIBRARY, score_cache)
 
                 _vibe_jobs[job_id]["fetched"] = f"{fetched}/{total}"
                 _vibe_jobs[job_id]["progress"] = f"Fetched {fetched}/{total} samples"

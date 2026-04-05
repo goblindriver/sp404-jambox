@@ -31,6 +31,8 @@ import vibe_generate
 
 class SmartFeatureApiTests(unittest.TestCase):
     def setUp(self):
+        from api.vibe import _vibe_jobs
+        _vibe_jobs.clear()
         self.app = Flask(__name__)
         self.app.config.update(
             REPO_DIR=REPO_ROOT,
@@ -260,7 +262,7 @@ class VibeGenerateTests(unittest.TestCase):
 
         self.assertEqual(result["query"], "BRK dusty warm funk loop")
         self.assertEqual(match_mock.call_args.kwargs["limit"], 12)
-        self.assertEqual(match_mock.call_args.kwargs["min_score"], 4)
+        self.assertEqual(match_mock.call_args.kwargs["min_score"], 8)
 
     def test_generate_vibe_suggestions_handles_missing_bank_config(self):
         llm_tags = {

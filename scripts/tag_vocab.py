@@ -46,6 +46,7 @@ GENRE_ALIASES = {
     "lofi": "lo-fi", "lo fi": "lo-fi", "lo-fi-hip-hop": "lo-fi-hiphop",
     "r&b": "rnb",
     "edm": "electronic", "dance": "house",
+    "dancehall": "dancehall", "punk": "punk",
 }
 
 TEXTURE_ALIASES = {
@@ -56,6 +57,9 @@ TEXTURE_ALIASES = {
 VIBE_ALIASES = {
     "happy": "uplifting", "sad": "melancholic", "angry": "aggressive",
     "smooth": "chill", "spooky": "eerie", "moody": "dark",
+    "energetic": "hype", "energy": "hype", "fun": "playful",
+    "relaxed": "chill", "calm": "mellow", "groovy": "soulful",
+    "scary": "eerie",
 }
 
 

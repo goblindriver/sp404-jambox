@@ -267,7 +267,7 @@ def load_tag_db():
     return db
 
 
-def search_local(query, bank_config, tag_db, used_files, min_score=8):
+def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entries=None):
     """Search the local library using the tag database.
 
     Args:
@@ -276,6 +276,7 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8):
         tag_db: the loaded _tags.json database
         used_files: set of file paths already assigned (for deduplication)
         min_score: minimum score to accept a match
+        cache_entries: optional in-memory score cache (avoids disk I/O per pad)
 
     Returns (filepath, score) or (None, 0).
     """
@@ -286,20 +287,30 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8):
         used_files=used_files,
         limit=1,
         min_score=min_score,
+        cache_entries=cache_entries,
     )
     if matches:
         return matches[0]["path"], matches[0]["score"]
     return None, 0
 
 
-def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0):
-    """Return ranked library matches for a natural-language-derived query."""
+def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0, cache_entries=None):
+    """Return ranked library matches for a natural-language-derived query.
+
+    When cache_entries is provided, uses it as the in-memory cache and skips
+    disk I/O. The caller is responsible for calling save_score_cache once at
+    session end. When None, loads/saves per call (backward compatible).
+    """
     parsed = parse_pad_query(query)
     bank_config = bank_config or {}
     tag_db = tag_db if tag_db is not None else load_tag_db()
     tag_db = tag_db if isinstance(tag_db, dict) else {}
     used_files = used_files or set()
-    cache_entries = load_score_cache(LIBRARY)
+
+    owns_cache = cache_entries is None
+    if owns_cache:
+        cache_entries = load_score_cache(LIBRARY)
+
     _whash = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()).hexdigest()[:8]
     cache_key = score_cache_key(
         parsed,
@@ -334,7 +345,8 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
         cached_results.sort(key=lambda item: item["score"], reverse=True)
         cached_results = cached_results[:500]
         cache_entries[cache_key] = cached_results
-        save_score_cache(LIBRARY, cache_entries)
+        if owns_cache:
+            save_score_cache(LIBRARY, cache_entries)
 
     filtered = [
         item for item in cached_results
@@ -368,13 +380,12 @@ def clear_staging_wavs():
             os.remove(os.path.join(STAGING, name))
 
 
-def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_files):
+def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_files, cache_entries=None):
     """Fetch a sample for one pad. Returns the path to the staged file or None."""
     sp404_name = f"{bank_letter.upper()}{pad_number:07d}.WAV"
     staged_path = os.path.join(STAGING, sp404_name)
 
-    # Search local library via tag database
-    local_path, score = search_local(pad_query, bank_config, tag_db, used_files)
+    local_path, score = search_local(pad_query, bank_config, tag_db, used_files, cache_entries=cache_entries)
     if local_path:
         print(f"    LOCAL (score={score}): {os.path.relpath(local_path, LIBRARY)}")
         if convert_and_tag(local_path, staged_path, bank_letter.upper(), pad_number):
@@ -430,8 +441,8 @@ def main():
         print("WARNING: Tag database is empty. Local matching will be limited.")
         print("Run: python scripts/tag_library.py")
 
-    # Global deduplication set — no file used twice across any bank
     used_files = set()
+    score_cache = load_score_cache(LIBRARY)
 
     total_fetched = 0
     total_pads = 0
@@ -454,7 +465,7 @@ def main():
             if pad_query:
                 print(f"\n=== Bank {bank_letter.upper()} Pad {args.pad} ===")
                 print(f"  {pad_query}")
-                result = fetch_pad(bank_letter, args.pad, pad_query, bank_config, tag_db, used_files)
+                result = fetch_pad(bank_letter, args.pad, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                 if result:
                     total_fetched += 1
                     generated_files.append(result)
@@ -470,13 +481,15 @@ def main():
             for pad_num, pad_query in pads.items():
                 pad_num = int(pad_num)
                 print(f"  Pad {pad_num}: {pad_query}")
-                result = fetch_pad(bank_letter, pad_num, pad_query, bank_config, tag_db, used_files)
+                result = fetch_pad(bank_letter, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                 if result:
                     fetched += 1
                     generated_files.append(result)
             print(f"  → {fetched}/{len(pads)} pads filled")
             total_fetched += fetched
             total_pads += len(pads)
+
+    save_score_cache(LIBRARY, score_cache)
 
     print(f"\n{'='*50}")
     print(f"Total: {total_fetched}/{total_pads} pads filled")

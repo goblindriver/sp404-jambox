@@ -74,6 +74,9 @@ from tag_vocab import (
     GENRES as VALID_GENRES,
     ENERGIES as VALID_ENERGIES,
     PLAYABILITIES as VALID_PLAYABILITIES,
+    GENRE_ALIASES as _GENRE_ALIASES,
+    VIBE_ALIASES as _VIBE_ALIASES,
+    TEXTURE_ALIASES as _TEXTURE_ALIASES,
 )
 
 # ── System prompt ──
@@ -197,23 +200,8 @@ def _build_prompt(filepath, features):
 _llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
               'empty': 0, 'parse_fail': 0, 'exception': 0, 'incomplete': 0}
 
-# Map common model typos / synonyms onto allowed vocab (before whitelist filter).
-_GENRE_ALIASES = {
-    "hip-hop": "hiphop", "hip hop": "hiphop",
-    "lofi": "lo-fi", "lo fi": "lo-fi", "lo-fi-hip-hop": "lo-fi-hiphop",
-    "r&b": "rnb",
-    "edm": "electronic", "dance": "house",
-    "dancehall": "dancehall", "punk": "punk",
-}
-_VIBE_ALIASES = {
-    "energetic": "hype", "energy": "hype", "happy": "playful", "fun": "playful",
-    "sad": "melancholic", "scary": "eerie", "angry": "aggressive",
-    "relaxed": "chill", "calm": "mellow", "groovy": "soulful",
-}
-_TEXTURE_ALIASES = {
-    "lofi": "lo-fi", "crisp": "crispy", "wide": "airy",
-    "tape-saturated": "tape", "metallic": "crispy",
-}
+
+# Aliases imported from tag_vocab — single source of truth for variant spellings.
 
 
 def _extract_json_object(text):

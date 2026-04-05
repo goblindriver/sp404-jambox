@@ -35,7 +35,7 @@ bank_c:
   pads:
     1: KIK house deep thumping four-floor one-shot
     2: SNR sharp snappy tight crack one-shot
-    3: HHT rapid rolling programmed trap one-shot
+    3: HAT rapid rolling programmed trap one-shot
     4: CLP house clap reverb layered one-shot
     5: BAS house bouncing rolling sub bass loop
     6: VOX rapid-fire aggressive attitude rap loop
@@ -66,7 +66,7 @@ bank_d:
     5: GTR power-chord crunchy palm-mute rhythm loop
     6: GTR octave riff clean melodic hook loop
     7: GTR lead distorted singable catchy loop
-    8: BASS driving fast punk root-note loop
+    8: BAS driving fast punk root-note loop
     9: VOX gang shout layered anthem one-shot
     10: VOX ooh-ahh melodic harmony stacked one-shot
     11: FX feedback squeal guitar noise one-shot
@@ -126,7 +126,7 @@ bank_g:
   pads:
     1: KIK distorted crushed clipping hard one-shot
     2: SNR bitcrushed harsh noisy crunch one-shot
-    3: HHT glitchy stuttered digital artifact one-shot
+    3: HAT glitchy stuttered digital artifact one-shot
     4: PRC noise burst static crackle one-shot
     5: SYN bitcrushed lead screaming distorted loop
     6: VOX crushed processed dark distant vocal loop
@@ -149,16 +149,16 @@ bank_h:
   pads:
     1: KIK deep warm acoustic one-shot
     2: SNR brushed snare rimshot warm one-shot
-    3: HHT soft sizzle cymbal ride one-shot
+    3: HAT soft sizzle cymbal ride one-shot
     4: PRC tambourine shaker organic one-shot
     5: GTR pedal steel slide bend loop
     6: GTR acoustic fingerpick open chord loop
     7: KEY honky-tonk piano barroom bright loop
-    8: FDL fiddle melody country sweet loop
+    8: STR fiddle melody country sweet loop
     9: BAS upright thumpy walking root loop
     10: VOX country harmony two-part vocal loop
     11: GTR blues slide electric gritty loop
-    12: HAR harmonica wailing blues lonesome loop
+    12: WND harmonica wailing blues lonesome loop
 bank_i:
   preset: genre/purity-ring-dreams
   name: Purity Ring Dreams
@@ -173,7 +173,7 @@ bank_i:
   pads:
     1: KIK soft deep sub thump one-shot
     2: SNR processed snap glassy reverb one-shot
-    3: HHT delicate tiny sparkle click one-shot
+    3: HAT delicate tiny sparkle click one-shot
     4: PRC metallic bell granular shimmer one-shot
     5: PAD lush warm evolving ambient pad loop
     6: VOX granular chopped pitched ethereal loop

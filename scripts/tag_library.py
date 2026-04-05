@@ -172,8 +172,8 @@ TEXTURE_KEYWORDS = {
 GENRE_PATTERNS = [
     (r"boom[\s_-]?bap", "boom-bap"),
     (r"lo-?fi[\s_-]?hip[\s_-]?hop", "lo-fi-hiphop"),
-    (r"lo-?fi|lofi", "lo-fi-hiphop"),
-    (r"hip-?hop|hiphop", "boom-bap"),
+    (r"lo-?fi|lofi", "lo-fi"),
+    (r"hip-?hop|hiphop", "hiphop"),
     (r"trap", "trap"),
     (r"drill", "drill"),
     (r"funk", "funk"),
@@ -204,15 +204,17 @@ GENRE_PATTERNS = [
     (r"latin|salsa|bossa", "latin"),
     (r"classical|orchestral", "classical"),
     (r"ambient", "ambient"),
-    (r"pop", "electronic"),
+    (r"pop", "pop"),
     (r"rock", "rock"),
     (r"metal", "rock"),
-    (r"punk", "rock"),
+    (r"punk", "punk"),
     (r"breakbeat", "electronic"),
     (r"glitch", "electronic"),
     (r"minimal", "electronic"),
     (r"tribal", "world"),
     (r"world", "world"),
+    (r"industrial", "industrial"),
+    (r"dancehall", "dancehall"),
 ]
 
 # ═══════════════════════════════════════════════════════════

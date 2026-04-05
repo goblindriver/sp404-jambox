@@ -15,6 +15,7 @@ import yaml
 from jambox_config import ConfigError, load_settings_for_script
 from integration_runtime import IntegrationFailure, call_json_endpoint
 from jambox_tuning import load_vibe_mappings
+from taste_engine import get_system_prompt
 from vibe_retrieval import build_retrieval_context
 import fetch_samples
 
@@ -221,6 +222,8 @@ def _build_query(prompt_data, llm_tags):
     parts.extend(llm_tags.get("vibe", [])[:2])
     parts.extend(llm_tags.get("genre", [])[:2])
     parts.extend(llm_tags.get("texture", [])[:2])
+    if llm_tags.get("energy"):
+        parts.append(llm_tags["energy"])
     if prompt_data.get("bpm"):
         parts.append(str(prompt_data["bpm"]))
     if prompt_data.get("key"):
@@ -299,13 +302,17 @@ def _generate_pad_descriptions(llm_tags, bpm=None, key=None):
     vibes = llm_tags.get("vibe", [])
     textures = llm_tags.get("texture", [])
     keywords = llm_tags.get("keywords", [])
+    energy = llm_tags.get("energy", "")
 
     # Pick the best genre for instrument selection
     primary_genre = genres[0] if genres else ""
     instruments = _GENRE_INSTRUMENTS.get(primary_genre, _DEFAULT_INSTRUMENTS)
 
     # Build a pool of flavor words (2-3 per pad, no repeats across pads)
+    # Energy goes in early so it appears on most pads — fetch scoring keys on it
     flavor_pool = []
+    if energy and energy in ("low", "mid", "high"):
+        flavor_pool.append(energy)
     for src in [genres[:2], vibes[:2], textures[:2], keywords[:3]]:
         for word in src:
             if word not in flavor_pool and len(word) > 1:
@@ -393,7 +400,7 @@ def build_bank_from_vibe(prompt_data):
 
 def generate_vibe_suggestions(prompt_data):
     limit = _coerce_int(prompt_data.get("limit"), 12, minimum=1)
-    min_score = _coerce_int(prompt_data.get("min_score"), 4, minimum=0)
+    min_score = _coerce_int(prompt_data.get("min_score"), 8, minimum=0)
     bpm = prompt_data.get("bpm")
     key = prompt_data.get("key")
     llm_result = parse_vibe_prompt(

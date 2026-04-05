@@ -80,9 +80,10 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
         os.makedirs(fs.STAGING, exist_ok=True)
         _clear_staging_wavs(fs.STAGING)
 
-        # Load tag database and init deduplication set
+        from jambox_cache import load_score_cache, save_score_cache
         tag_db = fs.load_tag_db()
         used_files = set()
+        score_cache = load_score_cache(fs.LIBRARY)
         generated_files = []
 
         total_fetched = 0
@@ -123,7 +124,7 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
                     pct = int(pad_count_done * 100 / max(pad_count_total, 1))
                     _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad}"
                     _jobs[job_id]['percent'] = pct
-                    result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files)
+                    result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                     if result:
                         total_fetched += 1
                         generated_files.append(result)
@@ -135,11 +136,13 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
                     pct = int(pad_count_done * 100 / max(pad_count_total, 1))
                     _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad_num}: {pad_query[:40]}"
                     _jobs[job_id]['percent'] = pct
-                    result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files)
+                    result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                     if result:
                         total_fetched += 1
                         generated_files.append(result)
                     total_pads += 1
+
+        save_score_cache(fs.LIBRARY, score_cache)
 
         # Copy to SMPL
         smpl_dir = settings['SMPL_DIR']
