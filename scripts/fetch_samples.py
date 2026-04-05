@@ -41,8 +41,28 @@ SMPL_DIR = SETTINGS["SMPL_DIR"]
 TYPE_CODES = _VOCAB_TYPE_CODES
 PLAYABILITY_KEYWORDS = _VOCAB_PLAYABILITIES
 
-# Words to ignore in scoring
 STOP_WORDS = {"a", "an", "the", "or", "and", "in", "for", "not", "but", "with", "style", "of"}
+
+_ALL_ALIASES = {**GENRE_ALIASES, **TEXTURE_ALIASES, **VIBE_ALIASES}
+
+_WEIGHTS_HASH = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()).hexdigest()[:8]
+
+_RELATED_TYPE_CODES_RAW = {
+    "KIK": {"DRM"}, "SNR": {"DRM"}, "HAT": {"DRM"}, "CLP": {"DRM", "SNR"},
+    "CYM": {"HAT"}, "RIM": {"PRC", "SNR"}, "PRC": {"DRM"},
+    "BRK": {"DRM", "SMP"}, "SMP": {"BRK"},
+    "SYN": {"PAD", "KEY"}, "PAD": {"SYN", "AMB"}, "KEY": {"SYN"},
+    "FX": {"SFX", "RSR"}, "SFX": {"FX"}, "RSR": {"FX"},
+    "AMB": {"PAD", "TPE"}, "TPE": {"AMB"},
+    "HRN": {"BRS"}, "BRS": {"HRN"},
+    "DRM": {"KIK", "SNR", "HAT", "BRK", "PRC"},
+}
+# Ensure bidirectional: if A relates to B, B relates to A
+_RELATED_TYPE_CODES = {}
+for tc, relatives in _RELATED_TYPE_CODES_RAW.items():
+    _RELATED_TYPE_CODES.setdefault(tc, set()).update(relatives)
+    for rel in relatives:
+        _RELATED_TYPE_CODES.setdefault(rel, set()).add(tc)
 
 
 def parse_pad_query(query):
@@ -97,9 +117,14 @@ def parse_pad_query(query):
         if lower not in STOP_WORDS and len(lower) >= 2:
             result["keywords"].add(lower)
 
-    # Normalize keywords through canonical aliases so "hip-hop" matches "hiphop" etc.
-    _ALL_ALIASES = {**GENRE_ALIASES, **TEXTURE_ALIASES, **VIBE_ALIASES}
     result["keywords"] = {_ALL_ALIASES.get(kw, kw) for kw in result["keywords"]}
+
+    # Pre-extract energy from keywords so score_from_tags doesn't scan per entry
+    result["energy"] = None
+    for kw in result["keywords"]:
+        if kw in ("low", "mid", "high"):
+            result["energy"] = kw
+            break
 
     return result
 
@@ -131,21 +156,11 @@ def score_from_tags(entry, parsed_query, bank_config):
         if entry_tc == q["type_code"]:
             score += weights["type_exact"]
         elif not entry_tc:
-            pass  # untagged = uncertain, don't penalize
+            pass
+        elif entry_tc in _RELATED_TYPE_CODES.get(q["type_code"], set()):
+            score += weights["type_related"]
         else:
-            related = {
-                "KIK": {"DRM"}, "SNR": {"DRM"}, "HAT": {"DRM"}, "CLP": {"DRM", "SNR"},
-                "CYM": {"HAT"}, "RIM": {"PRC", "SNR"}, "PRC": {"DRM"},
-                "BRK": {"DRM", "SMP"}, "SMP": {"BRK"},
-                "SYN": {"PAD", "KEY"}, "PAD": {"SYN", "AMB"}, "KEY": {"SYN"},
-                "FX": {"SFX", "RSR"}, "SFX": {"FX"}, "RSR": {"FX"},
-                "AMB": {"PAD", "TPE"}, "TPE": {"AMB"},
-                "HRN": {"BRS"}, "BRS": {"HRN"},
-            }
-            if entry_tc in related.get(q["type_code"], set()):
-                score += weights["type_related"]
-            else:
-                score += weights["type_mismatch"]
+            score += weights["type_mismatch"]
 
     # --- Playability ---
     entry_play = entry.get("playability", "")
@@ -188,14 +203,15 @@ def score_from_tags(entry, parsed_query, bank_config):
     entry_vibes = set(v.lower() for v in entry.get("vibe", []))
     entry_textures = set(t.lower() for t in entry.get("texture", []))
     entry_genres = set(g.lower() for g in entry.get("genre", []))
+    fname_lower = os.path.basename(entry.get("path", "")).lower()
 
     for kw in q["keywords"]:
         if kw in entry_vibes or kw in entry_textures or kw in entry_genres:
-            score += weights["keyword_dimension"]  # dimension match — high confidence
+            score += weights["keyword_dimension"]
         elif kw in entry_tags:
-            score += weights["keyword_tag"]  # flat tag match
-        elif kw in os.path.basename(entry.get("path", "")).lower():
-            score += weights["keyword_filename"]  # filename fallback
+            score += weights["keyword_tag"]
+        elif kw in fname_lower:
+            score += weights["keyword_filename"]
 
     # --- Duration penalty for one-shots ---
     duration = entry.get("duration", 0)
@@ -206,17 +222,11 @@ def score_from_tags(entry, parsed_query, bank_config):
 
     # --- Energy dimension ---
     entry_energy = (entry.get("energy") or "").lower()
-    if entry_energy:
-        query_energy = None
-        for kw in q["keywords"]:
-            if kw in ("low", "mid", "high"):
-                query_energy = kw
-                break
-        if query_energy:
-            if entry_energy == query_energy:
-                score += weights.get("energy_match", 0)
-            else:
-                score += weights.get("energy_mismatch", 0)
+    if entry_energy and q["energy"]:
+        if entry_energy == q["energy"]:
+            score += weights.get("energy_match", 0)
+        else:
+            score += weights.get("energy_mismatch", 0)
 
     # --- Instrument hint ---
     hint = (entry.get("instrument_hint") or "").lower().strip()
@@ -311,13 +321,12 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
     if owns_cache:
         cache_entries = load_score_cache(LIBRARY)
 
-    _whash = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()).hexdigest()[:8]
     cache_key = score_cache_key(
         parsed,
         bank_config,
         score_version=SCORING_VERSION,
         tags_marker=tags_freshness_marker(TAGS_FILE),
-        weights_hash=_whash,
+        weights_hash=_WEIGHTS_HASH,
     )
     cached_results = cache_entries.get(cache_key)
 

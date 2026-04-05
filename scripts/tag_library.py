@@ -79,34 +79,31 @@ DIR_TYPE_MAP = {
     "instrument-loops": "SMP",
 }
 
-# Filename patterns → type code
+# Filename patterns → type code (pre-compiled for hot-path performance)
 FILENAME_TYPE_PATTERNS = [
-    # Percussive
-    (r"\bkick\b|\bbd\b|\bbass[\s_-]?drum\b", "KIK"),
-    (r"\bsnare\b|\bsd\b|\bsnr\b", "SNR"),
-    (r"\bclap\b|\bcp\b|\bsnap\b", "CLP"),
-    (r"\bh(?:i[\s_-]?)?hat\b|\bhh\b|\boh\b|\bch\b", "HAT"),
-    (r"\bcymbal\b|\bcrash\b|\bride\b", "CYM"),
-    (r"\brimshot\b|\brim\b", "RIM"),
-    (r"\bperc\b|\bconga\b|\bbongo\b|\btom\b|\bshaker\b|\btambourine\b|\bcowbell\b", "PRC"),
-    # Melodic
-    (r"\bbass\b|\bsub\b|\b808\b", "BAS"),
-    (r"\bguitar\b|\bgtr\b", "GTR"),
-    (r"\bkeys?\b|\bpiano\b|\borgan\b|\brhodes\b|\bwurlitzer\b|\bclavinet\b", "KEY"),
-    (r"\bsynth\b|\blead\b|\barp\b", "SYN"),
-    (r"\bpad\b|\batmosphere\b|\batmos\b", "PAD"),
-    (r"\bstring\b|\bviolin\b|\bcello\b|\bviola\b|\borchestra\b", "STR"),
-    (r"\bbrass\b|\btrumpet\b|\btrombone\b", "BRS"),
-    (r"\bpluck\b|\bpizz\b|\bkalimba\b|\bmbira\b|\bharp\b", "PLK"),
-    (r"\bflute\b|\bclarinet\b|\bsax\b|\bsaxophone\b|\boboe\b|\bwoodwind\b", "WND"),
-    (r"\bvox\b|\bvocal\b|\bvoice\b|\bchoir\b|\bspoken\b", "VOX"),
-    # Utility
-    (r"\briser\b|\bsweep\b|\bbuild\b", "RSR"),
-    (r"\bfoley\b|\bfootstep\b", "FLY"),
-    (r"\btape\b|\bvinyl\b|\bcrackle\b|\bhiss\b", "TPE"),
-    (r"\bstab\b|\bhit\b|\bchord\b|\bimpact\b|\bboom\b", "SFX"),
-    (r"\bfx\b|\bsfx\b|\btransition\b", "FX"),
-    (r"\bsampl\b|\bphrase\b|\bchop\b", "SMP"),
+    (re.compile(r"\bkick\b|\bbd\b|\bbass[\s_-]?drum\b"), "KIK"),
+    (re.compile(r"\bsnare\b|\bsd\b|\bsnr\b"), "SNR"),
+    (re.compile(r"\bclap\b|\bcp\b|\bsnap\b"), "CLP"),
+    (re.compile(r"\bh(?:i[\s_-]?)?hat\b|\bhh\b|\boh\b|\bch\b"), "HAT"),
+    (re.compile(r"\bcymbal\b|\bcrash\b|\bride\b"), "CYM"),
+    (re.compile(r"\brimshot\b|\brim\b"), "RIM"),
+    (re.compile(r"\bperc\b|\bconga\b|\bbongo\b|\btom\b|\bshaker\b|\btambourine\b|\bcowbell\b"), "PRC"),
+    (re.compile(r"\bbass\b|\bsub\b|\b808\b"), "BAS"),
+    (re.compile(r"\bguitar\b|\bgtr\b"), "GTR"),
+    (re.compile(r"\bkeys?\b|\bpiano\b|\borgan\b|\brhodes\b|\bwurlitzer\b|\bclavinet\b"), "KEY"),
+    (re.compile(r"\bsynth\b|\blead\b|\barp\b"), "SYN"),
+    (re.compile(r"\bpad\b|\batmosphere\b|\batmos\b"), "PAD"),
+    (re.compile(r"\bstring\b|\bviolin\b|\bcello\b|\bviola\b|\borchestra\b"), "STR"),
+    (re.compile(r"\bbrass\b|\btrumpet\b|\btrombone\b"), "BRS"),
+    (re.compile(r"\bpluck\b|\bpizz\b|\bkalimba\b|\bmbira\b|\bharp\b"), "PLK"),
+    (re.compile(r"\bflute\b|\bclarinet\b|\bsax\b|\bsaxophone\b|\boboe\b|\bwoodwind\b"), "WND"),
+    (re.compile(r"\bvox\b|\bvocal\b|\bvoice\b|\bchoir\b|\bspoken\b"), "VOX"),
+    (re.compile(r"\briser\b|\bsweep\b|\bbuild\b"), "RSR"),
+    (re.compile(r"\bfoley\b|\bfootstep\b"), "FLY"),
+    (re.compile(r"\btape\b|\bvinyl\b|\bcrackle\b|\bhiss\b"), "TPE"),
+    (re.compile(r"\bstab\b|\bhit\b|\bchord\b|\bimpact\b|\bboom\b"), "SFX"),
+    (re.compile(r"\bfx\b|\bsfx\b|\btransition\b"), "FX"),
+    (re.compile(r"\bsampl\b|\bphrase\b|\bchop\b"), "SMP"),
 ]
 
 # Top-level dir → broad category (for fallback)
@@ -170,51 +167,51 @@ TEXTURE_KEYWORDS = {
 # ═══════════════════════════════════════════════════════════
 
 GENRE_PATTERNS = [
-    (r"boom[\s_-]?bap", "boom-bap"),
-    (r"lo-?fi[\s_-]?hip[\s_-]?hop", "lo-fi-hiphop"),
-    (r"lo-?fi|lofi", "lo-fi"),
-    (r"hip-?hop|hiphop", "hiphop"),
-    (r"trap", "trap"),
-    (r"drill", "drill"),
-    (r"funk", "funk"),
-    (r"soul", "soul"),
-    (r"jazz", "jazz"),
-    (r"gospel", "gospel"),
-    (r"r&b|rnb", "rnb"),
-    (r"house", "house"),
-    (r"uk[\s_-]?garage", "uk-garage"),
-    (r"garage", "uk-garage"),
-    (r"techno", "electronic"),
-    (r"electro[\s_-]?clash", "electronic"),
-    (r"electro", "electronic"),
-    (r"idm", "electronic"),
-    (r"witch[\s_-]?house", "electronic"),
-    (r"nu[\s_-]?rave", "electronic"),
-    (r"synth[\s_-]?wave|synthwave", "electronic"),
-    (r"80s[\s_-]?synth", "electronic"),
-    (r"dnb|drum[\s_-]?(?:and|n|&)[\s_-]?bass", "electronic"),
-    (r"dub[\s_-]?step", "electronic"),
-    (r"footwork|juke", "footwork"),
-    (r"afrobeat|afro", "afrobeat"),
-    (r"city[\s_-]?pop", "city-pop"),
-    (r"psychedelic|psych", "psychedelic"),
-    (r"dub(?!step)", "dub"),
-    (r"disco", "disco"),
-    (r"reggae", "reggae"),
-    (r"latin|salsa|bossa", "latin"),
-    (r"classical|orchestral", "classical"),
-    (r"ambient", "ambient"),
-    (r"pop", "pop"),
-    (r"rock", "rock"),
-    (r"metal", "rock"),
-    (r"punk", "punk"),
-    (r"breakbeat", "electronic"),
-    (r"glitch", "electronic"),
-    (r"minimal", "electronic"),
-    (r"tribal", "world"),
-    (r"world", "world"),
-    (r"industrial", "industrial"),
-    (r"dancehall", "dancehall"),
+    (re.compile(r"boom[\s_-]?bap"), "boom-bap"),
+    (re.compile(r"lo-?fi[\s_-]?hip[\s_-]?hop"), "lo-fi-hiphop"),
+    (re.compile(r"lo-?fi|lofi"), "lo-fi"),
+    (re.compile(r"hip-?hop|hiphop"), "hiphop"),
+    (re.compile(r"trap"), "trap"),
+    (re.compile(r"drill"), "drill"),
+    (re.compile(r"funk"), "funk"),
+    (re.compile(r"soul"), "soul"),
+    (re.compile(r"jazz"), "jazz"),
+    (re.compile(r"gospel"), "gospel"),
+    (re.compile(r"r&b|rnb"), "rnb"),
+    (re.compile(r"house"), "house"),
+    (re.compile(r"uk[\s_-]?garage"), "uk-garage"),
+    (re.compile(r"garage"), "uk-garage"),
+    (re.compile(r"techno"), "electronic"),
+    (re.compile(r"electro[\s_-]?clash"), "electronic"),
+    (re.compile(r"electro"), "electronic"),
+    (re.compile(r"idm"), "electronic"),
+    (re.compile(r"witch[\s_-]?house"), "electronic"),
+    (re.compile(r"nu[\s_-]?rave"), "electronic"),
+    (re.compile(r"synth[\s_-]?wave|synthwave"), "electronic"),
+    (re.compile(r"80s[\s_-]?synth"), "electronic"),
+    (re.compile(r"dnb|drum[\s_-]?(?:and|n|&)[\s_-]?bass"), "electronic"),
+    (re.compile(r"dub[\s_-]?step"), "electronic"),
+    (re.compile(r"footwork|juke"), "footwork"),
+    (re.compile(r"afrobeat|afro"), "afrobeat"),
+    (re.compile(r"city[\s_-]?pop"), "city-pop"),
+    (re.compile(r"psychedelic|psych"), "psychedelic"),
+    (re.compile(r"dub(?!step)"), "dub"),
+    (re.compile(r"disco"), "disco"),
+    (re.compile(r"reggae"), "reggae"),
+    (re.compile(r"latin|salsa|bossa"), "latin"),
+    (re.compile(r"classical|orchestral"), "classical"),
+    (re.compile(r"ambient"), "ambient"),
+    (re.compile(r"pop"), "pop"),
+    (re.compile(r"rock"), "rock"),
+    (re.compile(r"metal"), "rock"),
+    (re.compile(r"punk"), "punk"),
+    (re.compile(r"breakbeat"), "electronic"),
+    (re.compile(r"glitch"), "electronic"),
+    (re.compile(r"minimal"), "electronic"),
+    (re.compile(r"tribal"), "world"),
+    (re.compile(r"world"), "world"),
+    (re.compile(r"industrial"), "industrial"),
+    (re.compile(r"dancehall"), "dancehall"),
 ]
 
 # ═══════════════════════════════════════════════════════════
@@ -293,9 +290,9 @@ def extract_type_code_from_dir(rel_path):
 
 def extract_type_code_from_filename(filename):
     """Get type code from filename patterns."""
-    fname_lower = filename.lower()
+    fname_lower = filename.lower().replace("_", " ").replace("-", " ")
     for pattern, code in FILENAME_TYPE_PATTERNS:
-        if re.search(pattern, fname_lower):
+        if pattern.search(fname_lower):
             return code
     return None
 
@@ -455,7 +452,7 @@ def extract_genres(rel_path):
     text = rel_path.lower().replace("_", " ").replace("-", " ")
     genres = []
     for pattern, genre in GENRE_PATTERNS:
-        if re.search(pattern, text):
+        if pattern.search(text):
             if genre not in genres:
                 genres.append(genre)
     return genres
@@ -465,27 +462,34 @@ def extract_genres(rel_path):
 # Source classification
 # ═══════════════════════════════════════════════════════════
 
+_RE_FIELD = re.compile(r"field[\s_-]?record|foley|nature|outdoor|ambience")
+_RE_DUG = re.compile(r"vinyl[\s_-]?rip|crate|digg?ing|sampled|chop")
+_RE_GENERATED = re.compile(r"generated|noise[\s_-]?gen|test[\s_-]?tone|sine|saw[\s_-]?wave")
+_RE_PROCESSED = re.compile(r"mangled|granular|processed|glitch[\s_-]?fx")
+_RE_SYNTH = re.compile(r"synth|analog|digital|fm|wave")
+_RE_SPOKEN = re.compile(r"speech|spoken|dialogue")
+
+
 def classify_source(rel_path, filename, type_code):
     """Classify sample source: kit, dug, synth, field, generated, processed."""
     text = (rel_path + " " + filename).lower()
 
-    if re.search(r"field[\s_-]?record|foley|nature|outdoor|ambience", text):
+    if _RE_FIELD.search(text):
         return "field"
-    if re.search(r"vinyl[\s_-]?rip|crate|digg?ing|sampled|chop", text):
+    if _RE_DUG.search(text):
         return "dug"
-    if re.search(r"generated|noise[\s_-]?gen|test[\s_-]?tone|sine|saw[\s_-]?wave", text):
+    if _RE_GENERATED.search(text):
         return "generated"
-    if re.search(r"mangled|granular|processed|glitch[\s_-]?fx", text):
+    if _RE_PROCESSED.search(text):
         return "processed"
 
-    # Infer from type code
-    if type_code in ("SYN", "PAD", "BAS") and re.search(r"synth|analog|digital|fm|wave", text):
+    if type_code in ("SYN", "PAD", "BAS") and _RE_SYNTH.search(text):
         return "synth"
     if type_code in ("AMB", "FLY"):
         return "field"
     if type_code in ("FX", "RSR", "SFX", "TPE"):
         return "processed"
-    if type_code in ("VOX",) and re.search(r"speech|spoken|dialogue", text):
+    if type_code in ("VOX",) and _RE_SPOKEN.search(text):
         return "dug"
 
     return "kit"
@@ -549,6 +553,9 @@ def classify_energy(bpm, type_code, genres, vibes):
 # Playability classification
 # ═══════════════════════════════════════════════════════════
 
+_RE_CHROMATIC = re.compile(r"c[3-5]|d[3-5]|e[3-5]|chromatic")
+
+
 def classify_playability(duration, type_code, filename, bpm):
     """Classify how the sample is intended to be used."""
     fname_lower = filename.lower()
@@ -560,7 +567,7 @@ def classify_playability(duration, type_code, filename, bpm):
     if duration < 2:
         if type_code in PERCUSSIVE_CODES:
             return "one-shot"
-        if re.search(r"c[3-5]|d[3-5]|e[3-5]|chromatic", fname_lower):
+        if _RE_CHROMATIC.search(fname_lower):
             return "chromatic"
         if type_code in ("FX", "RSR", "SFX"):
             return "transition"
