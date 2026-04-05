@@ -40,6 +40,19 @@ DEFAULT_SD_CARD = "/Volumes/SP-404SX"
 DEFAULT_TOOL_PATH_PREFIX = "/opt/homebrew/bin"
 DEFAULT_LLM_TIMEOUT = 30
 
+# Raw/long material lives here until chopped; excluded from pad fetch and bulk library walks.
+LONG_HOLD_DIRNAME = "_LONG-HOLD"
+
+
+def is_long_hold_rel_path(rel_path):
+    """True if *rel_path* is under the long-sample holding folder."""
+    if not rel_path or not isinstance(rel_path, str):
+        return False
+    norm = rel_path.replace("\\", "/").lstrip("/")
+    if not norm:
+        return False
+    return norm.split("/", 1)[0] == LONG_HOLD_DIRNAME
+
 
 class ConfigError(ValueError):
     """Raised when runtime configuration is invalid."""
@@ -162,6 +175,8 @@ def load_settings(repo_dir):
         "GOLD_BANK_A_DIR": os.path.join(sample_library, "_GOLD", "Bank-A"),
         "INGEST_LOG": os.path.join(sample_library, "_ingest_log.json"),
         "RAW_ARCHIVE": os.path.join(sample_library, "_RAW-DOWNLOADS"),
+        "LONG_HOLD_DIR": os.path.join(sample_library, LONG_HOLD_DIRNAME),
+        "LONG_HOLD_MIN_SECONDS": _read_int("SP404_LONG_HOLD_MIN_SECONDS", 120, minimum=1),
         "TAGS_FILE": os.path.join(sample_library, "_tags.json"),
         "MUSIC_INDEX_FILE": os.path.join(sample_library, "_music_index.json"),
         "STEMS_DIR": os.path.join(sample_library, "Stems"),

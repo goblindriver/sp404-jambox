@@ -22,14 +22,14 @@ import subprocess
 import sys
 import time
 import numpy as np
-from jambox_config import load_settings_for_script
+from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 FFPROBE = SETTINGS["FFPROBE_BIN"]
 FFMPEG = SETTINGS["FFMPEG_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD"}
+SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", LONG_HOLD_DIRNAME}
 
 
 def read_pcm_from_wav(filepath):

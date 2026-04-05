@@ -12,7 +12,13 @@ if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
 import check_setup
-from jambox_config import ConfigError, build_subprocess_env, load_settings, resolve_command
+from jambox_config import (
+    ConfigError,
+    build_subprocess_env,
+    is_long_hold_rel_path,
+    load_settings,
+    resolve_command,
+)
 
 
 class LoadSettingsTests(unittest.TestCase):
@@ -26,6 +32,14 @@ class LoadSettingsTests(unittest.TestCase):
         self.assertFalse(settings["WEB_DEBUG"])
         self.assertEqual(settings["DAILY_BANK_SOURCE"], "recent")
         self.assertEqual(settings["LLM_TIMEOUT"], 30)
+        self.assertTrue(settings["LONG_HOLD_DIR"].endswith("_LONG-HOLD"))
+        self.assertEqual(settings["LONG_HOLD_MIN_SECONDS"], 120)
+
+    def test_is_long_hold_rel_path(self):
+        self.assertTrue(is_long_hold_rel_path("_LONG-HOLD/foo.flac"))
+        self.assertTrue(is_long_hold_rel_path("_LONG-HOLD/Drums/Kicks/x.wav"))
+        self.assertFalse(is_long_hold_rel_path("Drums/Kicks/x.wav"))
+        self.assertFalse(is_long_hold_rel_path(""))
 
     def test_invalid_boolean_raises_clear_error(self):
         with patch.dict(os.environ, {"SP404_WEB_DEBUG": "maybe"}, clear=True):

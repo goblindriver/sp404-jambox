@@ -32,7 +32,7 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from jambox_config import load_settings_for_script
+from jambox_config import is_long_hold_rel_path, load_settings_for_script, LONG_HOLD_DIRNAME
 from audio_analysis import extract_features, is_available as librosa_available
 
 SETTINGS = load_settings_for_script(__file__)
@@ -51,7 +51,7 @@ REPO_DIR = os.path.dirname(SCRIPTS_DIR)
 CHECKPOINT_PATH = os.path.join(REPO_DIR, "data", "retag_checkpoint.json")
 QUARANTINE_DIR = os.path.join(LIBRARY, "_QUARANTINE")
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", "Stems"}
+SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", "Stems", LONG_HOLD_DIRNAME}
 
 BATCH_SIZE = 50
 
@@ -743,8 +743,9 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
         # 3. Quarantine — only when we trust quality_score from a full LLM pass
         if usable and qs is not None and qs <= 2:
             os.makedirs(QUARANTINE_DIR, exist_ok=True)
-            q_dest = os.path.join(QUARANTINE_DIR, os.path.basename(full_path))
+            q_dest = os.path.join(QUARANTINE_DIR, rel_path)
             if not os.path.exists(q_dest):
+                os.makedirs(os.path.dirname(q_dest), exist_ok=True)
                 try:
                     shutil.move(full_path, q_dest)
                     quarantined += 1
@@ -971,6 +972,8 @@ def run_revibe(args):
     # Find entries that have stored features (from a prior smart_retag run)
     candidates = []
     for rel_path, entry in tag_db.items():
+        if is_long_hold_rel_path(rel_path):
+            continue
         if entry.get('tag_source') != 'smart_retag_v1':
             continue
         stored_features = entry.get('features')
@@ -1113,6 +1116,8 @@ def run_retry_llm_failures(args):
     # Entries with extracted features that still need full LLM enrichment
     candidates = []
     for rel_path, entry in tag_db.items():
+        if is_long_hold_rel_path(rel_path):
+            continue
         if not entry.get('features'):
             continue
         if not _entry_needs_smart_retag(entry):

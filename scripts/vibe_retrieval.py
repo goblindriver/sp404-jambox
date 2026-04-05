@@ -8,6 +8,7 @@ import re
 import fetch_samples
 import preset_utils
 import vibe_training_store as vts
+from jambox_config import is_long_hold_rel_path
 
 
 STOP_WORDS = {"a", "an", "the", "and", "or", "with", "for", "of", "to", "in", "on"}
@@ -92,7 +93,9 @@ def library_hints(prompt, limit=6):
     genre_counts = {}
     vibe_counts = {}
 
-    for entry in tag_db.values():
+    for rel_path, entry in tag_db.items():
+        if is_long_hold_rel_path(rel_path):
+            continue
         search_space = set()
         for key in ("tags", "genre", "vibe", "texture"):
             for value in entry.get(key, []):

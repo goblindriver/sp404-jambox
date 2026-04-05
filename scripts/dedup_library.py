@@ -29,14 +29,14 @@ import tempfile
 import time
 import numpy as np
 from jambox_cache import file_marker, get_cached_fingerprint, load_fingerprint_cache, put_cached_fingerprint, save_fingerprint_cache
-from jambox_config import load_settings_for_script
+from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 DUPES_DIR = os.path.join(LIBRARY, "_DUPES")
 FFMPEG = SETTINGS["FFMPEG_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES"}
+SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", LONG_HOLD_DIRNAME}
 MAX_DECODE_SECONDS = 30
 
 
@@ -240,10 +240,15 @@ def main():
             for d in dupes:
                 src = os.path.join(LIBRARY, d)
                 if os.path.exists(src):
-                    # Preserve directory structure in _DUPES
                     dst = os.path.join(DUPES_DIR, d)
                     os.makedirs(os.path.dirname(dst), exist_ok=True)
                     shutil.move(src, dst)
+                    db.pop(d, None)
+
+    if args.clean and total_dupes > 0:
+        from jambox_config import save_tag_db
+        save_tag_db(TAGS_FILE, db)
+        print(f"\nUpdated tag DB (removed {total_dupes} dupe entries)")
 
     if len(groups) > 30:
         print(f"\n  ... and {len(groups) - 30} more groups")

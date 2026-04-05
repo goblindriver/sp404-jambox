@@ -28,7 +28,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from jambox_config import load_settings_for_script
+from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
 
 try:
     from audio_analysis import analyze_audio, is_available as librosa_available
@@ -41,7 +41,7 @@ LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
 FFPROBE = SETTINGS["FFPROBE_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD"}
+SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", LONG_HOLD_DIRNAME}
 
 # ═══════════════════════════════════════════════════════════
 # Type Code Detection (3-letter codes per TAGGING_SPEC)
@@ -674,11 +674,17 @@ def tag_file(rel_path, full_path, get_dur=True, use_librosa=True):
 # Library walker
 # ═══════════════════════════════════════════════════════════
 
-def walk_library():
-    """Walk library and return (rel_path, full_path) for all audio files."""
+def walk_library(path_filter=None, skip_dirs=None):
+    """Walk library and return (rel_path, full_path) for all audio files.
+
+    *path_filter*: absolute path to limit the walk to a subdirectory.
+    *skip_dirs*: override the default SKIP_DIRS set (e.g. to include _LONG-HOLD).
+    """
+    root_dir = path_filter or LIBRARY
+    excluded = skip_dirs if skip_dirs is not None else SKIP_DIRS
     files = []
-    for root, dirs, filenames in os.walk(LIBRARY):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
+    for root, dirs, filenames in os.walk(root_dir):
+        dirs[:] = [d for d in dirs if d not in excluded and not d.startswith(".")]
         for f in filenames:
             if f.startswith("."):
                 continue
@@ -773,13 +779,32 @@ def main():
                         help="Only tag new or changed files")
     parser.add_argument("--no-duration", action="store_true",
                         help="Skip ffprobe duration detection (faster)")
+    parser.add_argument("--path", type=str,
+                        help="Tag a specific subdirectory (relative or absolute)")
+    parser.add_argument("--include-long-hold", action="store_true",
+                        help="Include _LONG-HOLD/ in the scan (normally skipped)")
     args = parser.parse_args()
 
-    print(f"Scanning library: {LIBRARY}")
-    files = walk_library()
+    path_filter = None
+    if args.path:
+        p = os.path.expanduser(args.path)
+        path_filter = p if os.path.isabs(p) else os.path.join(LIBRARY, p)
+        if not os.path.isdir(path_filter):
+            print(f"ERROR: path does not exist: {path_filter}", file=sys.stderr)
+            sys.exit(1)
+
+    effective_skip = set(SKIP_DIRS)
+    if args.include_long_hold:
+        effective_skip.discard(LONG_HOLD_DIRNAME)
+
+    scan_label = path_filter or LIBRARY
+    print(f"Scanning: {scan_label}")
+    if args.include_long_hold:
+        print("  (including _LONG-HOLD/)")
+    files = walk_library(path_filter=path_filter, skip_dirs=effective_skip)
     print(f"Found {len(files)} audio files")
 
-    db = load_existing_tags() if args.update else {}
+    db = load_existing_tags() if (args.update or args.path) else {}
     skipped = 0
     tagged = 0
 
@@ -810,13 +835,15 @@ def main():
     else:
         print()
 
-    # Remove stale entries
-    existing_rels = {rel for rel, _ in files}
-    removed = [k for k in db if k not in existing_rels]
-    for k in removed:
-        del db[k]
-    if removed:
-        print(f"Removed {len(removed)} stale entries")
+    # Remove stale entries — only for the scope we scanned.
+    # A --path run should not delete entries outside its target directory.
+    if not args.path:
+        existing_rels = {rel for rel, _ in files}
+        removed = [k for k in db if k not in existing_rels]
+        for k in removed:
+            del db[k]
+        if removed:
+            print(f"Removed {len(removed)} stale entries")
 
     save_tags(db)
     print_summary(db)
