@@ -23,7 +23,7 @@ def _load_config():
 
 
 def _json_object_body():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         raise ValueError('Request body must be a JSON object')
     return data
@@ -69,8 +69,9 @@ BANK_COLORS = {
 def get_banks():
     config = _load_config()
     banks = []
-    for key, bank_config in config.items():
-        if not key.startswith('bank_') or not bank_config:
+    for key in sorted(k for k in config if k.startswith('bank_')):
+        bank_config = config[key]
+        if not bank_config:
             continue
         letter = key.split('_')[1]
         pads = bank_config.get('pads', {})

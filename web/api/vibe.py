@@ -21,7 +21,7 @@ _vibe_lock = threading.Lock()
 
 
 def _json_object_body():
-    payload = request.get_json() or {}
+    payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
     return payload
@@ -248,7 +248,19 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, preset_override=None, sess
             vts.fail_apply(session_id, str(e))
 
 
+_MAX_JOBS = 50
+
+
+def _prune_finished_jobs():
+    """Remove oldest finished jobs when over the limit. Call inside _vibe_lock."""
+    finished = [(jid, j) for jid, j in _vibe_jobs.items() if j.get("status") in ("done", "error")]
+    if len(finished) > _MAX_JOBS:
+        for jid, _ in finished[:len(finished) - _MAX_JOBS]:
+            _vibe_jobs.pop(jid, None)
+
+
 def _create_vibe_job(bank, prompt):
+    _prune_finished_jobs()
     job_id = str(uuid.uuid4())[:8]
     _vibe_jobs[job_id] = {
         "id": job_id,
@@ -271,8 +283,8 @@ def populate_bank():
         payload = _json_object_body()
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if not payload.get("prompt"):
-        return jsonify({"ok": False, "error": "prompt is required"}), 400
+    if not isinstance(payload.get("prompt"), str) or not payload["prompt"].strip():
+        return jsonify({"ok": False, "error": "prompt must be a non-empty string"}), 400
 
     try:
         bank = _normalize_bank(payload.get("bank", "a"))
@@ -285,20 +297,30 @@ def populate_bank():
                 return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
         job_id = _create_vibe_job(bank, payload["prompt"])
 
+    prompt = str(payload["prompt"]).strip()
+    if not prompt:
+        return jsonify({"ok": False, "error": "prompt is required"}), 400
+
     prompt_data = {
-        "prompt": payload["prompt"],
+        "prompt": prompt,
         "bpm": payload.get("bpm"),
         "key": payload.get("key"),
         "bank": bank,
         "fetch": payload.get("fetch", True),
     }
 
+    session_id = None
+    try:
+        session_id = vts.create_session(prompt_data, {}, current_app.config)
+    except Exception:
+        pass
+
     repo_dir = current_app.config["REPO_DIR"]
-    t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data))
+    t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, None, session_id))
     t.daemon = True
     t.start()
 
-    return jsonify({"ok": True, "job_id": job_id})
+    return jsonify({"ok": True, "job_id": job_id, "session_id": session_id})
 
 
 @vibe_bp.route("/vibe/apply-bank", methods=["POST"])

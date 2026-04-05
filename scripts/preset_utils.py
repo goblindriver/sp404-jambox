@@ -197,7 +197,7 @@ def bank_to_preset(letter, config=None):
         'notes': notes or '',
         'source': 'curated',
         'tags': sorted(tags)[:10],
-        'pads': {int(k): v for k, v in pads.items()},
+        'pads': {int(k): v for k, v in pads.items() if str(k).isdigit()},
     }
 
 
@@ -289,7 +289,7 @@ def apply_set(set_slug):
 
         if ref is None or ref == '_empty':
             # Empty bank — use inline data from set if available, otherwise minimal
-            inline = banks_map.get(f'{letter}_meta', {})
+            inline = banks_map.get(f'{letter}_meta') or {}
             config[bank_key] = {
                 'name': inline.get('name', 'Your Space') if letter == 'a' else inline.get('name', f'Bank {letter.upper()}'),
                 'notes': inline.get('notes', 'Bank A is yours — resample and chop on-device') if letter == 'a' else inline.get('notes', ''),

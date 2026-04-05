@@ -70,10 +70,10 @@ def _browse(subdir):
     library_root = _library_root()
     full = os.path.join(library_root, subdir)
     full = os.path.realpath(full)
-    if not full.startswith(os.path.realpath(library_root)):
-        abort(403)
+    if not full.startswith(os.path.realpath(library_root) + os.sep) and full != os.path.realpath(library_root):
+        return jsonify({'error': 'Access denied'}), 403
     if not os.path.isdir(full):
-        abort(404)
+        return jsonify({'error': 'Directory not found'}), 404
 
     dirs = []
     files = []
@@ -175,7 +175,7 @@ def tag_cloud():
     """Return tag frequency data by spec dimensions."""
     db = _load_tag_db()
     if not db:
-        return jsonify({'error': 'No tag database found. Run: python scripts/tag_library.py', 'tags': {}, 'total': 0})
+        return jsonify({'error': 'No tag database found. Run: python scripts/tag_library.py', 'tags': {}, 'total': 0}), 503
 
     from collections import Counter
     tag_counts = Counter()
@@ -257,7 +257,7 @@ def by_tag():
             bpm_filter = bpm_nums
 
     if not tags and not dim_filters and not bpm_filter:
-        return jsonify({'error': 'Provide at least one filter', 'results': []})
+        return jsonify({'error': 'Provide at least one filter', 'results': []}), 400
 
     tags_set = set(t.lower() for t in tags) if tags else set()
     try:
@@ -267,7 +267,7 @@ def by_tag():
 
     db = _load_tag_db()
     if not db:
-        return jsonify({'error': 'No tag database found', 'results': []})
+        return jsonify({'error': 'No tag database found', 'results': []}), 503
 
     results = []
     for rel_path, entry in db.items():
@@ -387,7 +387,7 @@ def smart_retag():
             if j.get("status") == "running":
                 return jsonify({"ok": False, "error": "A smart retag is already running"}), 409
 
-    payload = request.get_json() or {}
+    payload = request.get_json(silent=True) or {}
 
     # Build CLI args
     args_list = []

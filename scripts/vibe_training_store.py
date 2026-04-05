@@ -111,8 +111,8 @@ def create_session(prompt_payload, result_payload, settings, db_path=None):
                 now,
                 "raw",
                 "generated",
-                settings.get("VIBE_PARSER_MODE", "base"),
-                _normalize_label(settings),
+                result_payload.get("model_mode") or settings.get("VIBE_PARSER_MODE", "base"),
+                result_payload.get("model_label") or _normalize_label(settings),
                 prompt_payload.get("prompt", ""),
                 prompt_payload.get("bank"),
                 prompt_payload.get("bpm"),
@@ -171,13 +171,13 @@ def complete_apply(session_id, applied_preset, preset_ref, fetch_summary, fetch_
         conn.execute(
             """
             UPDATE vibe_sessions
-            SET updated_at = ?, dataset_status = ?, session_status = ?, applied_preset_json = ?,
+            SET updated_at = ?, dataset_status = CASE WHEN dataset_status = 'exported' THEN 'exported' ELSE 'reviewed' END,
+                session_status = ?, applied_preset_json = ?,
                 preset_ref = ?, fetch_summary_json = ?, fetch_result_text = ?, fetch_error_text = NULL
             WHERE id = ?
             """,
             (
                 now,
-                "reviewed",
                 "applied",
                 _json_or_null(applied_preset),
                 preset_ref,

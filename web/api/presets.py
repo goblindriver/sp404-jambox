@@ -15,7 +15,7 @@ import daily_bank as db
 
 
 def _json_object_body():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         raise ValueError('Request body must be a JSON object')
     return data
@@ -121,7 +121,12 @@ def save_bank_as_preset(letter):
         data = _json_object_body()
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    letter = letter.lower().strip()
+    try:
+        letter = _normalize_bank_name(letter)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    if not letter:
+        return jsonify({'error': 'bank letter required'}), 400
 
     preset = pu.bank_to_preset(letter)
     if not preset:

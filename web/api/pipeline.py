@@ -43,9 +43,12 @@ def _normalize_pad_value(value):
     if value in (None, ''):
         return None
     try:
-        return int(value)
+        pad = int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError('pad must be an integer') from exc
+    if pad < 1 or pad > 12:
+        raise ValueError('pad must be between 1 and 12')
+    return pad
 
 
 def _run_script(script_name, timeout=None):
@@ -162,7 +165,7 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
 
 @pipeline_bp.route('/pipeline/fetch', methods=['POST'])
 def fetch():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     bank = data.get('bank')
     try:
         pad = _normalize_pad_value(data.get('pad'))
@@ -320,7 +323,7 @@ def watcher_status():
             'stats': state['stats'],
         })
     except Exception as e:
-        return jsonify({'running': False, 'recent': [], 'stats': {}, 'error': str(e)})
+        return jsonify({'running': False, 'recent': [], 'stats': {}, 'error': str(e)}), 500
 
 
 @pipeline_bp.route('/pipeline/disk-report')
@@ -345,7 +348,7 @@ def cleanup():
             sys.path.insert(0, scripts_dir)
         import ingest_downloads as ingest
 
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         purge_archive = data.get('purge_archive', False)
 
         freed1, count1 = ingest.cleanup_downloads()
@@ -378,7 +381,7 @@ def downloads_path():
     if request.method == 'GET':
         return jsonify({'path': ingest.DOWNLOADS})
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     new_path = data.get('path', '')
     if not new_path:
         return jsonify({'error': 'path required'}), 400
