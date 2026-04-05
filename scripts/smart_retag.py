@@ -11,6 +11,10 @@ Usage:
     python scripts/smart_retag.py --resume                  # resume from checkpoint
     python scripts/smart_retag.py --path Drums/Kicks/       # specific directory
     python scripts/smart_retag.py --dry-run --limit 10      # feature extraction only
+
+Env:
+    SP404_SMART_RETAG_LLM_MODEL — optional; bulk tagging model (default: same as SP404_LLM_MODEL).
+    Use e.g. qwen3:8b here while keeping qwen3:32b for the web vibe UI if 32b times out under load.
 """
 
 import argparse
@@ -33,7 +37,8 @@ SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 LLM_ENDPOINT = SETTINGS.get("LLM_ENDPOINT", "")
-LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3")
+# Bulk retag may use a smaller/faster model than vibe UI (see SP404_SMART_RETAG_LLM_MODEL).
+RETAG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or SETTINGS.get("LLM_MODEL", "qwen3")
 LLM_TIMEOUT = SETTINGS.get("LLM_TIMEOUT", 30)
 SMART_RETAG_LLM_TIMEOUT = SETTINGS.get("SMART_RETAG_LLM_TIMEOUT")
 SMART_RETAG_LLM_RETRIES = SETTINGS.get("SMART_RETAG_LLM_RETRIES")
@@ -278,7 +283,7 @@ def _call_llm(prompt, retries=None):
         try:
             resp = requests.post(
                 LLM_ENDPOINT,
-                json={"model": LLM_MODEL, "messages": [
+                json={"model": RETAG_LLM_MODEL, "messages": [
                     {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ], "temperature": 0.3, "max_tokens": 2048},
@@ -688,7 +693,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
             existing, llm_tags, features, rel_path,
             mark_smart_retag_complete=mark_smart,
         )
-        entry['retag_model'] = LLM_MODEL if (usable and LLM_ENDPOINT) else None
+        entry['retag_model'] = RETAG_LLM_MODEL if (usable and LLM_ENDPOINT) else None
         tag_db[rel_path] = entry
 
         qs = entry.get('quality_score')
@@ -758,7 +763,7 @@ def retag_single(rel_path, full_path, existing_entry=None):
         existing, llm_tags, features, rel_path,
         mark_smart_retag_complete=usable,
     )
-    entry['retag_model'] = LLM_MODEL if usable else None
+    entry['retag_model'] = RETAG_LLM_MODEL if usable else None
     return entry
 
 
@@ -822,9 +827,13 @@ def run(args):
     print("Processing %d files...\n" % len(files))
     if LLM_ENDPOINT:
         print(
-            "LLM: read timeout %ds, up to %d attempts per file "
-            "(SP404_SMART_RETAG_LLM_TIMEOUT / SP404_SMART_RETAG_LLM_RETRIES)"
-            % (_retag_llm_read_timeout_seconds(), _retag_llm_retries() + 1),
+            "LLM: model=%s | read timeout %ds | up to %d attempts per file "
+            "(SP404_SMART_RETAG_LLM_MODEL / TIMEOUT / RETRIES)"
+            % (
+                RETAG_LLM_MODEL,
+                _retag_llm_read_timeout_seconds(),
+                _retag_llm_retries() + 1,
+            ),
             flush=True,
         )
 
@@ -931,9 +940,12 @@ def run_revibe(args):
 
     print("Re-vibing %d files with updated production prompt...\n" % len(candidates))
     print(
-        "LLM: read timeout %ds, up to %d attempts per file "
-        "(SP404_SMART_RETAG_LLM_TIMEOUT / SP404_SMART_RETAG_LLM_RETRIES)"
-        % (_retag_llm_read_timeout_seconds(), _retag_llm_retries() + 1),
+        "LLM: model=%s | read timeout %ds | up to %d attempts per file"
+        % (
+            RETAG_LLM_MODEL,
+            _retag_llm_read_timeout_seconds(),
+            _retag_llm_retries() + 1,
+        ),
         flush=True,
     )
 
@@ -1062,6 +1074,7 @@ def run_retry_llm_failures(args):
         print("No rows need full enrichment (or no on-disk files match).")
         return
 
+    print("LLM model: %s (SP404_SMART_RETAG_LLM_MODEL or SP404_LLM_MODEL)" % RETAG_LLM_MODEL)
     print("Retrying LLM on %d files...\n" % len(candidates))
 
     success = errors = 0

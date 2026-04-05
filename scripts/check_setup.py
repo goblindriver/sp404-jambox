@@ -116,6 +116,15 @@ def run_checks():
     else:
         messages.append(f"  {_integration_status(True, 'Vibe parser mode', mode_detail)}")
 
+    retag_model = (settings.get("SMART_RETAG_LLM_MODEL") or "").strip()
+    base_model = settings.get("LLM_MODEL", "qwen3")
+    effective_retag = retag_model or base_model
+    if retag_model and retag_model != base_model:
+        retag_detail = f"{effective_retag} (smart_retag bulk only; vibe/UI: {base_model})"
+    else:
+        retag_detail = effective_retag
+    messages.append(f"  {_integration_status(True, 'Smart retag LLM model', retag_detail)}")
+
     messages.append("")
     messages.append("Configured paths:")
     for label, value, should_exist in (

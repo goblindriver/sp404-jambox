@@ -177,6 +177,8 @@ def load_settings(repo_dir):
         "WEB_DEBUG": _read_bool("SP404_WEB_DEBUG", default=False),
         "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
         "LLM_MODEL": _read_command("SP404_LLM_MODEL", "qwen3"),
+        # Optional: model for scripts/smart_retag.py only (bulk tagging). Empty = use LLM_MODEL.
+        "SMART_RETAG_LLM_MODEL": _read_command("SP404_SMART_RETAG_LLM_MODEL", ""),
         "LLM_TIMEOUT": _read_int("SP404_LLM_TIMEOUT", DEFAULT_LLM_TIMEOUT, minimum=1),
         # smart_retag only: longer HTTP read than vibe UI; unset = script default floor
         "SMART_RETAG_LLM_TIMEOUT": _read_optional_int(
