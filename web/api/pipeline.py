@@ -193,7 +193,7 @@ def fetch():
     t.daemon = True
     t.start()
 
-    return jsonify({'job_id': job_id})
+    return jsonify({'ok': True, 'job_id': job_id})
 
 
 @pipeline_bp.route('/pipeline/status/<job_id>')

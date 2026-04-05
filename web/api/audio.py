@@ -1,8 +1,7 @@
 """Audio file serving for preview playback and pad assignment."""
 import os
-import subprocess
 import sys
-from flask import Blueprint, send_file, current_app, abort, request, jsonify
+from flask import Blueprint, send_file, current_app, request, jsonify
 from werkzeug.exceptions import HTTPException
 
 audio_bp = Blueprint('audio', __name__)
@@ -17,7 +16,7 @@ def _ffmpeg_bin():
 
 
 def _json_object_body():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         raise ValueError('Request body must be a JSON object')
     return data
@@ -47,7 +46,7 @@ def preview_pad(bank, pad):
         bank = _normalize_bank(bank)
         pad = _normalize_pad(pad)
     except ValueError:
-        abort(404)
+        return jsonify({'error': 'Invalid bank or pad'}), 404
     fname = f"{bank.upper()}{pad:07d}.WAV"
     smpl = os.path.join(current_app.config['REPO_DIR'], 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL', fname)
     if os.path.exists(smpl):
@@ -57,7 +56,7 @@ def preview_pad(bank, pad):
     if os.path.exists(staging):
         return send_file(staging, mimetype='audio/wav')
 
-    abort(404)
+    return jsonify({'error': 'Pad audio not found'}), 404
 
 
 @audio_bp.route('/audio/library/<path:filepath>')
@@ -67,10 +66,11 @@ def preview_library(filepath):
     full = os.path.join(library_root, filepath)
     # Security: ensure path stays within library
     full = os.path.realpath(full)
-    if not full.startswith(os.path.realpath(library_root)):
-        abort(403)
+    real_root = os.path.realpath(library_root)
+    if not full.startswith(real_root + os.sep) and full != real_root:
+        return jsonify({'error': 'Access denied'}), 403
     if not os.path.isfile(full):
-        abort(404)
+        return jsonify({'error': 'File not found'}), 404
     ext = os.path.splitext(full)[1].lower()
     mime = {'.wav': 'audio/wav', '.aif': 'audio/aiff', '.aiff': 'audio/aiff',
             '.mp3': 'audio/mpeg', '.flac': 'audio/flac'}.get(ext, 'audio/wav')
@@ -114,7 +114,7 @@ def waveform_data(bank, pad):
         bank = _normalize_bank(bank)
         pad = _normalize_pad(pad)
     except ValueError:
-        abort(404)
+        return jsonify({'error': 'Invalid bank or pad'}), 404
     import struct
     fname = f"{bank.upper()}{pad:07d}.WAV"
     smpl = os.path.join(current_app.config['REPO_DIR'], 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL', fname)
@@ -123,7 +123,7 @@ def waveform_data(bank, pad):
         if os.path.exists(staging):
             smpl = staging
         else:
-            abort(404)
+            return jsonify({'error': 'Pad audio not found'}), 404
 
     try:
         with open(smpl, 'rb') as f:
@@ -132,7 +132,7 @@ def waveform_data(bank, pad):
         # Find 'data' chunk in WAV — skip RLND and other chunks
         data_offset = data.find(b'data')
         if data_offset < 0:
-            abort(404)
+            return jsonify({'error': 'Invalid WAV file (no data chunk)'}), 404
         data_size = struct.unpack_from('<I', data, data_offset + 4)[0]
         pcm_start = data_offset + 8
         pcm_data = data[pcm_start:pcm_start + data_size]
@@ -181,7 +181,8 @@ def assign_to_pad():
     library_root = _library_root()
     source = os.path.join(library_root, library_path)
     source = os.path.realpath(source)
-    if not source.startswith(os.path.realpath(library_root)) or not os.path.isfile(source):
+    real_root = os.path.realpath(library_root)
+    if not (source.startswith(real_root + os.sep) or source == real_root) or not os.path.isfile(source):
         return jsonify({'error': 'File not found'}), 404
 
     target, err = _convert_to_pad(source, bank, pad)

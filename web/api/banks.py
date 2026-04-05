@@ -165,7 +165,7 @@ def update_bank(letter):
         config[bank_key]['notes'] = data['notes'] or ''
 
     with open(_config_path(), 'w') as f:
-        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     return jsonify({'ok': True})
 
@@ -192,6 +192,6 @@ def update_pad(letter, num):
     config[bank_key]['pads'][num] = desc or ''
 
     with open(_config_path(), 'w') as f:
-        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     return jsonify({'ok': True})

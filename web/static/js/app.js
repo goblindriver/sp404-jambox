@@ -147,6 +147,19 @@ function switchBank(bank) {
     state.currentBank = bank;
     state.selectedPad = null;
 
+    // Clear vibe state to prevent cross-bank contamination
+    state.vibeDraft = null;
+    state.vibeParsed = null;
+    state.vibeSessionId = null;
+    const vibeResults = document.getElementById('vibe-results');
+    if (vibeResults) vibeResults.innerHTML = '';
+    const vibePopBtn = document.getElementById('btn-vibe-populate');
+    if (vibePopBtn) vibePopBtn.style.display = 'none';
+    const vibeBankSel = document.getElementById('vibe-bank-select');
+    if (vibeBankSel) vibeBankSel.style.display = 'none';
+    const vibeAutoWrap = document.getElementById('vibe-auto-fetch-wrap');
+    if (vibeAutoWrap) vibeAutoWrap.classList.add('hidden');
+
     // Update tab highlight
     document.querySelectorAll('.bank-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.letter === bank.letter);
@@ -425,6 +438,11 @@ async function scanSDCard() {
 
 // ── Pipeline Actions ──
 async function fetchSamples(bank, pad) {
+    if (state.fetchJobId) {
+        toast('A fetch is already in progress', 'error');
+        return;
+    }
+
     const body = {};
     if (bank) body.bank = bank;
     if (pad) body.pad = pad;
@@ -432,20 +450,24 @@ async function fetchSamples(bank, pad) {
     const label = bank ? (pad ? `Bank ${bank.toUpperCase()} Pad ${pad}` : `Bank ${bank.toUpperCase()}`) : 'all banks';
     toast(`Fetching ${label}...`);
 
-    const result = await api('/api/pipeline/fetch', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-    });
+    try {
+        const result = await api('/api/pipeline/fetch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
 
-    if (result.error) {
-        toast(result.error, 'error');
-        return;
+        if (result.error) {
+            toast(result.error, 'error');
+            return;
+        }
+
+        state.fetchJobId = result.job_id;
+        showProgress(`Fetching ${label}...`, 5);
+        pollFetchStatus(result.job_id, label);
+    } catch (e) {
+        toast(`Fetch failed: ${e.message}`, 'error');
     }
-
-    state.fetchJobId = result.job_id;
-    showProgress(`Fetching ${label}...`, 5);
-    pollFetchStatus(result.job_id, label);
 }
 
 function fetchCurrentBank() {
@@ -457,15 +479,23 @@ function fetchAllBanks() {
     fetchSamples();
 }
 
-async function pollFetchStatus(jobId, label) {
+async function pollFetchStatus(jobId, label, _retries = 0) {
+    const maxRetries = 200;
     try {
         const data = await api(`/api/pipeline/status/${jobId}`);
 
         if (data.status === 'running' || data.status === 'starting') {
+            if (_retries >= maxRetries) {
+                state.fetchJobId = null;
+                hideProgress();
+                toast('Fetch timed out — check server logs', 'error');
+                return;
+            }
             const pct = data.percent || 10;
             showProgress(data.progress || 'Starting...', pct);
-            setTimeout(() => pollFetchStatus(jobId, label), 1500);
+            setTimeout(() => pollFetchStatus(jobId, label, _retries + 1), 1500);
         } else {
+            state.fetchJobId = null;
             showProgress(data.progress || 'Finishing...', 100);
             setTimeout(hideProgress, 800);
             if (data.status === 'done') {
@@ -473,17 +503,10 @@ async function pollFetchStatus(jobId, label) {
             } else {
                 toast(`Fetch error: ${data.result || data.error || 'Unknown fetch failure'}`, 'error');
             }
-            // Refresh bank data
-            const banks = await api('/api/banks');
-            if (Array.isArray(banks)) {
-                state.banks = banks;
-                if (state.currentBank) {
-                    const updated = banks.find(b => b.letter === state.currentBank.letter);
-                    if (updated) switchBank(updated);
-                }
-            }
+            await refreshBanks();
         }
     } catch (e) {
+        state.fetchJobId = null;
         hideProgress();
         toast(`Fetch status failed: ${e.message}`, 'error');
     }
@@ -491,16 +514,19 @@ async function pollFetchStatus(jobId, label) {
 
 async function buildAll() {
     toast('Building PAD_INFO.BIN + patterns...');
-    const [padinfo, patterns] = await Promise.all([
-        api('/api/pipeline/padinfo', {method: 'POST'}),
-        api('/api/pipeline/patterns', {method: 'POST'}),
-    ]);
-    if (padinfo.ok && patterns.ok) {
-        toast('Build complete', 'success');
-    } else {
-        const message = padinfo.error || patterns.error || 'Build had errors';
-        toast(message, 'error');
-        console.log(padinfo, patterns);
+    try {
+        const [padinfo, patterns] = await Promise.all([
+            api('/api/pipeline/padinfo', {method: 'POST'}),
+            api('/api/pipeline/patterns', {method: 'POST'}),
+        ]);
+        if (padinfo.ok && patterns.ok) {
+            toast('Build complete', 'success');
+        } else {
+            const message = padinfo.error || patterns.error || 'Build had errors';
+            toast(message, 'error');
+        }
+    } catch (e) {
+        toast(`Build failed: ${e.message}`, 'error');
     }
 }
 
@@ -553,33 +579,41 @@ async function generateScalePatterns(presetRef) {
     const bank = state.currentBank.letter;
     toast(`Generating scale patterns for Bank ${bank.toUpperCase()}...`);
 
-    const result = await api('/api/pattern/scale-generate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            preset_ref: presetRef,
-            bank: bank,
-            bars: 2,
-        }),
-    });
+    try {
+        const result = await api('/api/pattern/scale-generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                preset_ref: presetRef,
+                bank: bank,
+                bars: 2,
+            }),
+        });
 
-    if (result.ok && result.patterns) {
-        const names = result.patterns.map(p => p.name).join(', ');
-        toast(`Generated ${result.patterns.length} patterns: ${names}`, 'success');
-    } else {
-        toast(result.error || 'Scale pattern generation failed', 'error');
+        if (result.ok && result.patterns) {
+            const names = result.patterns.map(p => p.name).join(', ');
+            toast(`Generated ${result.patterns.length} patterns: ${names}`, 'success');
+        } else {
+            toast(result.error || 'Scale pattern generation failed', 'error');
+        }
+    } catch (e) {
+        toast(`Pattern generation failed: ${e.message}`, 'error');
     }
 }
 
 async function deploy() {
     toast('Deploying to SD card...');
-    const result = await api('/api/pipeline/deploy', {method: 'POST'});
-    if (result.ok) {
-        toast('Deployed to SD card', 'success');
-        checkSDCard();
-        scanSDCard();
-    } else {
-        toast(result.error || 'Deploy failed', 'error');
+    try {
+        const result = await api('/api/pipeline/deploy', {method: 'POST'});
+        if (result.ok) {
+            toast('Deployed to SD card', 'success');
+            checkSDCard();
+            scanSDCard();
+        } else {
+            toast(result.error || 'Deploy failed', 'error');
+        }
+    } catch (e) {
+        toast(`Deploy failed: ${e.message}`, 'error');
     }
 }
 
@@ -624,46 +658,60 @@ async function exportToSD() {
 
     btn.textContent = 'Building...';
     btn.disabled = true;
-    const [padinfo, patterns] = await Promise.all([
-        api('/api/pipeline/padinfo', {method: 'POST'}),
-        api('/api/pipeline/patterns', {method: 'POST'}),
-    ]);
+    try {
+        const [padinfo, patterns] = await Promise.all([
+            api('/api/pipeline/padinfo', {method: 'POST'}),
+            api('/api/pipeline/patterns', {method: 'POST'}),
+        ]);
 
-    if (!padinfo.ok || !patterns.ok) {
-        toast(padinfo.error || patterns.error || 'Build failed', 'error');
-        btn.textContent = origText;
-        btn.disabled = false;
-        return;
-    }
+        if (!padinfo.ok || !patterns.ok) {
+            toast(padinfo.error || patterns.error || 'Build failed', 'error');
+            btn.textContent = origText;
+            btn.disabled = false;
+            return;
+        }
 
-    btn.textContent = 'Deploying...';
-    const result = await api('/api/pipeline/deploy', {method: 'POST'});
-    if (result.ok) {
-        btn.textContent = 'Done!';
-        toast('Exported to SD card', 'success');
-        checkSDCard();
-        scanSDCard();
-        setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
-    } else {
-        toast(result.error || 'Deploy failed', 'error');
+        btn.textContent = 'Deploying...';
+        const result = await api('/api/pipeline/deploy', {method: 'POST'});
+        if (result.ok) {
+            btn.textContent = 'Done!';
+            toast('Exported to SD card', 'success');
+            checkSDCard();
+            scanSDCard();
+            setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+        } else {
+            toast(result.error || 'Deploy failed', 'error');
+            btn.textContent = origText;
+            btn.disabled = false;
+        }
+    } catch (e) {
+        toast(`Export failed: ${e.message}`, 'error');
         btn.textContent = origText;
         btn.disabled = false;
     }
 }
 
+let _settingsMenuHandler = null;
 function toggleSettingsMenu() {
     const menu = document.getElementById('settings-menu');
+    const wasHidden = menu.classList.contains('hidden');
     menu.classList.toggle('hidden');
-    // Close on outside click
-    if (!menu.classList.contains('hidden')) {
+
+    if (_settingsMenuHandler) {
+        document.removeEventListener('click', _settingsMenuHandler);
+        _settingsMenuHandler = null;
+    }
+
+    if (wasHidden) {
         setTimeout(() => {
-            const handler = (e) => {
+            _settingsMenuHandler = (e) => {
                 if (!menu.contains(e.target) && e.target.id !== 'btn-settings') {
                     menu.classList.add('hidden');
-                    document.removeEventListener('click', handler);
+                    document.removeEventListener('click', _settingsMenuHandler);
+                    _settingsMenuHandler = null;
                 }
             };
-            document.addEventListener('click', handler);
+            document.addEventListener('click', _settingsMenuHandler);
         }, 0);
     }
 }
@@ -676,6 +724,12 @@ async function generateVibeSuggestions() {
         toast('Enter a vibe prompt first', 'error');
         return;
     }
+
+    const genBtn = document.getElementById('btn-vibe-generate');
+    if (genBtn.disabled) return;
+    genBtn.disabled = true;
+    const origText = genBtn.textContent;
+    genBtn.textContent = 'Generating...';
 
     const bpmField = document.getElementById('vibe-bpm');
     const keyField = document.getElementById('vibe-key');
@@ -715,6 +769,8 @@ async function generateVibeSuggestions() {
         toast(successMessage, response.result.fallback_used ? 'error' : 'success');
     } finally {
         hideProgress();
+        genBtn.disabled = false;
+        genBtn.textContent = origText;
     }
 }
 
@@ -798,36 +854,57 @@ async function populateBankFromVibe() {
     };
 
     toast(`Applying draft to Bank ${bank.toUpperCase()}...`);
-    document.getElementById('btn-vibe-populate').disabled = true;
-    document.getElementById('btn-vibe-populate').textContent = 'Working...';
+    const btn = document.getElementById('btn-vibe-populate');
+    btn.disabled = true;
+    btn.textContent = 'Working...';
     showProgress(`Applying Bank ${bank.toUpperCase()} draft...`, 18);
 
-    const response = await api('/api/vibe/apply-bank', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-        toast(response.error || 'Populate failed', 'error');
-        document.getElementById('btn-vibe-populate').disabled = false;
-        document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+    let response;
+    try {
+        response = await api('/api/vibe/apply-bank', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+    } catch (e) {
+        toast(`Apply failed: ${e.message}`, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Apply Draft';
         hideProgress();
         return;
     }
 
-    // Poll job status
+    if (!response.ok) {
+        toast(response.error || 'Populate failed', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Apply Draft';
+        hideProgress();
+        return;
+    }
+
+    // Poll job status with timeout (max 5 minutes)
     const jobId = response.job_id;
+    let pollCount = 0;
+    const maxPolls = 150;
     const pollInterval = setInterval(async () => {
+        pollCount++;
+        if (pollCount > maxPolls) {
+            clearInterval(pollInterval);
+            btn.disabled = false;
+            btn.textContent = 'Apply Draft';
+            hideProgress();
+            toast('Populate timed out — check server logs', 'error');
+            return;
+        }
         try {
             const status = await api(`/api/vibe/populate-status/${jobId}`);
-            document.getElementById('btn-vibe-populate').textContent = status.progress || 'Working...';
+            btn.textContent = status.progress || 'Working...';
             showProgress(status.progress || 'Applying vibe draft...', vibeProgressPercent(status.status));
 
             if (status.status === 'done') {
                 clearInterval(pollInterval);
-                document.getElementById('btn-vibe-populate').disabled = false;
-                document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+                btn.disabled = false;
+                btn.textContent = 'Apply Draft';
                 hideProgress();
                 const doneMessage = status.fallback_used
                     ? `Bank ${bank.toUpperCase()} applied with fallback parsing. ${status.fetched || ''}`
@@ -838,15 +915,15 @@ async function populateBankFromVibe() {
                 if (updated) switchBank(updated);
             } else if (status.status === 'error') {
                 clearInterval(pollInterval);
-                document.getElementById('btn-vibe-populate').disabled = false;
-                document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+                btn.disabled = false;
+                btn.textContent = 'Apply Draft';
                 hideProgress();
                 toast(`Error: ${status.progress}`, 'error');
             }
         } catch (e) {
             clearInterval(pollInterval);
-            document.getElementById('btn-vibe-populate').disabled = false;
-            document.getElementById('btn-vibe-populate').textContent = 'Apply Draft';
+            btn.disabled = false;
+            btn.textContent = 'Apply Draft';
             hideProgress();
             toast(`Populate status failed: ${e.message}`, 'error');
         }
@@ -856,17 +933,21 @@ async function populateBankFromVibe() {
 async function generateDailyBank() {
     if (!state.currentBank) return;
     toast('Generating daily bank...');
-    const result = await api('/api/presets/daily', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({bank: state.currentBank.letter}),
-    });
-    if (result.ok) {
-        await refreshBanks();
-        await loadSets();
-        toast(`Daily bank loaded from ${result.ref}`, 'success');
-    } else {
-        toast(result.error || 'Daily bank generation failed', 'error');
+    try {
+        const result = await api('/api/presets/daily', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({bank: state.currentBank.letter}),
+        });
+        if (result.ok) {
+            await refreshBanks();
+            await loadSets();
+            toast(`Daily bank loaded from ${result.ref}`, 'success');
+        } else {
+            toast(result.error || 'Daily bank generation failed', 'error');
+        }
+    } catch (e) {
+        toast(`Daily bank failed: ${e.message}`, 'error');
     }
 }
 
@@ -914,8 +995,16 @@ function switchSidebarTab(tab) {
 async function browseLibrary(path) {
     state.libraryPath = path;
     const url = path ? `/api/library/browse/${encodeURIComponent(path)}` : '/api/library/browse';
-    const data = await api(url);
-    renderLibraryBrowser(data, path);
+    try {
+        const data = await api(url);
+        if (data.error) {
+            toast(data.error, 'error');
+            return;
+        }
+        renderLibraryBrowser(data, path);
+    } catch (e) {
+        toast(`Browse failed: ${e.message}`, 'error');
+    }
 }
 
 async function searchLibrary(query) {
@@ -923,8 +1012,12 @@ async function searchLibrary(query) {
         browseLibrary(state.libraryPath || '');
         return;
     }
-    const data = await api(`/api/library/search?q=${encodeURIComponent(query)}`);
-    renderSearchResults(data.results);
+    try {
+        const data = await api(`/api/library/search?q=${encodeURIComponent(query)}`);
+        renderSearchResults(data.results || []);
+    } catch (e) {
+        toast(`Search failed: ${e.message}`, 'error');
+    }
 }
 
 function renderLibraryBrowser(data, path) {
@@ -1022,16 +1115,21 @@ const TYPE_CODE_NAMES = {
 state.activeFilters = {};
 
 async function loadTagCloud() {
-    const data = await api('/api/library/tags');
-    if (data.error && !data.tags) {
+    try {
+        const data = await api('/api/library/tags');
+        if (data.error && !data.tags) {
+            document.getElementById('tag-sections').innerHTML =
+                `<div style="color:var(--text-muted);padding:20px;text-align:center">
+                    Run <code>python scripts/tag_library.py</code> to build the tag database
+                </div>`;
+            return;
+        }
+        state.tagData = data;
+        renderTagCloud();
+    } catch (e) {
         document.getElementById('tag-sections').innerHTML =
-            `<div style="color:var(--text-muted);padding:20px;text-align:center">
-                Run <code>python scripts/tag_library.py</code> to build the tag database
-            </div>`;
-        return;
+            `<div style="color:var(--text-muted);padding:20px;text-align:center">Failed to load tags</div>`;
     }
-    state.tagData = data;
-    renderTagCloud();
 }
 
 function renderTagCloud() {
@@ -1124,8 +1222,12 @@ async function fetchByTags() {
     for (const [dim, vals] of Object.entries(state.activeFilters)) {
         for (const v of vals) params.push(`${dim}=${encodeURIComponent(v)}`);
     }
-    const data = await api(`/api/library/by-tag?${params.join('&')}&limit=50`);
-    renderTagResults(data);
+    try {
+        const data = await api(`/api/library/by-tag?${params.join('&')}&limit=50`);
+        renderTagResults(data);
+    } catch (e) {
+        toast(`Tag filter failed: ${e.message}`, 'error');
+    }
 }
 
 function renderTagResults(data) {
@@ -1370,12 +1472,7 @@ function toggleWatcherFeed() {
     const feed = document.getElementById('watcher-feed');
     if (feed.classList.contains('hidden')) {
         feed.classList.remove('hidden');
-        // Load latest
-        checkWatcherStatus().then(() => {
-            api('/api/pipeline/watcher/status').then(result => {
-                renderWatcherFeed(result.recent || []);
-            });
-        });
+        checkWatcherStatus();
         startWatcherPolling();
     } else {
         feed.classList.add('hidden');
@@ -1739,8 +1836,17 @@ function renderPresetCards(presets, elId) {
 }
 
 async function previewPreset(ref) {
-    const data = await api(`/api/presets/${ref}`);
-    if (!data || data.error) return;
+    let data;
+    try {
+        data = await api(`/api/presets/${ref}`);
+    } catch (e) {
+        toast(`Failed to load preset: ${e.message}`, 'error');
+        return;
+    }
+    if (!data || data.error) {
+        toast(data?.error || 'Preset not found', 'error');
+        return;
+    }
 
     presetPreviewRef = ref;
 
@@ -1861,9 +1967,11 @@ function setupBankTabDropZones() {
                 if (result.ok) {
                     toast(`Loaded preset to Bank ${letter.toUpperCase()}`, 'success');
                     await refreshBanks();
+                } else {
+                    toast(result.error || 'Preset load failed', 'error');
                 }
             } catch (e) {
-                toast('Drop failed', 'error');
+                toast('Drop failed: ' + e.message, 'error');
             }
         });
     });
@@ -1922,6 +2030,7 @@ async function switchSet(slug) {
         if (result.ok) {
             toast('Set applied', 'success');
             await refreshBanks();
+            await loadSets();
         } else {
             toast(result.error || 'Switch failed', 'error');
         }
@@ -1951,13 +2060,21 @@ async function saveCurrentSet() {
 }
 
 async function refreshBanks() {
-    const data = await api('/api/banks');
-    state.banks = data;
-    renderBankTabs();
-    setupBankTabDropZones();
-    if (state.currentBank) {
-        const updated = data.find(b => b.letter === state.currentBank.letter);
-        if (updated) switchBank(updated);
+    try {
+        const data = await api('/api/banks');
+        if (!Array.isArray(data)) {
+            toast(data.error || 'Failed to refresh banks', 'error');
+            return;
+        }
+        state.banks = data;
+        renderBankTabs();
+        setupBankTabDropZones();
+        if (state.currentBank) {
+            const updated = data.find(b => b.letter === state.currentBank.letter);
+            if (updated) switchBank(updated);
+        }
+    } catch (e) {
+        toast(`Failed to refresh banks: ${e.message}`, 'error');
     }
 }
 
@@ -2092,7 +2209,13 @@ function renderTrackResults(tracks, elId) {
 }
 
 async function loadArtist(name) {
-    const data = await api(`/api/music/artist/${encodeURIComponent(name)}`);
+    let data;
+    try {
+        data = await api(`/api/music/artist/${encodeURIComponent(name)}`);
+    } catch (e) {
+        toast(`Failed to load artist: ${e.message}`, 'error');
+        return;
+    }
     if (!data || data.error) return;
 
     document.querySelectorAll('#music-sidebar .sidebar-tab-content').forEach(t => t.classList.add('hidden'));
@@ -2245,21 +2368,30 @@ function startBlackoutLivePoll() {
     }, 4000);
 }
 
+let _powerMenuHandler = null;
 function togglePowerMenu() {
     const menu = document.getElementById('power-menu');
+    const wasHidden = menu.classList.contains('hidden');
     menu.classList.toggle('hidden');
-    if (!menu.classList.contains('hidden')) {
+
+    if (_powerMenuHandler) {
+        document.removeEventListener('click', _powerMenuHandler);
+        _powerMenuHandler = null;
+    }
+
+    if (wasHidden) {
         fetchServerStatus();
         startBlackoutLivePoll();
         setTimeout(() => {
-            const handler = (e) => {
+            _powerMenuHandler = (e) => {
                 if (!menu.contains(e.target) && e.target.id !== 'btn-power') {
                     menu.classList.add('hidden');
                     stopBlackoutLivePoll();
-                    document.removeEventListener('click', handler);
+                    document.removeEventListener('click', _powerMenuHandler);
+                    _powerMenuHandler = null;
                 }
             };
-            document.addEventListener('click', handler);
+            document.addEventListener('click', _powerMenuHandler);
         }, 0);
     } else {
         stopBlackoutLivePoll();

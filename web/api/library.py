@@ -6,7 +6,7 @@ import subprocess
 import sys
 import threading
 
-from flask import Blueprint, jsonify, request, abort, current_app
+from flask import Blueprint, jsonify, request, current_app
 
 from jambox_config import build_subprocess_env
 
