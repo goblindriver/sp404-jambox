@@ -114,6 +114,23 @@ def _read_int(name, default, minimum=None):
     return parsed
 
 
+def _read_optional_int(name, default=None, minimum=None):
+    """Like _read_int but returns default when the variable is unset or empty."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    value = value.strip()
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be an integer") from exc
+    if minimum is not None and parsed < minimum:
+        raise ConfigError(f"{name} must be >= {minimum}")
+    return parsed
+
+
 def _read_choice(name, default, choices):
     value = os.environ.get(name)
     if value is None:
@@ -161,6 +178,13 @@ def load_settings(repo_dir):
         "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
         "LLM_MODEL": _read_command("SP404_LLM_MODEL", "qwen3"),
         "LLM_TIMEOUT": _read_int("SP404_LLM_TIMEOUT", DEFAULT_LLM_TIMEOUT, minimum=1),
+        # smart_retag only: longer HTTP read than vibe UI; unset = script default floor
+        "SMART_RETAG_LLM_TIMEOUT": _read_optional_int(
+            "SP404_SMART_RETAG_LLM_TIMEOUT", default=None, minimum=60
+        ),
+        "SMART_RETAG_LLM_RETRIES": _read_optional_int(
+            "SP404_SMART_RETAG_LLM_RETRIES", default=None, minimum=0
+        ),
         "MUSICVAE_CHECKPOINT_DIR": _read_optional_path(
             "SP404_MUSICVAE_CHECKPOINT_DIR", os.path.join(repo_dir, "models", "musicvae")
         ),

@@ -2390,7 +2390,7 @@ function renderBlackoutPanel(b) {
         row(!!lora.train_script, false, loraLine),
         hostHtml,
         liveHtml,
-        `<div class="blackout-cli" title="Run from repo root with .venv/bin/python">eval: .venv/bin/python training/vibe/eval_model.py --mode base \u00b7 dataset: training/vibe/prepare_dataset.py \u00b7 pattern: training/pattern/readiness.py</div>`,
+        `<div class="blackout-cli" title="Run from repo root with .venv/bin/python">eval: training/vibe/eval_model.py \u00b7 dataset: prepare_dataset.py \u00b7 pattern: readiness.py \u00b7 quality: scripts/review_tag_outputs.py</div>`,
     ].join('');
 }
 

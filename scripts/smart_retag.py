@@ -35,6 +35,8 @@ TAGS_FILE = SETTINGS["TAGS_FILE"]
 LLM_ENDPOINT = SETTINGS.get("LLM_ENDPOINT", "")
 LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3")
 LLM_TIMEOUT = SETTINGS.get("LLM_TIMEOUT", 30)
+SMART_RETAG_LLM_TIMEOUT = SETTINGS.get("SMART_RETAG_LLM_TIMEOUT")
+SMART_RETAG_LLM_RETRIES = SETTINGS.get("SMART_RETAG_LLM_RETRIES")
 REPO_DIR = os.path.dirname(SCRIPTS_DIR)
 CHECKPOINT_PATH = os.path.join(REPO_DIR, "data", "retag_checkpoint.json")
 QUARANTINE_DIR = os.path.join(LIBRARY, "_QUARANTINE")
@@ -206,14 +208,32 @@ _llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
               'empty': 0, 'parse_fail': 0, 'exception': 0}
 
 
-def _call_llm(prompt, retries=2):
+def _retag_llm_read_timeout_seconds():
+    """HTTP read timeout for Ollama completion (32B + librosa contention needs headroom)."""
+    if SMART_RETAG_LLM_TIMEOUT is not None:
+        return int(SMART_RETAG_LLM_TIMEOUT)
+    return max(int(LLM_TIMEOUT), 420)
+
+
+def _retag_llm_retries():
+    """Number of extra attempts after the first (timeouts / 5xx retry)."""
+    if SMART_RETAG_LLM_RETRIES is not None:
+        return int(SMART_RETAG_LLM_RETRIES)
+    return 3
+
+
+def _call_llm(prompt, retries=None):
     """Send prompt to Ollama and parse JSON response. Retries on timeout."""
     if not LLM_ENDPOINT:
         return None
 
     import requests
 
-    timeout = max(LLM_TIMEOUT, 180)  # 32b on 24GB needs headroom
+    if retries is None:
+        retries = _retag_llm_retries()
+    read_timeout = _retag_llm_read_timeout_seconds()
+    # Separate connect (fail fast) vs read (generation can be slow under GPU/CPU load)
+    timeout = (30, read_timeout)
 
     for attempt in range(retries + 1):
         _llm_stats['calls'] += 1
@@ -622,6 +642,13 @@ def run(args):
         return
 
     print("Processing %d files...\n" % len(files))
+    if LLM_ENDPOINT:
+        print(
+            "LLM: read timeout %ds, up to %d attempts per file "
+            "(SP404_SMART_RETAG_LLM_TIMEOUT / SP404_SMART_RETAG_LLM_RETRIES)"
+            % (_retag_llm_read_timeout_seconds(), _retag_llm_retries() + 1),
+            flush=True,
+        )
 
     total_tagged = total_quarantined = total_errors = 0
     processed_files = []
@@ -724,6 +751,12 @@ def run_revibe(args):
         return
 
     print("Re-vibing %d files with updated production prompt...\n" % len(candidates))
+    print(
+        "LLM: read timeout %ds, up to %d attempts per file "
+        "(SP404_SMART_RETAG_LLM_TIMEOUT / SP404_SMART_RETAG_LLM_RETRIES)"
+        % (_retag_llm_read_timeout_seconds(), _retag_llm_retries() + 1),
+        flush=True,
+    )
 
     # Subjective fields to overwrite
     REVIBE_FIELDS = ('vibe', 'texture', 'energy', 'quality_score',
