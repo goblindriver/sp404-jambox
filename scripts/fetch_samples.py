@@ -398,14 +398,30 @@ def load_config():
     return payload
 
 
-def clear_staging_wavs():
-    """Remove only staged WAV outputs so a fetch run starts cleanly."""
+def clear_staging_wavs(bank=None, pad=None):
+    """Remove staged WAV outputs for the targeted scope.
+
+    bank=None, pad=None → wipe all WAVs (full fetch).
+    bank='b', pad=None → wipe only Bank B WAVs.
+    bank='b', pad=3    → wipe only B0000003.WAV.
+    """
     if not os.path.isdir(STAGING):
         return
 
+    if bank and pad:
+        target = f"{bank.upper()}{int(pad):07d}.WAV"
+        path = os.path.join(STAGING, target)
+        if os.path.isfile(path):
+            os.remove(path)
+        return
+
+    prefix = bank.upper() if bank else None
     for name in os.listdir(STAGING):
-        if name.upper().endswith('.WAV'):
-            os.remove(os.path.join(STAGING, name))
+        if not name.upper().endswith('.WAV'):
+            continue
+        if prefix and not name.upper().startswith(prefix):
+            continue
+        os.remove(os.path.join(STAGING, name))
 
 
 def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_files, cache_entries=None):
@@ -437,7 +453,7 @@ def main():
 
     config = load_config()
     os.makedirs(STAGING, exist_ok=True)
-    clear_staging_wavs()
+    clear_staging_wavs(bank=args.bank, pad=args.pad)
 
     # Load tag database once
     tag_db = load_tag_db()
@@ -482,19 +498,21 @@ def main():
                 print(f"    Target: {bank_bpm} BPM, Key: {bank_key}")
 
             fetched = 0
+            valid_pads = 0
             for pad_num, pad_query in pads.items():
                 try:
                     pad_num = int(pad_num)
                 except (TypeError, ValueError):
                     continue
+                valid_pads += 1
                 print(f"  Pad {pad_num}: {pad_query}")
                 result = fetch_pad(bank_letter, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                 if result:
                     fetched += 1
                     generated_files.append(result)
-            print(f"  → {fetched}/{len(pads)} pads filled")
+            print(f"  → {fetched}/{valid_pads} pads filled")
             total_fetched += fetched
-            total_pads += len(pads)
+            total_pads += valid_pads
 
     save_score_cache(LIBRARY, score_cache)
 

@@ -32,7 +32,7 @@ def status():
             pass
         # Count samples on card
         try:
-            wavs = [f for f in os.listdir(sd_smpl) if f.endswith('.WAV')]
+            wavs = [f for f in os.listdir(sd_smpl) if f.upper().endswith('.WAV')]
             info['sample_count'] = len(wavs)
             bank_a = [f for f in wavs if f.startswith('A')]
             info['bank_a_count'] = len(bank_a)
@@ -114,7 +114,7 @@ def scan_card():
     except OSError:
         all_files = []
 
-    wav_files = {f for f in all_files if f.upper().endswith('.WAV')}
+    wav_files = {f.upper() for f in all_files if f.upper().endswith('.WAV')}
 
     banks = {}
     for bank_letter in BANKS:
@@ -152,7 +152,7 @@ def scan_card():
     ptn_dir = os.path.join(sd_card, 'ROLAND', 'SP-404SX', 'PTN')
     pattern_count = 0
     if os.path.isdir(ptn_dir):
-        pattern_count = len([f for f in os.listdir(ptn_dir) if f.endswith('.BIN')])
+        pattern_count = len([f for f in os.listdir(ptn_dir) if f.upper().endswith('.BIN')])
 
     # Disk usage
     try:

@@ -14,7 +14,7 @@ pattern_bp = Blueprint("pattern", __name__)
 
 
 def _json_object_body():
-    payload = request.get_json() or {}
+    payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
     return payload

@@ -390,6 +390,13 @@ def _load_config():
 
 
 def _save_config(config):
-    """Write bank_config.yaml preserving structure."""
-    with open(CONFIG_PATH, 'w') as f:
-        yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    """Write bank_config.yaml atomically (temp+rename)."""
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix=".yaml", dir=os.path.dirname(CONFIG_PATH) or ".")
+    try:
+        with os.fdopen(fd, "w") as f:
+            yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        os.replace(tmp, CONFIG_PATH)
+    except BaseException:
+        os.unlink(tmp)
+        raise

@@ -280,7 +280,8 @@ def _call_llm(prompt, model, retries=None):
                 json={"model": model, "messages": [
                     {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
-                ], "temperature": 0.3, "max_tokens": 2048},
+                ], "temperature": 0.3, "max_tokens": 2048,
+                    "response_format": {"type": "json_object"}},
                 timeout=timeout,
             )
             if resp.status_code != 200:
@@ -578,9 +579,17 @@ def _load_checkpoint():
 
 
 def _save_checkpoint(cp):
-    os.makedirs(os.path.dirname(CHECKPOINT_PATH), exist_ok=True)
-    with open(CHECKPOINT_PATH, 'w') as f:
-        json.dump(cp, f, indent=2)
+    import tempfile
+    cp_dir = os.path.dirname(CHECKPOINT_PATH) or "."
+    os.makedirs(cp_dir, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(suffix=".json", dir=cp_dir)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(cp, f, indent=2)
+        os.replace(tmp, CHECKPOINT_PATH)
+    except BaseException:
+        os.unlink(tmp)
+        raise
 
 
 def _load_tags():

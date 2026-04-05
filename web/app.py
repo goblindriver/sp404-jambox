@@ -6,7 +6,8 @@ import os, sys
 SCRIPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts')
 sys.path.insert(0, os.path.abspath(SCRIPT_DIR))
 
-from flask import Flask, render_template
+from flask import Flask, jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 from jambox_config import ConfigError, load_settings
 
 app = Flask(__name__,
@@ -43,6 +44,21 @@ app.register_blueprint(vibe_bp, url_prefix='/api')
 app.register_blueprint(pattern_bp, url_prefix='/api')
 app.register_blueprint(media_bp, url_prefix='/api')
 app.register_blueprint(blackout_bp, url_prefix='/api')
+
+
+@app.errorhandler(HTTPException)
+def handle_http_error(exc):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': exc.description, 'ok': False}), exc.code
+    return exc.get_response()
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(exc):
+    if request.path.startswith('/api/'):
+        app.logger.exception("Unhandled error on %s", request.path)
+        return jsonify({'error': 'Internal server error', 'ok': False}), 500
+    raise exc
 
 
 @app.route('/')

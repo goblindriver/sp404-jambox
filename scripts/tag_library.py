@@ -91,7 +91,7 @@ FILENAME_TYPE_PATTERNS = [
     (re.compile(r"\bbass\b|\bsub\b|\b808\b"), "BAS"),
     (re.compile(r"\bguitar\b|\bgtr\b"), "GTR"),
     (re.compile(r"\bkeys?\b|\bpiano\b|\borgan\b|\brhodes\b|\bwurlitzer\b|\bclavinet\b"), "KEY"),
-    (re.compile(r"\bsynth\b|\blead\b|\barp\b"), "SYN"),
+    (re.compile(r"\bsynth\b|\blead\b|\barp\b|\bchord\b"), "SYN"),
     (re.compile(r"\bpad\b|\batmosphere\b|\batmos\b"), "PAD"),
     (re.compile(r"\bstring\b|\bviolin\b|\bcello\b|\bviola\b|\borchestra\b"), "STR"),
     (re.compile(r"\bbrass\b|\btrumpet\b|\btrombone\b"), "BRS"),
@@ -101,7 +101,7 @@ FILENAME_TYPE_PATTERNS = [
     (re.compile(r"\briser\b|\bsweep\b|\bbuild\b"), "RSR"),
     (re.compile(r"\bfoley\b|\bfootstep\b"), "FLY"),
     (re.compile(r"\btape\b|\bvinyl\b|\bcrackle\b|\bhiss\b"), "TPE"),
-    (re.compile(r"\bstab\b|\bhit\b|\bchord\b|\bimpact\b|\bboom\b"), "SFX"),
+    (re.compile(r"\bstab\b|\bhit\b|\bimpact\b|\bboom\b"), "SFX"),
     (re.compile(r"\bfx\b|\bsfx\b|\btransition\b"), "FX"),
     (re.compile(r"\bsampl\b|\bphrase\b|\bchop\b"), "SMP"),
 ]
@@ -180,7 +180,7 @@ GENRE_PATTERNS = [
     (re.compile(r"r&b|rnb"), "rnb"),
     (re.compile(r"house"), "house"),
     (re.compile(r"uk[\s_-]?garage"), "uk-garage"),
-    (re.compile(r"garage"), "uk-garage"),
+    (re.compile(r"\bgarage\b(?!\s*rock)"), "uk-garage"),
     (re.compile(r"techno"), "electronic"),
     (re.compile(r"electro[\s_-]?clash"), "electronic"),
     (re.compile(r"electro"), "electronic"),
@@ -195,7 +195,7 @@ GENRE_PATTERNS = [
     (re.compile(r"afrobeat|afro"), "afrobeat"),
     (re.compile(r"city[\s_-]?pop"), "city-pop"),
     (re.compile(r"psychedelic|psych"), "psychedelic"),
-    (re.compile(r"dub(?!step)"), "dub"),
+    (re.compile(r"\bdub\b(?!step)"), "dub"),
     (re.compile(r"disco"), "disco"),
     (re.compile(r"reggae"), "reggae"),
     (re.compile(r"latin|salsa|bossa"), "latin"),
@@ -575,7 +575,9 @@ def classify_playability(duration, type_code, filename, bpm):
 
     # Longer samples
     is_loop_hint = "loop" in fname_lower or type_code == "BRK"
-    if is_loop_hint or (bpm and duration >= 2):
+    if is_loop_hint:
+        return "loop"
+    if bpm and duration >= 4 and type_code not in PERCUSSIVE_CODES:
         return "loop"
     if type_code in ("VOX", "SMP") and duration < 10:
         return "chop-ready"
@@ -847,9 +849,13 @@ def main():
 
     # Remove stale entries — only for the scope we scanned.
     # A --path run should not delete entries outside its target directory.
+    # Preserve entries under SKIP_DIRS (quarantine, dupes, etc.) since those
+    # directories are intentionally excluded from scanning.
     if not args.path:
         existing_rels = {rel for rel, _ in files}
-        removed = [k for k in db if k not in existing_rels]
+        skip_prefixes = tuple(d + "/" for d in SKIP_DIRS)
+        removed = [k for k in db
+                    if k not in existing_rels and not k.startswith(skip_prefixes)]
         for k in removed:
             del db[k]
         if removed:

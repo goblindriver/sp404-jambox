@@ -9,7 +9,7 @@ import os
 import sys
 import threading
 import uuid
-from flask import Blueprint, jsonify, request, send_file, abort, Response, current_app
+from flask import Blueprint, jsonify, request, send_file, Response, current_app
 
 music_bp = Blueprint('music', __name__)
 
@@ -33,7 +33,7 @@ def _stems_dir():
 
 
 def _json_object_body():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         raise ValueError('Request body must be a JSON object')
     return data
@@ -273,7 +273,7 @@ def album_art():
     """
     thumb = request.args.get('thumb', '')
     if not thumb:
-        abort(404)
+        return jsonify({'error': 'No thumb parameter'}), 404
 
     # Plex stores art in the metadata directory
     # Format: metadata://posters/<hash>
@@ -288,7 +288,7 @@ def album_art():
             "Plug-in Support/Databases/com.plexapp.plugins.library.blobs.db"
         )
         if not os.path.exists(blobs_db):
-            abort(404)
+            return jsonify({'error': 'Plex blobs database not found'}), 404
 
         # Extract the hash from the metadata:// URL
         # Format: metadata://posters/<hash> or tv.plex.agents.music_<hash>
@@ -298,15 +298,15 @@ def album_art():
         conn = sqlite3.connect(uri, uri=True)
         conn.row_factory = sqlite3.Row
 
-        # Try to find the blob
-        row = conn.execute("""
-            SELECT blob_data FROM blobs
-            WHERE linked_id IN (
-                SELECT id FROM metadata_items WHERE user_thumb_url = ?
-            ) LIMIT 1
-        """, (thumb,)).fetchone()
-
-        conn.close()
+        try:
+            row = conn.execute("""
+                SELECT blob_data FROM blobs
+                WHERE linked_id IN (
+                    SELECT id FROM metadata_items WHERE user_thumb_url = ?
+                ) LIMIT 1
+            """, (thumb,)).fetchone()
+        finally:
+            conn.close()
 
         if row and row['blob_data']:
             # Detect image type from magic bytes
@@ -336,7 +336,7 @@ def album_art():
         # Validate hash is alphanumeric (no path traversal)
         import re as _re
         if not _re.match(r'^[a-zA-Z0-9]+$', poster_hash):
-            abort(404)
+            return jsonify({'error': 'Invalid art hash'}), 404
 
         if len(poster_hash) >= 2:
             for sub in ['Albums', 'Artists']:
@@ -354,7 +354,7 @@ def album_art():
     except Exception:
         pass
 
-    abort(404)
+    return jsonify({'error': 'Album art not found'}), 404
 
 
 @music_bp.route('/music/preview/<int:track_id>')
@@ -362,22 +362,21 @@ def preview_track(track_id):
     """Stream a track from the music library for preview."""
     plex = _get_plex()
     if not plex:
-        abort(404)
+        return jsonify({'error': 'Plex not available'}), 404
 
     try:
         t = plex.track(track_id)
         if not t or not t.get('file_path'):
-            abort(404)
+            return jsonify({'error': 'Track not found'}), 404
 
         full = os.path.realpath(t['file_path'])
-        # Validate path is within the music library root
         stats = plex.stats()
         root = os.path.realpath(stats.get('root_path', ''))
-        if not root or not full.startswith(root):
-            abort(403)
+        if not root or not full.startswith(root + os.sep):
+            return jsonify({'error': 'Access denied'}), 403
 
         if not os.path.isfile(full):
-            abort(404)
+            return jsonify({'error': 'Track file not found'}), 404
 
         ext = os.path.splitext(full)[1].lower()
         mimes = {
@@ -388,13 +387,26 @@ def preview_track(track_id):
         }
         return send_file(full, mimetype=mimes.get(ext, 'audio/mpeg'))
     except Exception:
-        abort(404)
+        return jsonify({'error': 'Preview unavailable'}), 404
 
 
 # ── Stem splitting ──
 
 _split_jobs = {}
 _split_lock = threading.Lock()
+_SPLIT_JOB_MAX_AGE = 600  # 10 minutes
+
+
+def _prune_finished_splits():
+    """Remove completed/errored split jobs older than _SPLIT_JOB_MAX_AGE seconds."""
+    import time
+    now = time.time()
+    with _split_lock:
+        stale = [jid for jid, j in _split_jobs.items()
+                 if j['status'] in ('done', 'error')
+                 and now - j.get('finished_at', 0) > _SPLIT_JOB_MAX_AGE]
+        for jid in stale:
+            del _split_jobs[jid]
 
 
 def _run_split(job_id, track_data):
@@ -512,7 +524,9 @@ def _run_split(job_id, track_data):
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
+        import time as _time
         _split_jobs[job_id]['status'] = 'done'
+        _split_jobs[job_id]['finished_at'] = _time.time()
         _split_jobs[job_id]['result'] = {
             'stems': created_stems,
             'source': source_name,
@@ -520,7 +534,9 @@ def _run_split(job_id, track_data):
         }
 
     except Exception as e:
+        import time as _time
         _split_jobs[job_id]['status'] = 'error'
+        _split_jobs[job_id]['finished_at'] = _time.time()
         _split_jobs[job_id]['result'] = str(e)
 
 
@@ -550,7 +566,7 @@ def split_track():
     if not track_data.get('file_path') or not os.path.isfile(track_data['file_path']):
         return jsonify({'error': 'Track file not accessible'}), 404
 
-    # Check if already splitting
+    _prune_finished_splits()
     with _split_lock:
         for j in _split_jobs.values():
             if j['status'] in {'starting', 'splitting'} and j.get('track_id') == track_id:

@@ -274,19 +274,20 @@ def _migrate_json_to_sqlite(json_path, db_path):
         return
 
     conn = sqlite3.connect(db_path)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS tags (
-            rel_path TEXT PRIMARY KEY,
-            data TEXT NOT NULL
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                rel_path TEXT PRIMARY KEY,
+                data TEXT NOT NULL
+            )
+        """)
+        conn.executemany(
+            "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
+            [(k, json.dumps(v)) for k, v in payload.items()]
         )
-    """)
-    # Batch insert
-    conn.executemany(
-        "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
-        [(k, json.dumps(v)) for k, v in payload.items()]
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
     print(f"[TAG_DB] Migrated {len(payload)} entries from JSON to SQLite")
 
 
@@ -305,8 +306,10 @@ def load_tag_db(tags_file):
     if os.path.exists(db_path):
         try:
             conn = sqlite3.connect(db_path)
-            rows = conn.execute("SELECT rel_path, data FROM tags").fetchall()
-            conn.close()
+            try:
+                rows = conn.execute("SELECT rel_path, data FROM tags").fetchall()
+            finally:
+                conn.close()
             result = {}
             for rel_path, data in rows:
                 try:
@@ -332,31 +335,39 @@ def save_tag_db(tags_file, db):
     db_path = _tags_sqlite_path(tags_file)
 
     conn = _ensure_tags_sqlite(db_path)
+    try:
+        existing_count = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
 
-    existing_count = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
+        conn.executemany(
+            "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
+            [(k, json.dumps(v)) for k, v in db.items()]
+        )
 
-    conn.executemany(
-        "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
-        [(k, json.dumps(v)) for k, v in db.items()]
-    )
-
-    existing = {r[0] for r in conn.execute("SELECT rel_path FROM tags").fetchall()}
-    stale = existing - set(db.keys())
-    if stale:
-        stale_ratio = len(stale) / max(existing_count, 1)
-        if stale_ratio > 0.5 and existing_count > 500:
-            print(f"[TAG_DB] WARNING: refusing to delete {len(stale):,} of {existing_count:,} rows "
-                  f"({stale_ratio:.0%}) — looks like a partial save. Skipping stale cleanup.")
-        else:
-            conn.executemany("DELETE FROM tags WHERE rel_path=?", [(k,) for k in stale])
-    conn.commit()
-    conn.close()
+        existing = {r[0] for r in conn.execute("SELECT rel_path FROM tags").fetchall()}
+        stale = existing - set(db.keys())
+        if stale:
+            stale_ratio = len(stale) / max(existing_count, 1)
+            if stale_ratio > 0.5 and existing_count > 500:
+                print(f"[TAG_DB] WARNING: refusing to delete {len(stale):,} of {existing_count:,} rows "
+                      f"({stale_ratio:.0%}) — looks like a partial save. Skipping stale cleanup.")
+            else:
+                conn.executemany("DELETE FROM tags WHERE rel_path=?", [(k,) for k in stale])
+        conn.commit()
+    finally:
+        conn.close()
 
     estimated_size = len(db) * 1100
     if estimated_size < 50 * 1024 * 1024:
         try:
-            with open(tags_file, "w") as fh:
-                json.dump(db, fh, indent=1, sort_keys=True)
+            import tempfile
+            fd, tmp = tempfile.mkstemp(suffix=".json", dir=os.path.dirname(tags_file) or ".")
+            try:
+                with os.fdopen(fd, "w") as fh:
+                    json.dump(db, fh, indent=1, sort_keys=True)
+                os.replace(tmp, tags_file)
+            except BaseException:
+                os.unlink(tmp)
+                raise
         except OSError:
             pass
 

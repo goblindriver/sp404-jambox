@@ -30,17 +30,18 @@ def _vibe_session_stats(db_path: str) -> dict:
         return {"db_exists": False, "total": 0, "by_dataset_status": {}}
     try:
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='vibe_sessions'"
-        ).fetchone()
-        if not row:
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='vibe_sessions'"
+            ).fetchone()
+            if not row:
+                return {"db_exists": True, "total": 0, "by_dataset_status": {}}
+            counts = conn.execute(
+                "SELECT dataset_status, COUNT(*) FROM vibe_sessions GROUP BY dataset_status"
+            ).fetchall()
+            total = conn.execute("SELECT COUNT(*) FROM vibe_sessions").fetchone()[0]
+        finally:
             conn.close()
-            return {"db_exists": True, "total": 0, "by_dataset_status": {}}
-        counts = conn.execute(
-            "SELECT dataset_status, COUNT(*) FROM vibe_sessions GROUP BY dataset_status"
-        ).fetchall()
-        total = conn.execute("SELECT COUNT(*) FROM vibe_sessions").fetchone()[0]
-        conn.close()
         return {
             "db_exists": True,
             "total": total,

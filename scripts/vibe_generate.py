@@ -40,7 +40,7 @@ def _read_input():
 def _strip_code_fences(text):
     text = text.strip()
     if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"^```\w*\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
     return text.strip()
 
