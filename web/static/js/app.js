@@ -2224,20 +2224,45 @@ async function splitTrack(trackId, btn) {
 
 // ── Power Menu ──
 
+let _blackoutPollTimer = null;
+
+function stopBlackoutLivePoll() {
+    if (_blackoutPollTimer) {
+        clearInterval(_blackoutPollTimer);
+        _blackoutPollTimer = null;
+    }
+}
+
+function startBlackoutLivePoll() {
+    stopBlackoutLivePoll();
+    _blackoutPollTimer = setInterval(async () => {
+        try {
+            const b = await api('/api/blackout/status');
+            renderBlackoutPanel(b);
+        } catch (e) {
+            /* keep last good render */
+        }
+    }, 4000);
+}
+
 function togglePowerMenu() {
     const menu = document.getElementById('power-menu');
     menu.classList.toggle('hidden');
     if (!menu.classList.contains('hidden')) {
         fetchServerStatus();
+        startBlackoutLivePoll();
         setTimeout(() => {
             const handler = (e) => {
                 if (!menu.contains(e.target) && e.target.id !== 'btn-power') {
                     menu.classList.add('hidden');
+                    stopBlackoutLivePoll();
                     document.removeEventListener('click', handler);
                 }
             };
             document.addEventListener('click', handler);
         }, 0);
+    } else {
+        stopBlackoutLivePoll();
     }
 }
 
@@ -2248,6 +2273,11 @@ function renderBlackoutPanel(b) {
         el.textContent = b && b.error ? String(b.error) : 'Blackout status unavailable';
         return;
     }
+    const esc = (s) => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    const escAttr = (s) => esc(s).replace(/"/g, '&quot;');
     const mode = b.vibe_parser_mode || 'base';
     const parserOk = !b.parser_needs_llm || b.parser_llm_ready;
     const parserLabel = !b.parser_needs_llm
@@ -2270,6 +2300,82 @@ function renderBlackoutPanel(b) {
         ? `LoRA: train_lora.py + ${(lora.config_files || []).length} configs (GPU machine)`
         : 'LoRA: train script missing';
 
+    const hm = b.host_metrics || {};
+    const gpu = hm.gpu || {};
+    let hostHtml = '';
+    if (hm.error === 'psutil_not_installed') {
+        hostHtml = `<div class="blackout-live"><div class="blackout-live-title">Host</div><div class="blackout-live-row">${esc('pip install psutil (in the same venv as the web app)')}</div></div>`;
+    } else if (typeof hm.cpu_percent === 'number') {
+        const swapPart = (hm.swap_used_gb != null && hm.swap_used_gb > 0.05)
+            ? ` \u00b7 swap ${hm.swap_used_gb} GB`
+            : '';
+        const loadPart = hm.load_1m != null ? ` \u00b7 load ${hm.load_1m}` : '';
+        const ollPart = hm.ollama_rss_mb != null
+            ? `<div class="blackout-live-row">Ollama (all processes) RSS ~${hm.ollama_rss_mb} MB</div>`
+            : '';
+        const srvPart = hm.server_rss_mb != null
+            ? `<div class="blackout-live-row">Jambox Flask RSS ~${hm.server_rss_mb} MB</div>`
+            : '';
+        const gpuTitle = escAttr((gpu.note || '').slice(0, 500));
+        const gpuLabel = esc(gpu.label || 'GPU');
+        hostHtml = `<div class="blackout-live">
+            <div class="blackout-live-title">Host (this machine)</div>
+            <div class="blackout-live-row">CPU ${hm.cpu_percent}% \u00b7 RAM ${hm.memory_percent}% (${hm.memory_used_gb} / ${hm.memory_total_gb} GB)${swapPart}${loadPart}</div>
+            <div class="blackout-live-row" title="${gpuTitle}">${gpuLabel}: ${gpu.utilization_percent != null ? gpu.utilization_percent + '%' : 'utilization n/a'} \u2014 Activity Monitor \u2192 GPU History</div>
+            ${ollPart}${srvPart}
+        </div>`;
+    }
+
+    const live = b.live_crunch || {};
+    const cp = live.retag_checkpoint;
+    const proc = live.processes || {};
+    const snip = live.log_snippets || {};
+    let liveHtml = '';
+    const retagBits = [];
+    if (cp && !cp.error) {
+        const tot = cp.total_files != null ? cp.total_files : '?';
+        const pr = cp.processed != null ? cp.processed : '?';
+        retagBits.push(`checkpoint ${pr}/${tot}`);
+        if (cp.last_updated) retagBits.push(cp.last_updated.replace('T', ' ').slice(0, 19));
+        if (cp.llm_stats && typeof cp.llm_stats === 'object') {
+            const s = cp.llm_stats;
+            const calls = s.calls != null ? s.calls : '';
+            const okn = s.success != null ? s.success : '';
+            if (calls !== '') retagBits.push(`LLM ${okn}/${calls} ok`);
+        }
+    } else if (cp && cp.error) {
+        retagBits.push('checkpoint unreadable');
+    } else {
+        retagBits.push('no data/retag_checkpoint.json');
+    }
+    const runBits = [];
+    if (proc.smart_retag) runBits.push('smart_retag');
+    if (proc.tag_library) runBits.push('tag_library');
+    const runStr = runBits.length ? runBits.join(' + ') : 'none (pgrep)';
+    const tailLib = (snip.tag_library || []).join('\n');
+    const tailRetag = (snip.retag || []).join('\n');
+    const anyTail = tailLib || tailRetag;
+    const tailBlock = anyTail
+        ? esc([tailLib && 'tag_library.log:\n' + tailLib, tailRetag && 'crunch_retag.log:\n' + tailRetag].filter(Boolean).join('\n\n'))
+        : '';
+    const watchSrc = live.watch_source || 'app_repo';
+    const watchRoot = live.watch_root || '';
+    const invalidCrunch = !!live.crunch_repo_invalid;
+    const watchTitle = watchSrc === 'env'
+        ? 'Live crunch (SP404_CRUNCH_REPO)'
+        : 'Live crunch (app repo)';
+    const watchTitleTip = escAttr(watchRoot.slice(0, 800));
+    const crunchWarn = invalidCrunch
+        ? '<div class="blackout-live-row" style="color:#e57373">SP404_CRUNCH_REPO invalid \u2014 using app repo; fix path in .env</div>'
+        : '';
+    liveHtml = `<div class="blackout-live">
+        <div class="blackout-live-title" title="${watchTitleTip}">${watchTitle}</div>
+        ${crunchWarn}
+        <div class="blackout-live-row">Processes: ${esc(runStr)}</div>
+        <div class="blackout-live-row">Retag: ${esc(retagBits.join(' \u00b7 '))}</div>
+        ${anyTail ? `<div class="blackout-live-tail">${tailBlock}</div>` : ''}
+    </div>`;
+
     const row = (ok, warn, text) => {
         const cls = ok ? 'ok' : (warn ? 'warn' : 'bad');
         return `<div class="blackout-row"><span class="blackout-dot ${cls}"></span><span>${text}</span></div>`;
@@ -2282,6 +2388,8 @@ function renderBlackoutPanel(b) {
         row(patternOk, !patternOk, patternOk ? 'Pattern training: gates satisfied' : 'Pattern training: gated (MIDI / labels / evals)'),
         row(true, false, exportLine),
         row(!!lora.train_script, false, loraLine),
+        hostHtml,
+        liveHtml,
         `<div class="blackout-cli" title="Run from repo root with .venv/bin/python">eval: .venv/bin/python training/vibe/eval_model.py --mode base \u00b7 dataset: training/vibe/prepare_dataset.py \u00b7 pattern: training/pattern/readiness.py</div>`,
     ].join('');
 }
@@ -2326,6 +2434,7 @@ async function fetchServerStatus() {
 
 async function restartServer() {
     if (!confirm('Restart the Jambox server? The page will reload.')) return;
+    stopBlackoutLivePoll();
     document.getElementById('power-menu').classList.add('hidden');
     toast('Restarting server...');
     try {

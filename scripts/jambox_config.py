@@ -175,6 +175,8 @@ def load_settings(repo_dir):
         "FINE_TUNED_LLM_ENDPOINT": _read_command("SP404_FINE_TUNED_LLM_ENDPOINT", ""),
         "FINE_TUNED_LLM_MODEL": _read_command("SP404_FINE_TUNED_LLM_MODEL", ""),
         "VIBE_RETRIEVAL_LIMIT": _read_int("SP404_VIBE_RETRIEVAL_LIMIT", 4, minimum=0),
+        # Optional second clone: blackout "Live crunch" reads retag checkpoint + crunch logs here
+        "CRUNCH_REPO": _read_optional_path("SP404_CRUNCH_REPO", ""),
     }
 
 

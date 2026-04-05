@@ -4,3 +4,7 @@ numpy
 PyYAML
 requests
 watchdog
+psutil
+librosa
+soundfile
+demucs

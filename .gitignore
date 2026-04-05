@@ -26,6 +26,17 @@ artifacts/models/
 # Secrets
 .env
 
+# Local Ollama benchmark output (scripts/benchmark_ollama_models.py --out)
+.benchmark_ollama_results.json
+
+# Ad-hoc crunch logs
+data/crunch_*.log
+# Smart retag / taste (local machine state)
+data/retag_checkpoint.json
+data/taste_profile.json
+data/taste_profile_consumption.json
+data/taste_profile_production.json
+
 # Python
 __pycache__/
 *.pyc

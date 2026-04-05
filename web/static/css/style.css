@@ -1821,6 +1821,38 @@ main {
     line-height: 1.45;
 }
 
+.blackout-live {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.45;
+}
+.blackout-live-title {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.blackout-live-row {
+    margin-bottom: 2px;
+    word-break: break-word;
+}
+.blackout-live-tail {
+    margin-top: 4px;
+    padding: 4px 6px;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    font-size: 9px;
+    color: var(--text-muted);
+    max-height: 72px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
 /* Watcher Activity Feed */
 .watcher-feed {
     position: fixed;
