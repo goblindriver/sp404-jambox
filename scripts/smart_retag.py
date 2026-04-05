@@ -13,8 +13,10 @@ Usage:
     python scripts/smart_retag.py --dry-run --limit 10      # feature extraction only
 
 Env:
-    SP404_SMART_RETAG_LLM_MODEL — optional; bulk tagging model (default: same as SP404_LLM_MODEL).
-    Use e.g. qwen3:8b here while keeping qwen3:32b for the web vibe UI if 32b times out under load.
+    SP404_LLM_MODEL — primary Ollama model for SHORT clips (duration <= split; usually qwen3:32b).
+    SP404_SMART_RETAG_DURATION_SPLIT_SEC — seconds; longer audio uses the fast retag model (default 60).
+    SP404_SMART_RETAG_LLM_MODEL — model for long clips; empty defaults to qwen3:8b.
+    SP404_SMART_RETAG_SKIP_ABOVE_SECONDS — if set, skip LLM entirely when duration >= this (features only).
 """
 
 import argparse
@@ -37,8 +39,11 @@ SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 LLM_ENDPOINT = SETTINGS.get("LLM_ENDPOINT", "")
-# Bulk retag may use a smaller/faster model than vibe UI (see SP404_SMART_RETAG_LLM_MODEL).
-RETAG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or SETTINGS.get("LLM_MODEL", "qwen3")
+# Short clips (<= split sec): main model. Long clips: fast model (defaults to 8b if env empty).
+PRIMARY_LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3")
+LONG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3:8b"
+SMART_RETAG_DURATION_SPLIT_SEC = int(SETTINGS.get("SMART_RETAG_DURATION_SPLIT_SEC", 60))
+SMART_RETAG_SKIP_ABOVE_SECONDS = SETTINGS.get("SMART_RETAG_SKIP_ABOVE_SECONDS")
 LLM_TIMEOUT = SETTINGS.get("LLM_TIMEOUT", 30)
 SMART_RETAG_LLM_TIMEOUT = SETTINGS.get("SMART_RETAG_LLM_TIMEOUT")
 SMART_RETAG_LLM_RETRIES = SETTINGS.get("SMART_RETAG_LLM_RETRIES")
@@ -265,7 +270,26 @@ def _retag_llm_retries():
     return 3
 
 
-def _call_llm(prompt, retries=None):
+def _skip_llm_for_duration(duration_sec):
+    if SMART_RETAG_SKIP_ABOVE_SECONDS is None:
+        return False
+    if duration_sec is None:
+        return False
+    return float(duration_sec) >= float(SMART_RETAG_SKIP_ABOVE_SECONDS)
+
+
+def _llm_model_for_duration(duration_sec):
+    """Pick Ollama model: short clips use primary (e.g. 32b), long use fast (e.g. 8b)."""
+    if SMART_RETAG_DURATION_SPLIT_SEC == 0:
+        return LONG_LLM_MODEL
+    if duration_sec is None:
+        return PRIMARY_LLM_MODEL
+    if float(duration_sec) <= float(SMART_RETAG_DURATION_SPLIT_SEC):
+        return PRIMARY_LLM_MODEL
+    return LONG_LLM_MODEL
+
+
+def _call_llm(prompt, model, retries=None):
     """Send prompt to Ollama and parse JSON response. Retries on timeout."""
     if not LLM_ENDPOINT:
         return None
@@ -283,7 +307,7 @@ def _call_llm(prompt, retries=None):
         try:
             resp = requests.post(
                 LLM_ENDPOINT,
-                json={"model": RETAG_LLM_MODEL, "messages": [
+                json={"model": model, "messages": [
                     {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ], "temperature": 0.3, "max_tokens": 2048},
@@ -363,20 +387,32 @@ def _call_llm(prompt, retries=None):
 
 
 def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):
-    """Call LLM; if output is too thin for fetch, retry with stricter instructions."""
+    """Call LLM; if output is too thin for fetch, retry with stricter instructions.
+
+    Returns (validated_tags_dict, ollama_model_used_or_None, skipped_due_to_duration).
+    """
+    dur = features.get('duration')
+    fname = os.path.basename(full_path)
+    if _skip_llm_for_duration(dur):
+        if verbose:
+            print("  SKIP LLM (duration %.1fs >= %ss): %s" % (
+                float(dur), SMART_RETAG_SKIP_ABOVE_SECONDS, fname), flush=True)
+        return {}, None, True
+
+    model = _llm_model_for_duration(dur)
     prompt = _build_prompt(full_path, features)
-    raw = _call_llm(prompt)
+    raw = _call_llm(prompt, model=model)
     validated = _validate_llm_tags(raw) if raw else {}
     if _enrichment_usable(validated):
-        return validated
+        return validated, model, False
     for _ in range(repair_attempts):
         if verbose:
             print("  LLM repair pass (incomplete JSON / missing dimensions)...", flush=True)
-        raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX)
+        raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX, model=model)
         validated = _validate_llm_tags(raw2) if raw2 else {}
         if _enrichment_usable(validated):
-            return validated
-    return validated
+            return validated, model, False
+    return validated, model, False
 
 
 def _normalize_vocab_token(dim, token):
@@ -671,10 +707,13 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
             continue
 
         # 2. LLM (with repair passes when output is too thin for fetch)
+        skipped_long = False
+        used_model = None
         if LLM_ENDPOINT:
-            llm_tags = _llm_tag_with_repair(full_path, features, verbose=verbose)
+            llm_tags, used_model, skipped_long = _llm_tag_with_repair(
+                full_path, features, verbose=verbose)
             usable = _enrichment_usable(llm_tags)
-            if not usable:
+            if not usable and not skipped_long:
                 incomplete_n += 1
                 _llm_stats['incomplete'] += 1
                 if llm_tags and verbose:
@@ -683,7 +722,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
             llm_tags = {}
             usable = False
 
-        if not llm_tags:
+        if not llm_tags and not skipped_long:
             llm_failures += 1
 
         # Only promote to smart_retag_v1 when enrichment is fetch-usable; without LLM we still checkpoint.
@@ -693,7 +732,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
             existing, llm_tags, features, rel_path,
             mark_smart_retag_complete=mark_smart,
         )
-        entry['retag_model'] = RETAG_LLM_MODEL if (usable and LLM_ENDPOINT) else None
+        entry['retag_model'] = used_model if (usable and LLM_ENDPOINT) else None
         tag_db[rel_path] = entry
 
         qs = entry.get('quality_score')
@@ -720,6 +759,9 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
         if usable:
             src = "LLM"
             q_show = qs if qs is not None else "?"
+        elif skipped_long:
+            src = "SKIP-LONG"
+            q_show = "—"
         elif LLM_ENDPOINT:
             src = "features" if not llm_tags else "THIN"
             q_show = qs if qs is not None else "?"
@@ -729,7 +771,8 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
         if verbose:
             print("  %s q=%s %s [%s]: %s — %s" % (src, q_show, tc, vibe_str, fname, desc))
 
-        if mark_smart or not LLM_ENDPOINT:
+        # Checkpoint: done for resume if enriched, no-LLM run, or duration skip (avoid retry loop).
+        if mark_smart or not LLM_ENDPOINT or skipped_long:
             completed_rel_paths.append(rel_path)
 
     if llm_failures and verbose:
@@ -756,14 +799,15 @@ def retag_single(rel_path, full_path, existing_entry=None):
     if not features:
         return None
 
-    llm_tags = _llm_tag_with_repair(full_path, features, verbose=False, repair_attempts=2)
+    llm_tags, used_model, _skipped = _llm_tag_with_repair(
+        full_path, features, verbose=False, repair_attempts=2)
     usable = _enrichment_usable(llm_tags)
     existing = existing_entry or {}
     entry = _merge_tags(
         existing, llm_tags, features, rel_path,
         mark_smart_retag_complete=usable,
     )
-    entry['retag_model'] = RETAG_LLM_MODEL if usable else None
+    entry['retag_model'] = used_model if usable else None
     return entry
 
 
@@ -826,11 +870,19 @@ def run(args):
 
     print("Processing %d files...\n" % len(files))
     if LLM_ENDPOINT:
+        skip_note = (
+            " | skip LLM if duration >= %ss" % SMART_RETAG_SKIP_ABOVE_SECONDS
+            if SMART_RETAG_SKIP_ABOVE_SECONDS is not None
+            else ""
+        )
         print(
-            "LLM: model=%s | read timeout %ds | up to %d attempts per file "
-            "(SP404_SMART_RETAG_LLM_MODEL / TIMEOUT / RETRIES)"
+            "LLM: <=%ds -> %s | >%ds -> %s%s | read timeout %ds | up to %d attempts/file"
             % (
-                RETAG_LLM_MODEL,
+                SMART_RETAG_DURATION_SPLIT_SEC,
+                PRIMARY_LLM_MODEL,
+                SMART_RETAG_DURATION_SPLIT_SEC,
+                LONG_LLM_MODEL,
+                skip_note,
                 _retag_llm_read_timeout_seconds(),
                 _retag_llm_retries() + 1,
             ),
@@ -940,9 +992,12 @@ def run_revibe(args):
 
     print("Re-vibing %d files with updated production prompt...\n" % len(candidates))
     print(
-        "LLM: model=%s | read timeout %ds | up to %d attempts per file"
+        "LLM: <=%ds -> %s | >%ds -> %s | read timeout %ds | up to %d attempts/file"
         % (
-            RETAG_LLM_MODEL,
+            SMART_RETAG_DURATION_SPLIT_SEC,
+            PRIMARY_LLM_MODEL,
+            SMART_RETAG_DURATION_SPLIT_SEC,
+            LONG_LLM_MODEL,
             _retag_llm_read_timeout_seconds(),
             _retag_llm_retries() + 1,
         ),
@@ -984,7 +1039,8 @@ def run_revibe(args):
             updated += 1
             continue
 
-        llm_tags = _llm_tag_with_repair(full_path, features, verbose=not args.quiet)
+        llm_tags, used_model, _sk = _llm_tag_with_repair(
+            full_path, features, verbose=not args.quiet)
         if not _enrichment_usable(llm_tags):
             errors += 1
             continue
@@ -1015,6 +1071,7 @@ def run_revibe(args):
             tags.add("%dbpm" % int(entry['bpm']))
         entry['tags'] = sorted(tags)
 
+        entry['retag_model'] = used_model
         entry['tag_source'] = 'smart_retag_v2_revibe'
         entry['tagged_at'] = datetime.now().isoformat()
         tag_db[rel_path] = entry
@@ -1074,7 +1131,15 @@ def run_retry_llm_failures(args):
         print("No rows need full enrichment (or no on-disk files match).")
         return
 
-    print("LLM model: %s (SP404_SMART_RETAG_LLM_MODEL or SP404_LLM_MODEL)" % RETAG_LLM_MODEL)
+    print(
+        "LLM routing: <=%ds %s | >%ds %s"
+        % (
+            SMART_RETAG_DURATION_SPLIT_SEC,
+            PRIMARY_LLM_MODEL,
+            SMART_RETAG_DURATION_SPLIT_SEC,
+            LONG_LLM_MODEL,
+        )
+    )
     print("Retrying LLM on %d files...\n" % len(candidates))
 
     success = errors = 0
@@ -1103,13 +1168,16 @@ def run_retry_llm_failures(args):
             success += 1
             continue
 
-        llm_tags = _llm_tag_with_repair(full_path, features, verbose=not args.quiet)
+        llm_tags, used_model, _sk = _llm_tag_with_repair(
+            full_path, features, verbose=not args.quiet)
         usable = _enrichment_usable(llm_tags)
         existing = dict(entry)
         new_entry = _merge_tags(
             existing, llm_tags, features, rel_path,
             mark_smart_retag_complete=usable,
         )
+        if usable:
+            new_entry['retag_model'] = used_model
         tag_db[rel_path] = new_entry
         entry = new_entry
 
