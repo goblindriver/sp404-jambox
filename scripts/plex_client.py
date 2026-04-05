@@ -63,7 +63,7 @@ MOOD_TO_VIBE = {
     'brooding': 'dark', 'ominous': 'dark', 'sinister': 'dark',
     'foreboding': 'dark', 'malevolent': 'dark', 'bleak': 'dark',
     'somber': 'dark', 'funereal': 'dark', 'macabre': 'dark',
-    'haunting': 'dark', 'eerie': 'dark', 'creepy': 'dark',
+    'haunting': 'dark', 'creepy': 'dark',
     # → tense
     'tense/anxious': 'tense', 'urgent': 'tense', 'intense': 'tense',
     'suspenseful': 'tense', 'paranoid': 'tense', 'restless': 'tense',
@@ -97,7 +97,7 @@ MOOD_TO_VIBE = {
     'unsettling': 'eerie', 'uncanny': 'eerie', 'spectral': 'eerie',
     # → uplifting
     'uplifting': 'uplifting', 'optimistic': 'uplifting', 'hopeful': 'uplifting',
-    'triumphant': 'uplifting', 'joyous': 'uplifting', 'euphoric': 'uplifting',
+    'euphoric': 'uplifting',
     'exhilarating': 'uplifting', 'inspiring': 'uplifting',
     # → playful
     'playful': 'playful', 'whimsical': 'playful', 'quirky': 'playful',
@@ -116,7 +116,7 @@ MOOD_TO_VIBE = {
     # → catch-all for unmapped
     'dramatic': 'tense', 'cathartic': 'aggressive',
     'rebellious': 'gritty', 'defiant': 'aggressive', 'provocative': 'gritty',
-    'bittersweet': 'nostalgic', 'joyous': 'playful',
+    'joyous': 'playful',
 }
 
 # Style → genre dimension mapping
@@ -812,14 +812,19 @@ class PlexMusicDB:
 
 
 def _format_duration(ms):
-    """Format milliseconds to M:SS string."""
+    """Format milliseconds to human-readable string."""
     if not ms:
-        return ''
+        return '0:00'
     try:
-        s = int(float(ms) // 1000)
+        total_seconds = int(float(ms)) // 1000
     except (TypeError, ValueError):
-        return ''
-    return f"{s // 60}:{s % 60:02d}"
+        return '0:00'
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
 
 
 def _parse_loudness(extra_data_str, out):
@@ -1375,17 +1380,6 @@ class PlexMediaDB:
             conn.close()
 
 
-def _format_duration(ms):
-    """Format milliseconds to human-readable string."""
-    if not ms:
-        return '0:00'
-    total_seconds = ms // 1000
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-    if hours:
-        return f"{hours}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes}:{seconds:02d}"
 
 
 # ── CLI for testing ──

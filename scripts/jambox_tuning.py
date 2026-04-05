@@ -28,9 +28,9 @@ DEFAULT_VIBE_MAPPINGS = {
     },
     "default_instruments": [("SYN", "synth"), ("KEY", "keys")],
     "fallback_dimensions": {
-        "genre": {"funk", "disco", "soul", "rock", "electronic", "ambient", "house", "techno", "hip-hop", "lo-fi", "industrial", "pop"},
-        "vibe": {"dark", "mellow", "hype", "dreamy", "nostalgic", "aggressive", "soulful", "warm", "bright", "tense", "raw", "dusty"},
-        "texture": {"dusty", "lo-fi", "raw", "clean", "warm", "bitcrushed", "airy", "gritty", "crunchy", "metallic"},
+        "genre": {"funk", "disco", "soul", "rock", "electronic", "ambient", "house", "techno", "hiphop", "lo-fi", "industrial", "pop", "rnb", "dub", "dancehall", "latin", "boom-bap", "tropical", "afrobeat"},
+        "vibe": {"dark", "mellow", "hype", "dreamy", "nostalgic", "aggressive", "soulful", "warm", "tense", "chill", "playful", "eerie", "gritty", "ethereal", "triumphant", "melancholic", "uplifting"},
+        "texture": {"dusty", "lo-fi", "raw", "clean", "warm", "bitcrushed", "airy", "crunchy", "crispy", "glassy", "saturated", "vinyl", "tape", "digital", "organic", "bright", "thick", "thin", "filtered", "muddy", "warbly"},
         "energy": {"low", "mid", "high"},
     },
     "type_keyword_aliases": {
@@ -54,7 +54,7 @@ DEFAULT_VIBE_MAPPINGS = {
 }
 
 DEFAULT_SCORING = {
-    "score_version": 1,
+    "score_version": 3,
     "weights": {
         "type_exact": 10,
         "type_related": 3,
@@ -63,6 +63,7 @@ DEFAULT_SCORING = {
         "playability_mismatch": -4,
         "bpm_close": 4,
         "bpm_near": 2,
+        "bpm_distant": -1,
         "bpm_far": -2,
         "key_exact": 3,
         "key_compatible": 1,
@@ -73,6 +74,10 @@ DEFAULT_SCORING = {
         "loop_short_penalty": -3,
         "plex_moods_bonus": 1,
         "plex_play_count_bonus": 2,
+        "quality_tiebreaker": 0.5,
+        "instrument_hint_match": 5,
+        "energy_match": 3,
+        "energy_mismatch": -2,
     },
 }
 
@@ -162,7 +167,7 @@ def load_scoring_config(path=None):
     if isinstance(weights, dict):
         for key, default_value in result["weights"].items():
             try:
-                result["weights"][key] = int(weights.get(key, default_value))
+                result["weights"][key] = float(weights.get(key, default_value))
             except (TypeError, ValueError):
                 result["weights"][key] = default_value
 

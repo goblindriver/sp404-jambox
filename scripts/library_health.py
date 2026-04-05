@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 import numpy as np
-from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
+from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script, save_tag_db as _config_save_tag_db
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -165,12 +165,8 @@ def load_tag_db():
 
 
 def save_tag_db(db):
-    """Save tag database."""
-    os.makedirs(os.path.dirname(TAGS_FILE), exist_ok=True)
-    tmp_path = TAGS_FILE + '.tmp'
-    with open(tmp_path, 'w') as f:
-        json.dump(db, f, indent=1, sort_keys=True)
-    os.replace(tmp_path, TAGS_FILE)
+    """Save tag database (delegates to jambox_config for SQLite + JSON consistency)."""
+    _config_save_tag_db(TAGS_FILE, db)
 
 
 def main():

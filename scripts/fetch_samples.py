@@ -8,7 +8,7 @@ Usage:
     python scripts/fetch_samples.py --bank b     # single bank
     python scripts/fetch_samples.py --bank b --pad 1  # single pad
 """
-import os, sys, glob, re, json, yaml, argparse
+import os, sys, glob, re, json, yaml, argparse, hashlib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
@@ -18,6 +18,11 @@ from jambox_config import is_long_hold_rel_path, load_settings_for_script
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from jambox_tuning import SCORE_VERSION, load_scoring_config
 from wav_utils import convert_and_tag, build_sp404_wav
+from tag_vocab import (
+    TYPE_CODES as _VOCAB_TYPE_CODES,
+    PLAYABILITIES as _VOCAB_PLAYABILITIES,
+    GENRE_ALIASES, TEXTURE_ALIASES, VIBE_ALIASES,
+)
 
 SETTINGS = load_settings_for_script(__file__)
 SCORING_CONFIG = load_scoring_config()
@@ -33,15 +38,8 @@ SMPL_DIR = SETTINGS["SMPL_DIR"]
 # Tag database scoring
 # ═══════════════════════════════════════════════════════════
 
-# Type codes recognized from pad descriptions
-TYPE_CODES = {
-    "KIK", "SNR", "HAT", "CLP", "CYM", "RIM", "PRC", "BRK", "DRM",
-    "BAS", "GTR", "KEY", "SYN", "PAD", "STR", "BRS", "PLK", "WND", "VOX", "SMP",
-    "FX", "SFX", "AMB", "FLY", "TPE", "RSR", "HRN",
-}
-
-# Playability keywords
-PLAYABILITY_KEYWORDS = {"one-shot", "loop", "chop-ready", "chromatic", "layer", "transition"}
+TYPE_CODES = _VOCAB_TYPE_CODES
+PLAYABILITY_KEYWORDS = _VOCAB_PLAYABILITIES
 
 # Words to ignore in scoring
 STOP_WORDS = {"a", "an", "the", "or", "and", "in", "for", "not", "but", "with", "style", "of"}
@@ -99,6 +97,10 @@ def parse_pad_query(query):
         if lower not in STOP_WORDS and len(lower) >= 2:
             result["keywords"].add(lower)
 
+    # Normalize keywords through canonical aliases so "hip-hop" matches "hiphop" etc.
+    _ALL_ALIASES = {**GENRE_ALIASES, **TEXTURE_ALIASES, **VIBE_ALIASES}
+    result["keywords"] = {_ALL_ALIASES.get(kw, kw) for kw in result["keywords"]}
+
     return result
 
 
@@ -128,8 +130,9 @@ def score_from_tags(entry, parsed_query, bank_config):
     if q["type_code"]:
         if entry_tc == q["type_code"]:
             score += weights["type_exact"]
+        elif not entry_tc:
+            pass  # untagged = uncertain, don't penalize
         else:
-            # Partial credit for related types
             related = {
                 "KIK": {"DRM"}, "SNR": {"DRM"}, "HAT": {"DRM"}, "CLP": {"DRM", "SNR"},
                 "CYM": {"HAT"}, "RIM": {"PRC", "SNR"}, "PRC": {"DRM"},
@@ -140,9 +143,9 @@ def score_from_tags(entry, parsed_query, bank_config):
                 "HRN": {"BRS"}, "BRS": {"HRN"},
             }
             if entry_tc in related.get(q["type_code"], set()):
-                score += weights["type_related"]  # related but not exact
+                score += weights["type_related"]
             else:
-                score += weights["type_mismatch"]  # wrong category entirely
+                score += weights["type_mismatch"]
 
     # --- Playability ---
     entry_play = entry.get("playability", "")
@@ -158,12 +161,17 @@ def score_from_tags(entry, parsed_query, bank_config):
     entry_bpm = entry.get("bpm")
     target_bpm = q["bpm"] or bank_config.get("bpm")
     if target_bpm and entry_bpm:
-        diff = abs(entry_bpm - target_bpm)
+        try:
+            diff = abs(float(entry_bpm) - float(target_bpm))
+        except (TypeError, ValueError):
+            diff = 999
         if diff <= 5:
             score += weights["bpm_close"]
         elif diff <= 15:
             score += weights["bpm_near"]
-        elif diff > 30:
+        elif diff <= 30:
+            score += weights.get("bpm_distant", -1)
+        else:
             score += weights["bpm_far"]
 
     # --- Key ---
@@ -196,12 +204,35 @@ def score_from_tags(entry, parsed_query, bank_config):
     if q["playability"] == "loop" and duration < 1:
         score += weights["loop_short_penalty"]
 
+    # --- Energy dimension ---
+    entry_energy = (entry.get("energy") or "").lower()
+    if entry_energy:
+        query_energy = None
+        for kw in q["keywords"]:
+            if kw in ("low", "mid", "high"):
+                query_energy = kw
+                break
+        if query_energy:
+            if entry_energy == query_energy:
+                score += weights.get("energy_match", 0)
+            else:
+                score += weights.get("energy_mismatch", 0)
+
+    # --- Instrument hint ---
+    hint = (entry.get("instrument_hint") or "").lower().strip()
+    if hint and q["keywords"]:
+        hint_tokens = set(hint.split())
+        if hint_tokens & q["keywords"]:
+            score += weights.get("instrument_hint_match", 0)
+
+    # --- Quality score tiebreaker ---
+    qs = entry.get("quality_score")
+    if isinstance(qs, (int, float)) and 1 <= qs <= 5:
+        score += qs * weights.get("quality_tiebreaker", 0)
+
     # --- Plex metadata bonuses ---
-    # Stems from personal library with Plex moods get a small bonus
-    # because the vibes are machine-tagged (more reliable than filename inference)
     if entry.get("plex_moods"):
-        score += weights["plex_moods_bonus"]  # Plex-tagged = higher confidence metadata
-    # Samples from tracks with play history rank higher (user actually listens to these)
+        score += weights["plex_moods_bonus"]
     if entry.get("plex_play_count", 0) > 0:
         score += weights["plex_play_count_bonus"]
 
@@ -269,11 +300,13 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
     tag_db = tag_db if isinstance(tag_db, dict) else {}
     used_files = used_files or set()
     cache_entries = load_score_cache(LIBRARY)
+    _whash = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()).hexdigest()[:8]
     cache_key = score_cache_key(
         parsed,
         bank_config,
         score_version=SCORING_VERSION,
         tags_marker=tags_freshness_marker(TAGS_FILE),
+        weights_hash=_whash,
     )
     cached_results = cache_entries.get(cache_key)
 
@@ -299,8 +332,7 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
                 "duration": entry.get("duration"),
             })
         cached_results.sort(key=lambda item: item["score"], reverse=True)
-        # Only cache top 100 results — no need to store all 20k+ scored entries
-        cached_results = cached_results[:100]
+        cached_results = cached_results[:500]
         cache_entries[cache_key] = cached_results
         save_score_cache(LIBRARY, cache_entries)
 

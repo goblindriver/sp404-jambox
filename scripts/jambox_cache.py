@@ -40,10 +40,20 @@ def file_marker(path):
 
 
 def tags_freshness_marker(tags_path):
-    return file_marker(tags_path)
+    """Return a marker reflecting the most recent tag DB write.
+
+    Checks both JSON and SQLite (whichever is newer) so cache invalidates
+    correctly even when JSON writes are skipped for large databases.
+    """
+    json_marker = file_marker(tags_path)
+    sqlite_path = tags_path.rsplit(".", 1)[0] + ".sqlite"
+    sqlite_marker = file_marker(sqlite_path)
+    if sqlite_marker.get("mtime_ns", 0) > json_marker.get("mtime_ns", 0):
+        return sqlite_marker
+    return json_marker
 
 
-def score_cache_key(parsed_query, bank_config, *, score_version, tags_marker):
+def score_cache_key(parsed_query, bank_config, *, score_version, tags_marker, weights_hash=None):
     normalized = {
         "parsed_query": {
             "type_code": parsed_query.get("type_code"),
@@ -58,6 +68,7 @@ def score_cache_key(parsed_query, bank_config, *, score_version, tags_marker):
         },
         "score_version": score_version,
         "tags_marker": tags_marker,
+        "weights_hash": weights_hash,
     }
     return json.dumps(normalized, sort_keys=True)
 

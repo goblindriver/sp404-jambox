@@ -23,7 +23,7 @@ genre_instruments:
   techno:
     - [SYN, synth]
     - [SYN, lead]
-  hip-hop:
+  hiphop:
     - [KEY, piano]
     - [SYN, synth]
   lo-fi:
@@ -41,9 +41,9 @@ default_instruments:
   - [KEY, keys]
 
 fallback_dimensions:
-  genre: [funk, disco, soul, rock, electronic, ambient, house, techno, hip-hop, lo-fi, industrial, pop]
-  vibe: [dark, mellow, hype, dreamy, nostalgic, aggressive, soulful, warm, bright, tense, raw, dusty]
-  texture: [dusty, lo-fi, raw, clean, warm, bitcrushed, airy, gritty, crunchy, metallic]
+  genre: [funk, disco, soul, rock, electronic, ambient, house, techno, hiphop, lo-fi, industrial, pop, rnb, dub, dancehall, latin, boom-bap, tropical, afrobeat]
+  vibe: [dark, mellow, hype, dreamy, nostalgic, aggressive, soulful, warm, tense, chill, playful, eerie, gritty, ethereal, triumphant, melancholic, uplifting]
+  texture: [dusty, lo-fi, raw, clean, warm, bitcrushed, airy, crunchy, crispy, glassy, saturated, vinyl, tape, digital, organic, bright, thick, thin, filtered, muddy, warbly]
   energy: [low, mid, high]
 
 type_keyword_aliases:

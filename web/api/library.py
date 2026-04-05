@@ -277,9 +277,11 @@ def by_tag():
             if not tags_set.issubset(entry_tags):
                 continue
 
-        # Check BPM filter (within ±5 BPM of any selected value)
         if bpm_filter:
-            entry_bpm = entry.get('bpm')
+            try:
+                entry_bpm = float(entry.get('bpm', 0))
+            except (TypeError, ValueError):
+                entry_bpm = 0
             if not entry_bpm or not any(abs(entry_bpm - b) <= 5 for b in bpm_filter):
                 continue
 

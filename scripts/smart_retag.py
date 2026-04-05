@@ -67,34 +67,14 @@ TYPE_CODE_ORDER = [
     "AMB", "FLY", "TPE",
 ]
 
-VALID_TYPE_CODES = {
-    "KIK", "SNR", "HAT", "CLP", "CYM", "RIM", "PRC", "BRK", "DRM",
-    "BAS", "GTR", "KEY", "SYN", "PAD", "STR", "BRS", "PLK", "WND", "VOX", "SMP",
-    "FX", "SFX", "AMB", "FLY", "TPE", "RSR", "HRN",
-}
-
-VALID_VIBES = {
-    "dark", "warm", "hype", "dreamy", "nostalgic", "aggressive", "mellow",
-    "soulful", "eerie", "playful", "gritty", "ethereal", "triumphant",
-    "melancholic", "tense", "chill", "uplifting",
-}
-
-VALID_TEXTURES = {
-    "dusty", "lo-fi", "raw", "clean", "warm", "saturated", "bitcrushed",
-    "airy", "crispy", "glassy", "muddy", "vinyl", "tape", "digital",
-    "organic", "crunchy", "warbly", "bright", "thick", "thin", "filtered",
-}
-
-VALID_GENRES = {
-    "funk", "soul", "disco", "house", "electronic", "hiphop", "dub",
-    "ambient", "jazz", "rock", "punk", "dancehall", "latin", "pop", "rnb",
-    "industrial", "boom-bap", "lo-fi", "tropical", "afrobeat",
-    "lo-fi-hiphop", "trap", "drill", "gospel", "uk-garage", "footwork",
-    "city-pop", "psychedelic", "reggae", "classical", "world",
-}
-
-VALID_ENERGIES = {"low", "mid", "high"}
-VALID_PLAYABILITIES = {"one-shot", "loop", "chop-ready", "chromatic", "layer", "transition"}
+from tag_vocab import (
+    TYPE_CODES as VALID_TYPE_CODES,
+    VIBES as VALID_VIBES,
+    TEXTURES as VALID_TEXTURES,
+    GENRES as VALID_GENRES,
+    ENERGIES as VALID_ENERGIES,
+    PLAYABILITIES as VALID_PLAYABILITIES,
+)
 
 # ── System prompt ──
 
@@ -219,10 +199,11 @@ _llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
 
 # Map common model typos / synonyms onto allowed vocab (before whitelist filter).
 _GENRE_ALIASES = {
-    "hip-hop": "hiphop", "hip hop": "hiphop", "hiphop": "hiphop",
+    "hip-hop": "hiphop", "hip hop": "hiphop",
     "lofi": "lo-fi", "lo fi": "lo-fi", "lo-fi-hip-hop": "lo-fi-hiphop",
-    "r&b": "rnb", "rnb": "rnb",
+    "r&b": "rnb",
     "edm": "electronic", "dance": "house",
+    "dancehall": "dancehall", "punk": "punk",
 }
 _VIBE_ALIASES = {
     "energetic": "hype", "energy": "hype", "happy": "playful", "fun": "playful",
@@ -231,6 +212,7 @@ _VIBE_ALIASES = {
 }
 _TEXTURE_ALIASES = {
     "lofi": "lo-fi", "crisp": "crispy", "wide": "airy",
+    "tape-saturated": "tape", "metallic": "crispy",
 }
 
 
@@ -580,11 +562,12 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
         entry['tag_source'] = 'smart_retag_v1'
         entry.pop('smart_retag_pending', None)
         entry['tagged_at'] = datetime.now().isoformat()
+    elif prev_source == 'smart_retag_v1':
+        # Already fully enriched — don't downgrade on a thin retry
+        entry['tag_source'] = 'smart_retag_v1'
     else:
         entry.pop('retag_model', None)
-        if prev_source == 'smart_retag_v1':
-            entry['tag_source'] = 'auto'
-        elif prev_source:
+        if prev_source:
             entry['tag_source'] = prev_source
         else:
             entry.pop('tag_source', None)
@@ -749,6 +732,10 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
                 try:
                     shutil.move(full_path, q_dest)
                     quarantined += 1
+                    q_rel = os.path.join("_QUARANTINE", rel_path)
+                    entry['path'] = q_rel
+                    tag_db.pop(rel_path, None)
+                    tag_db[q_rel] = entry
                     if verbose:
                         print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc))
                 except OSError:
@@ -790,15 +777,25 @@ def retag_single(rel_path, full_path, existing_entry=None):
     Designed for ingest pipeline use — extracts features, calls LLM, merges
     tags, returns the enriched entry without saving to disk (caller saves).
     Does NOT quarantine (caller decides).
+
+    When LLM is unavailable, still returns features-only entry (BPM, key,
+    loudness, feature vectors) so new files get librosa metadata stored for
+    later LLM enrichment.
     """
     if not librosa_available():
-        return None
-    if not LLM_ENDPOINT:
         return None
 
     features = extract_features(full_path)
     if not features:
         return None
+
+    if not LLM_ENDPOINT:
+        existing = existing_entry or {}
+        entry = _merge_tags(
+            existing, {}, features, rel_path,
+            mark_smart_retag_complete=False,
+        )
+        return entry
 
     llm_tags, used_model, _skipped = _llm_tag_with_repair(
         full_path, features, verbose=False, repair_attempts=2)
@@ -1008,7 +1005,7 @@ def run_revibe(args):
     )
 
     # Subjective fields to overwrite
-    REVIBE_FIELDS = ('vibe', 'texture', 'energy', 'quality_score',
+    REVIBE_FIELDS = ('vibe', 'texture', 'genre', 'energy', 'quality_score',
                      'sonic_description', 'instrument_hint')
 
     updated = errors = 0
@@ -1216,11 +1213,63 @@ def run_retry_llm_failures(args):
     print("  Time: %.1f min" % (elapsed / 60))
 
 
+def run_validate(args):
+    """Stratified validation: process up to N files per type code, report quality."""
+    per_type = args.limit or 5
+    tag_db = _load_tags()
+    all_files = _walk_library()
+
+    by_type = {}
+    for rel, full in all_files:
+        tc = tag_db.get(rel, {}).get('type_code', 'UNKNOWN')
+        by_type.setdefault(tc, []).append((rel, full))
+
+    selected = []
+    for tc in sorted(by_type):
+        pool = by_type[tc]
+        if not args.force:
+            pool = [(r, f) for r, f in pool if _entry_needs_smart_retag(tag_db.get(r, {}))]
+        selected.extend(pool[:per_type])
+
+    if not selected:
+        print("Nothing to validate — all files already enriched. Use --force to redo.")
+        return
+
+    print("Validation: %d files (%d per type code across %d types)" %
+          (len(selected), per_type, len(by_type)))
+
+    t, q, e, inc, _ = retag_batch(selected, tag_db, dry_run=args.dry_run, verbose=True)
+    if not args.dry_run:
+        _save_tags(tag_db)
+
+    quality_scores = []
+    for rel, _ in selected:
+        qs = tag_db.get(rel, {}).get('quality_score')
+        if isinstance(qs, (int, float)):
+            quality_scores.append(qs)
+
+    print("\n" + "=" * 60)
+    print("Validation Summary")
+    print("  Processed: %d  Tagged: %d  Quarantined: %d  Errors: %d  Incomplete: %d" %
+          (len(selected), t, q, e, inc))
+    if quality_scores:
+        avg_q = sum(quality_scores) / len(quality_scores)
+        print("  Quality scores: min=%.0f avg=%.1f max=%.0f (n=%d)" %
+              (min(quality_scores), avg_q, max(quality_scores), len(quality_scores)))
+    if _llm_stats['calls']:
+        s = _llm_stats
+        print("  LLM: %d calls, %d ok (%.0f%%), %d timeout, %d parse fail" % (
+            s['calls'], s['success'],
+            s['success'] / max(s['calls'], 1) * 100,
+            s['timeout'], s['parse_fail']))
+
+
 def main():
     parser = argparse.ArgumentParser(description='Smart retag: LLM-powered sample tagger')
     parser.add_argument('--all', action='store_true', help='Process entire library')
     parser.add_argument('--resume', action='store_true', help='Resume from checkpoint')
-    parser.add_argument('--validate', action='store_true', help='Validation mode')
+    parser.add_argument('--validate', action='store_true',
+                        help='Stratified validation: process N files per type code, print quality summary')
     parser.add_argument('--path', type=str, help='Process specific directory')
     parser.add_argument('--limit', type=int, help='Max files to process')
     parser.add_argument('--dry-run', action='store_true', help='Feature extraction only')
@@ -1240,7 +1289,11 @@ def main():
         run_retry_llm_failures(args)
         return
 
-    if not any([args.all, args.resume, args.validate, args.path, args.limit]):
+    if args.validate:
+        run_validate(args)
+        return
+
+    if not any([args.all, args.resume, args.path, args.limit]):
         parser.print_help()
         sys.exit(0)
 

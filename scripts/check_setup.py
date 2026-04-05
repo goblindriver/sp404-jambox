@@ -143,6 +143,50 @@ def run_checks():
             failures += 1
 
     messages.append("")
+    messages.append("Tag database health:")
+    tags_file = os.path.join(settings["SAMPLE_LIBRARY"], "_tags.json")
+    if os.path.isfile(tags_file):
+        try:
+            import json
+            with open(tags_file, "r", encoding="utf-8") as fh:
+                tag_db = json.load(fh)
+            total = len(tag_db)
+            smart_v1 = sum(1 for e in tag_db.values() if e.get("tag_source") == "smart_retag_v1")
+            pending = sum(1 for e in tag_db.values() if e.get("smart_retag_pending"))
+            baseline = total - smart_v1 - pending
+            quality_scores = [e["quality_score"] for e in tag_db.values()
+                              if isinstance(e.get("quality_score"), (int, float))]
+            avg_q = (sum(quality_scores) / len(quality_scores)) if quality_scores else 0
+
+            long_hold_dir = os.path.join(settings["SAMPLE_LIBRARY"], "_LONG-HOLD")
+            quarantine_dir = os.path.join(settings["SAMPLE_LIBRARY"], "_QUARANTINE")
+            long_hold_count = sum(1 for e in tag_db.values()
+                                  if "_LONG-HOLD" in e.get("path", ""))
+            quarantine_count = 0
+            if os.path.isdir(quarantine_dir):
+                for _root, _dirs, _files in os.walk(quarantine_dir):
+                    quarantine_count += len(_files)
+
+            messages.append("  Total entries: %d" % total)
+            messages.append("  smart_retag_v1 (full LLM): %d (%.0f%%)" %
+                            (smart_v1, smart_v1 / max(total, 1) * 100))
+            messages.append("  smart_retag_pending (features, no LLM): %d (%.0f%%)" %
+                            (pending, pending / max(total, 1) * 100))
+            messages.append("  Baseline-only: %d (%.0f%%)" %
+                            (baseline, baseline / max(total, 1) * 100))
+            if quality_scores:
+                messages.append("  Mean quality_score: %.1f (n=%d)" % (avg_q, len(quality_scores)))
+            messages.append("  _LONG-HOLD entries: %d" % long_hold_count)
+            messages.append("  _QUARANTINE files: %d" % quarantine_count)
+        except Exception as exc:
+            messages.append("  ERROR reading tag DB: %s" % exc)
+            warnings += 1
+    else:
+        messages.append("  [MISSING] %s" % tags_file)
+        messages.append("  Run: python scripts/tag_library.py")
+        warnings += 1
+
+    messages.append("")
     messages.append("Hints:")
     messages.append("  - Install Python deps with: .venv/bin/pip install -r requirements.txt")
     messages.append("  - On macOS/Homebrew: brew install ffmpeg unar chromaprint")

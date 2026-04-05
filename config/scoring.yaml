@@ -1,4 +1,4 @@
-score_version: 1
+score_version: 3
 
 weights:
   type_exact: 10
@@ -8,6 +8,7 @@ weights:
   playability_mismatch: -4
   bpm_close: 4
   bpm_near: 2
+  bpm_distant: -1
   bpm_far: -2
   key_exact: 3
   key_compatible: 1
@@ -18,3 +19,7 @@ weights:
   loop_short_penalty: -3
   plex_moods_bonus: 1
   plex_play_count_bonus: 2
+  quality_tiebreaker: 0.5
+  instrument_hint_match: 5
+  energy_match: 3
+  energy_mismatch: -2

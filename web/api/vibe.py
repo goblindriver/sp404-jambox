@@ -264,7 +264,10 @@ def _create_vibe_job(bank, prompt):
 @vibe_bp.route("/vibe/populate-bank", methods=["POST"])
 def populate_bank():
     """Generate a full bank from a vibe prompt: LLM parse → preset → load → fetch."""
-    payload = request.get_json() or {}
+    try:
+        payload = _json_object_body()
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     if not payload.get("prompt"):
         return jsonify({"ok": False, "error": "prompt is required"}), 400
 
@@ -273,10 +276,9 @@ def populate_bank():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # Only one populate at a time
     with _vibe_lock:
         for j in _vibe_jobs.values():
-            if j.get("status") in ("generating", "saving", "loading", "fetching"):
+            if j.get("status") in ("starting", "generating", "saving", "loading", "fetching"):
                 return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
 
     job_id = _create_vibe_job(bank, payload["prompt"])
@@ -310,7 +312,7 @@ def apply_bank():
 
     with _vibe_lock:
         for j in _vibe_jobs.values():
-            if j.get("status") in ("generating", "reviewed", "saving", "loading", "fetching"):
+            if j.get("status") in ("starting", "generating", "reviewed", "saving", "loading", "fetching"):
                 return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
 
     job_id = _create_vibe_job(bank, preset.get("vibe", ""))
