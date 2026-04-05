@@ -121,7 +121,12 @@ CREATE INDEX IF NOT EXISTS idx_dpo_sample ON dpo_pairs(sample_id);
 # Tag keys that are lists in _tags.json (multi-valued)
 LIST_TAG_KEYS = {'vibe', 'texture', 'genre', 'production_tag'}
 # Tag keys that are scalars
-SCALAR_TAG_KEYS = {'type_code', 'playability', 'energy', 'source', 'scene'}
+SCALAR_TAG_KEYS = {
+    'type_code', 'playability', 'energy', 'source', 'scene',
+    # Re-vibe pass sub-dimensions + composite
+    'danceability', 'warmth', 'soul', 'tension', 'texture_fit', 'vibe_score',
+    'set_context', 'production_fit',
+}
 
 
 class JamboxDB:
