@@ -44,6 +44,20 @@ DEFAULT_LLM_TIMEOUT = 30
 LONG_HOLD_DIRNAME = "_LONG-HOLD"
 
 
+_EXCLUDED_PREFIXES = (LONG_HOLD_DIRNAME, "_DUPES", "_QUARANTINE", "_RAW-DOWNLOADS")
+
+
+def is_excluded_rel_path(rel_path):
+    """True if *rel_path* is under any internal/triage folder."""
+    if not rel_path or not isinstance(rel_path, str):
+        return False
+    norm = rel_path.replace("\\", "/").lstrip("/")
+    if not norm:
+        return False
+    top = norm.split("/", 1)[0]
+    return top in _EXCLUDED_PREFIXES
+
+
 def is_long_hold_rel_path(rel_path):
     """True if *rel_path* is under the long-sample holding folder."""
     if not rel_path or not isinstance(rel_path, str):
@@ -316,22 +330,27 @@ def save_tag_db(tags_file, db):
     db_path = _tags_sqlite_path(tags_file)
 
     conn = _ensure_tags_sqlite(db_path)
-    # Batch upsert
+
+    existing_count = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
+
     conn.executemany(
         "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
         [(k, json.dumps(v)) for k, v in db.items()]
     )
-    # Remove stale rows (files no longer in the db dict)
+
     existing = {r[0] for r in conn.execute("SELECT rel_path FROM tags").fetchall()}
     stale = existing - set(db.keys())
     if stale:
-        conn.executemany("DELETE FROM tags WHERE rel_path=?", [(k,) for k in stale])
+        stale_ratio = len(stale) / max(existing_count, 1)
+        if stale_ratio > 0.5 and existing_count > 500:
+            print(f"[TAG_DB] WARNING: refusing to delete {len(stale):,} of {existing_count:,} rows "
+                  f"({stale_ratio:.0%}) — looks like a partial save. Skipping stale cleanup.")
+        else:
+            conn.executemany("DELETE FROM tags WHERE rel_path=?", [(k,) for k in stale])
     conn.commit()
     conn.close()
 
-    # Also write JSON for backward compatibility and human readability
-    # (skip if file would be >50MB to avoid slowdowns)
-    estimated_size = len(db) * 1100  # ~1.1KB avg per entry
+    estimated_size = len(db) * 1100
     if estimated_size < 50 * 1024 * 1024:
         try:
             with open(tags_file, "w") as fh:

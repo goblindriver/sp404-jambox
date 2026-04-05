@@ -9,7 +9,7 @@ import re
 import fetch_samples
 import preset_utils
 import vibe_training_store as vts
-from jambox_config import is_long_hold_rel_path
+from jambox_config import is_excluded_rel_path
 
 
 STOP_WORDS = {"a", "an", "the", "and", "or", "with", "for", "of", "to", "in", "on"}
@@ -88,7 +88,7 @@ def _build_tag_freq_index(tag_db):
     """
     index = {}
     for rel_path, entry in tag_db.items():
-        if is_long_hold_rel_path(rel_path):
+        if is_excluded_rel_path(rel_path):
             continue
         keywords = set()
         for key in ("tags", "genre", "vibe", "texture"):

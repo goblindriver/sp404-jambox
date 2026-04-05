@@ -32,7 +32,7 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from jambox_config import is_long_hold_rel_path, load_settings_for_script, LONG_HOLD_DIRNAME
+from jambox_config import is_excluded_rel_path, load_settings_for_script, LONG_HOLD_DIRNAME
 from audio_analysis import extract_features, is_available as librosa_available
 
 SETTINGS = load_settings_for_script(__file__)
@@ -957,7 +957,7 @@ def run_revibe(args):
     # Find entries that have stored features (from a prior smart_retag run)
     candidates = []
     for rel_path, entry in tag_db.items():
-        if is_long_hold_rel_path(rel_path):
+        if is_excluded_rel_path(rel_path):
             continue
         if entry.get('tag_source') != 'smart_retag_v1':
             continue
@@ -1101,7 +1101,7 @@ def run_retry_llm_failures(args):
     # Entries with extracted features that still need full LLM enrichment
     candidates = []
     for rel_path, entry in tag_db.items():
-        if is_long_hold_rel_path(rel_path):
+        if is_excluded_rel_path(rel_path):
             continue
         if not entry.get('features'):
             continue

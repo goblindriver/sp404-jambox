@@ -15,6 +15,7 @@ import check_setup
 from jambox_config import (
     ConfigError,
     build_subprocess_env,
+    is_excluded_rel_path,
     is_long_hold_rel_path,
     load_settings,
     resolve_command,
@@ -40,6 +41,15 @@ class LoadSettingsTests(unittest.TestCase):
         self.assertTrue(is_long_hold_rel_path("_LONG-HOLD/Drums/Kicks/x.wav"))
         self.assertFalse(is_long_hold_rel_path("Drums/Kicks/x.wav"))
         self.assertFalse(is_long_hold_rel_path(""))
+
+    def test_is_excluded_rel_path(self):
+        self.assertTrue(is_excluded_rel_path("_LONG-HOLD/foo.flac"))
+        self.assertTrue(is_excluded_rel_path("_DUPES/foo.flac"))
+        self.assertTrue(is_excluded_rel_path("_QUARANTINE/foo.flac"))
+        self.assertTrue(is_excluded_rel_path("_RAW-DOWNLOADS/pack/bar.wav"))
+        self.assertFalse(is_excluded_rel_path("Drums/Kicks/x.wav"))
+        self.assertFalse(is_excluded_rel_path("Melodic/Bass/deep.flac"))
+        self.assertFalse(is_excluded_rel_path(""))
 
     def test_invalid_boolean_raises_clear_error(self):
         with patch.dict(os.environ, {"SP404_WEB_DEBUG": "maybe"}, clear=True):

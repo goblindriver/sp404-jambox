@@ -14,7 +14,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-from jambox_config import is_long_hold_rel_path, load_settings_for_script
+from jambox_config import is_excluded_rel_path, load_settings_for_script
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from jambox_tuning import SCORE_VERSION, load_scoring_config
 from wav_utils import convert_and_tag
@@ -333,7 +333,7 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
     if not isinstance(cached_results, list):
         cached_results = []
         for rel_path, entry in tag_db.items():
-            if is_long_hold_rel_path(rel_path):
+            if is_excluded_rel_path(rel_path):
                 continue
             full_path = os.path.join(LIBRARY, rel_path)
             score = score_from_tags(entry, parsed, bank_config)

@@ -41,7 +41,7 @@ LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
 FFPROBE = SETTINGS["FFPROBE_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", LONG_HOLD_DIRNAME}
+SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", LONG_HOLD_DIRNAME}
 
 # ═══════════════════════════════════════════════════════════
 # Type Code Detection (3-letter codes per TAGGING_SPEC)

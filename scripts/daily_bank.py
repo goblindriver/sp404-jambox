@@ -6,7 +6,7 @@ import os
 import random
 from datetime import date
 
-from jambox_config import is_long_hold_rel_path, load_settings_for_script
+from jambox_config import is_excluded_rel_path, load_settings_for_script
 import preset_utils
 
 
@@ -56,7 +56,7 @@ def _load_trending_terms():
 def _recent_candidates(db):
     candidates = []
     for rel_path, entry in db.items():
-        if is_long_hold_rel_path(rel_path):
+        if is_excluded_rel_path(rel_path):
             continue
         mtime = entry.get("mtime", 0)
         if not mtime:
@@ -80,7 +80,7 @@ def _trending_candidates(db, terms):
     candidates = []
     term_set = set(terms)
     for rel_path, entry in db.items():
-        if is_long_hold_rel_path(rel_path):
+        if is_excluded_rel_path(rel_path):
             continue
         haystack = set(tag.lower() for tag in entry.get("tags", []))
         haystack.update(tag.lower() for tag in entry.get("genre", []))

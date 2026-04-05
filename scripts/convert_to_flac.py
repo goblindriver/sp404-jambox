@@ -26,7 +26,7 @@ FFMPEG = SETTINGS["FFMPEG_BIN"]
 FFPROBE = SETTINGS["FFPROBE_BIN"]
 
 # Directories to skip (not samples)
-SKIP_DIRS = {'_RAW-DOWNLOADS', '_GOLD', '_DUPES', 'Stems', '.git', LONG_HOLD_DIRNAME}
+SKIP_DIRS = {'_RAW-DOWNLOADS', '_GOLD', '_DUPES', '_QUARANTINE', 'Stems', '.git', LONG_HOLD_DIRNAME}
 
 
 def load_tags():
