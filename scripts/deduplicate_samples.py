@@ -10,12 +10,13 @@ import argparse
 import difflib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime
-from urllib import error, request
 
+from integration_runtime import IntegrationFailure, call_json_endpoint
 from jambox_cache import file_marker, get_cached_fingerprint, load_fingerprint_cache, put_cached_fingerprint, save_fingerprint_cache
 from jambox_config import build_subprocess_env, load_settings_for_script
 import dedup_library
@@ -142,38 +143,63 @@ def _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints, 
     return similarity(rel_python, compare_python) or 0.0
 
 
+def _llm_strip_code_fences(text):
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _llm_extract_message_content(payload):
+    if isinstance(payload, dict):
+        if payload.get("choices"):
+            message = payload["choices"][0].get("message", {})
+            content = message.get("content", "")
+            if isinstance(content, list):
+                return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            return content
+        if "message" in payload and isinstance(payload["message"], dict):
+            return payload["message"].get("content", "")
+        if "response" in payload:
+            return payload["response"]
+    return ""
+
+
 def _llm_tag_filename(rel_path):
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
     if not endpoint:
         return []
 
-    body = json.dumps({
-        "model": SETTINGS.get("LLM_MODEL", "qwen3"),
-        "messages": [
+    try:
+        payload = call_json_endpoint(
+            endpoint,
             {
-                "role": "system",
-                "content": "Suggest up to 5 lower-case descriptive sample tags as JSON: {\"tags\":[...]}",
+                "model": SETTINGS.get("LLM_MODEL", "qwen3"),
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": 'Suggest up to 5 lower-case descriptive sample tags as JSON: {"tags":[...]}',
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps({"filename": rel_path, "directory": os.path.dirname(rel_path)}),
+                    },
+                ],
+                "temperature": 0.2,
             },
-            {
-                "role": "user",
-                "content": json.dumps({"filename": rel_path, "directory": os.path.dirname(rel_path)}),
-            },
-        ],
-        "temperature": 0.2,
-    }).encode("utf-8")
-    req = request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
-    with request.urlopen(req, timeout=SETTINGS.get("LLM_TIMEOUT", 30)) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+            timeout=SETTINGS.get("LLM_TIMEOUT", 30),
+        )
+    except IntegrationFailure:
+        return []
 
-    content = ""
-    if payload.get("choices"):
-        content = payload["choices"][0].get("message", {}).get("content", "")
-    elif payload.get("message"):
-        content = payload["message"].get("content", "")
-    elif payload.get("response"):
-        content = payload["response"]
-    content = str(content).strip().removeprefix("```json").removesuffix("```").strip()
-    parsed = json.loads(content or "{}")
+    content = _llm_strip_code_fences(_llm_extract_message_content(payload))
+    try:
+        parsed = json.loads(content or "{}")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
     return [str(tag).lower() for tag in parsed.get("tags", []) if str(tag).strip()]
 
 
@@ -273,7 +299,7 @@ def build_report(args, db=None):
                 continue
             try:
                 unknown_tags[rel_path] = _llm_tag_filename(rel_path)
-            except (error.URLError, ValueError, json.JSONDecodeError):
+            except (TypeError, ValueError):
                 unknown_tags[rel_path] = []
 
     report = {

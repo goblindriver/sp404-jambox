@@ -500,6 +500,37 @@ class DedupeTests(unittest.TestCase):
                 persisted = json.load(handle)
             self.assertNotIn("dupe.wav", persisted)
 
+    def test_llm_tag_filename_returns_tags_from_chat_response(self):
+        fake_payload = {
+            "choices": [{"message": {"content": '{"tags": ["kick", "808"]}'}}],
+        }
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_json_endpoint", return_value=fake_payload):
+            tags = deduplicate_samples._llm_tag_filename("Drums/kick_fat.wav")
+
+        self.assertEqual(tags, ["kick", "808"])
+
+    def test_llm_tag_filename_strips_code_fences(self):
+        fake_payload = {
+            "choices": [{"message": {"content": '```json\n{"tags": ["snare", "crisp"]}\n```'}}],
+        }
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_json_endpoint", return_value=fake_payload):
+            tags = deduplicate_samples._llm_tag_filename("Drums/snr.wav")
+
+        self.assertEqual(tags, ["snare", "crisp"])
+
+    def test_llm_tag_filename_returns_empty_when_llm_unreachable(self):
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_json_endpoint", side_effect=IntegrationFailure("connection_error", "refused")):
+            tags = deduplicate_samples._llm_tag_filename("x.wav")
+
+        self.assertEqual(tags, [])
+
+    def test_llm_tag_filename_returns_empty_without_endpoint(self):
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "", "LLM_MODEL": "llama3"}, clear=False), patch("deduplicate_samples.call_json_endpoint") as call_mock:
+            tags = deduplicate_samples._llm_tag_filename("x.wav")
+
+        self.assertEqual(tags, [])
+        call_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
