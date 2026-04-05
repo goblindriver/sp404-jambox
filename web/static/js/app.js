@@ -2241,32 +2241,87 @@ function togglePowerMenu() {
     }
 }
 
-async function fetchServerStatus() {
-    try {
-        const result = await api('/api/pipeline/server/status');
-        const dot = document.querySelector('#power-status .power-status-dot');
-        const btn = document.getElementById('btn-power');
-        if (result.ok) {
-            dot.classList.add('active');
-            btn.classList.remove('offline');
-            const features = result.features || {};
-            const container = document.getElementById('power-features');
-            const feats = [
-                ['LLM', features.llm],
-                ['librosa', features.librosa],
-                ['fpcalc', features.fpcalc],
-                ['demucs', features.demucs],
-                ['watcher', features.watcher],
-            ];
-            container.innerHTML = feats.map(([name, on]) =>
-                `<div class="feat ${on ? 'feat-on' : 'feat-off'}">${on ? '\u2713' : '\u2717'} ${name}</div>`
-            ).join('');
-        }
-    } catch (e) {
-        const dot = document.querySelector('#power-status .power-status-dot');
-        dot.classList.remove('active');
-        document.getElementById('btn-power').classList.add('offline');
+function renderBlackoutPanel(b) {
+    const el = document.getElementById('blackout-body');
+    if (!el) return;
+    if (!b || !b.ok) {
+        el.textContent = b && b.error ? String(b.error) : 'Blackout status unavailable';
+        return;
     }
+    const mode = b.vibe_parser_mode || 'base';
+    const parserOk = !b.parser_needs_llm || b.parser_llm_ready;
+    const parserLabel = !b.parser_needs_llm
+        ? 'Parser: keyword / base (no LLM required)'
+        : (b.parser_llm_ready
+            ? `Parser: ${mode} (LLM reachable per config)`
+            : `Parser: ${mode} \u2192 keyword fallback (no LLM)`);
+    const evalOk = b.offline_eval_ready;
+    const vs = b.vibe_sessions || {};
+    const reviewed = vs.reviewed_count != null ? vs.reviewed_count : (vs.by_dataset_status && vs.by_dataset_status.reviewed) || 0;
+    const total = vs.total != null ? vs.total : 0;
+    const pat = b.pattern_training || {};
+    const patternOk = !!pat.ready;
+    const exp = b.training_export && b.training_export.summary;
+    const exportLine = exp
+        ? `Last export: ${exp.parse_examples || 0} parse / ${exp.draft_examples || 0} draft rows`
+        : 'Export: run prepare_dataset.py when you have reviewed sessions';
+    const lora = b.lora || {};
+    const loraLine = lora.train_script
+        ? `LoRA: train_lora.py + ${(lora.config_files || []).length} configs (GPU machine)`
+        : 'LoRA: train script missing';
+
+    const row = (ok, warn, text) => {
+        const cls = ok ? 'ok' : (warn ? 'warn' : 'bad');
+        return `<div class="blackout-row"><span class="blackout-dot ${cls}"></span><span>${text}</span></div>`;
+    };
+
+    el.innerHTML = [
+        row(parserOk, !parserOk, parserLabel),
+        row(evalOk, false, evalOk ? 'Offline eval suite: JSONL + fixture present' : 'Eval suite: missing files under data/evals/'),
+        row(true, false, `Vibe sessions: ${total} total, ${reviewed} reviewed (sqlite)`),
+        row(patternOk, !patternOk, patternOk ? 'Pattern training: gates satisfied' : 'Pattern training: gated (MIDI / labels / evals)'),
+        row(true, false, exportLine),
+        row(!!lora.train_script, false, loraLine),
+        `<div class="blackout-cli" title="Run from repo root with .venv/bin/python">eval: .venv/bin/python training/vibe/eval_model.py --mode base \u00b7 dataset: training/vibe/prepare_dataset.py \u00b7 pattern: training/pattern/readiness.py</div>`,
+    ].join('');
+}
+
+async function fetchServerStatus() {
+    const dot = document.querySelector('#power-status .power-status-dot');
+    const btn = document.getElementById('btn-power');
+    const container = document.getElementById('power-features');
+    const [sRes, bRes] = await Promise.allSettled([
+        api('/api/pipeline/server/status'),
+        api('/api/blackout/status'),
+    ]);
+
+    if (sRes.status === 'fulfilled' && sRes.value.ok) {
+        dot.classList.add('active');
+        btn.classList.remove('offline');
+        const features = sRes.value.features || {};
+        const feats = [
+            ['LLM', features.llm],
+            ['librosa', features.librosa],
+            ['fpcalc', features.fpcalc],
+            ['demucs', features.demucs],
+            ['watcher', features.watcher],
+        ];
+        container.innerHTML = feats.map(([name, on]) =>
+            `<div class="feat ${on ? 'feat-on' : 'feat-off'}">${on ? '\u2713' : '\u2717'} ${name}</div>`
+        ).join('');
+    } else {
+        dot.classList.remove('active');
+        btn.classList.add('offline');
+        container.innerHTML = '';
+    }
+
+    let blackoutPayload = { ok: false, error: 'Not loaded' };
+    if (bRes.status === 'fulfilled') {
+        blackoutPayload = bRes.value;
+    } else if (bRes.reason) {
+        blackoutPayload = { ok: false, error: bRes.reason.message || String(bRes.reason) };
+    }
+    renderBlackoutPanel(blackoutPayload);
 }
 
 async function restartServer() {

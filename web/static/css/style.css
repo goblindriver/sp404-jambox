@@ -112,6 +112,10 @@ header .accent {
     min-width: 180px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
+#power-menu.settings-menu {
+    min-width: 300px;
+    max-width: 380px;
+}
 .settings-menu button {
     display: block;
     width: 100%;
@@ -1769,6 +1773,53 @@ main {
 }
 .power-features .feat-on { color: #4caf50; }
 .power-features .feat-off { color: var(--text-muted); }
+
+.blackout-panel {
+    padding: 6px 16px 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+}
+.blackout-panel-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.blackout-panel-body {
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    color: var(--text-dim);
+    line-height: 1.55;
+}
+.blackout-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 3px;
+}
+.blackout-row:last-child { margin-bottom: 0; }
+.blackout-dot {
+    flex-shrink: 0;
+    margin-top: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+.blackout-dot.ok { background: #4caf50; box-shadow: 0 0 4px #4caf50; }
+.blackout-dot.warn { background: #ffb74d; box-shadow: 0 0 4px #ffb74d; }
+.blackout-dot.bad { background: #e57373; }
+.blackout-cli {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text-muted);
+    word-break: break-all;
+    line-height: 1.45;
+}
 
 /* Watcher Activity Feed */
 .watcher-feed {
