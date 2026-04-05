@@ -222,8 +222,11 @@ def _build_query(prompt_data, llm_tags):
     parts.extend(llm_tags.get("vibe", [])[:2])
     parts.extend(llm_tags.get("genre", [])[:2])
     parts.extend(llm_tags.get("texture", [])[:2])
-    if llm_tags.get("energy"):
-        parts.append(llm_tags["energy"])
+    energy_val = llm_tags.get("energy", [])
+    if isinstance(energy_val, list):
+        parts.extend(energy_val)
+    elif energy_val:
+        parts.append(str(energy_val))
     if prompt_data.get("bpm"):
         parts.append(str(prompt_data["bpm"]))
     if prompt_data.get("key"):
@@ -302,14 +305,12 @@ def _generate_pad_descriptions(llm_tags, bpm=None, key=None):
     vibes = llm_tags.get("vibe", [])
     textures = llm_tags.get("texture", [])
     keywords = llm_tags.get("keywords", [])
-    energy = llm_tags.get("energy", "")
+    energy_raw = llm_tags.get("energy", [])
+    energy = energy_raw[0] if isinstance(energy_raw, list) and energy_raw else (energy_raw if isinstance(energy_raw, str) else "")
 
-    # Pick the best genre for instrument selection
     primary_genre = genres[0] if genres else ""
     instruments = _GENRE_INSTRUMENTS.get(primary_genre, _DEFAULT_INSTRUMENTS)
 
-    # Build a pool of flavor words (2-3 per pad, no repeats across pads)
-    # Energy goes in early so it appears on most pads — fetch scoring keys on it
     flavor_pool = []
     if energy and energy in ("low", "mid", "high"):
         flavor_pool.append(energy)
@@ -364,7 +365,7 @@ def _build_preset_from_tags(prompt, llm_tags, bpm, key):
         "name": f"Vibe: {prompt[:50]}",
         "slug": slug,
         "author": "jambox-vibe",
-        "bpm": int(bpm),
+        "bpm": _coerce_int(bpm, 120, minimum=1),
         "key": key,
         "vibe": prompt,
         "notes": llm_tags.get("rationale", ""),

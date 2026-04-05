@@ -53,7 +53,7 @@ def load_preset(ref):
 
 def save_preset(preset, category=None):
     """Save a preset dict to disk. Returns the ref string."""
-    slug = preset.get('slug') or slugify(preset.get('name', 'untitled'))
+    slug = slugify(preset.get('slug') or preset.get('name', 'untitled'))
     if not slug:
         slug = 'untitled'
     preset['slug'] = slug
@@ -64,11 +64,13 @@ def save_preset(preset, category=None):
     cat_dir = os.path.join(PRESETS_DIR, cat)
     os.makedirs(cat_dir, exist_ok=True)
 
-    # Remove internal fields before saving
     save_data = {k: v for k, v in preset.items() if not k.startswith('_')}
     save_data.pop('category', None)
 
     path = os.path.join(cat_dir, f"{slug}.yaml")
+    real = os.path.realpath(path)
+    if not real.startswith(os.path.realpath(PRESETS_DIR)):
+        raise ValueError(f"Invalid preset slug: {slug}")
     with open(path, 'w') as f:
         yaml.safe_dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
@@ -204,6 +206,9 @@ def bank_to_preset(letter, config=None):
 def load_set(slug):
     """Load a set by slug. Returns dict or None."""
     path = os.path.join(SETS_DIR, f"{slug}.yaml")
+    real = os.path.realpath(path)
+    if not real.startswith(os.path.realpath(SETS_DIR)):
+        return None
     if not os.path.exists(path):
         return None
     try:
@@ -219,13 +224,16 @@ def load_set(slug):
 
 def save_set(set_data):
     """Save a set dict to disk. Returns slug."""
-    slug = set_data.get('slug') or slugify(set_data.get('name', 'untitled'))
+    slug = slugify(set_data.get('slug') or set_data.get('name', 'untitled'))
     set_data['slug'] = slug
 
     os.makedirs(SETS_DIR, exist_ok=True)
 
     save_data = {k: v for k, v in set_data.items() if not k.startswith('_')}
     path = os.path.join(SETS_DIR, f"{slug}.yaml")
+    real = os.path.realpath(path)
+    if not real.startswith(os.path.realpath(SETS_DIR)):
+        raise ValueError(f"Invalid set slug: {slug}")
     with open(path, 'w') as f:
         yaml.safe_dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     return slug

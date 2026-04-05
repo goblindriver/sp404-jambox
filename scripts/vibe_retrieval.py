@@ -118,7 +118,9 @@ def _get_tag_freq_index():
     try:
         current_mtime = os.path.getmtime(tags_path)
     except OSError:
-        current_mtime = 0
+        _tag_freq_cache["index"] = None
+        _tag_freq_cache["mtime"] = 0
+        return {}
 
     if _tag_freq_cache["index"] is not None and _tag_freq_cache["mtime"] >= current_mtime:
         return _tag_freq_cache["index"]

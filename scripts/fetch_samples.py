@@ -119,11 +119,11 @@ def parse_pad_query(query):
 
     result["keywords"] = {_ALL_ALIASES.get(kw, kw) for kw in result["keywords"]}
 
-    # Pre-extract energy from keywords so score_from_tags doesn't scan per entry
     result["energy"] = None
     for kw in result["keywords"]:
         if kw in ("low", "mid", "high"):
             result["energy"] = kw
+            result["keywords"].discard(kw)
             break
 
     return result
@@ -191,11 +191,13 @@ def score_from_tags(entry, parsed_query, bank_config):
 
     # --- Key ---
     entry_key = entry.get("key")
-    if q["key"] and entry_key:
-        if entry_key.lower() == q["key"].lower():
+    target_key = q["key"] or bank_config.get("key")
+    if target_key and target_key.upper() != "XX" and entry_key:
+        norm_entry = _normalize_key(entry_key)
+        norm_target = _normalize_key(target_key)
+        if norm_entry.lower() == norm_target.lower():
             score += weights["key_exact"]
-        # Relative major/minor get partial credit
-        elif _keys_compatible(q["key"], entry_key):
+        elif _keys_compatible(target_key, entry_key):
             score += weights["key_compatible"]
 
     # --- Keywords vs tag dimensions ---
@@ -249,19 +251,36 @@ def score_from_tags(entry, parsed_query, bank_config):
     return score
 
 
-# Relative major/minor key compatibility
+# Normalize sharp/flat enharmonic spellings to a canonical form
+_ENHARMONIC = {
+    "Gs": "Ab", "As": "Bb", "Cs": "Db", "Ds": "Eb", "Fs": "Gb",
+    "Gsm": "Abm", "Asm": "Bbm", "Csm": "Dbm", "Dsm": "Ebm", "Fsm": "Gbm",
+    "G#": "Ab", "A#": "Bb", "C#": "Db", "D#": "Eb", "F#": "Gb",
+    "G#m": "Abm", "A#m": "Bbm", "C#m": "Dbm", "D#m": "Ebm", "F#m": "Gbm",
+}
+
+def _normalize_key(key):
+    """Normalize sharp-notation keys to flat equivalents for consistent lookup."""
+    if not key:
+        return key
+    return _ENHARMONIC.get(key, key)
+
 _KEY_RELATIVES = {
     "Am": "C", "C": "Am", "Dm": "F", "F": "Dm",
     "Em": "G", "G": "Em", "Bm": "D", "D": "Bm",
+    "Abm": "B", "B": "Abm", "Bbm": "Db", "Db": "Bbm",
+    "Dbm": "E", "E": "Dbm", "Ebm": "Gb", "Gb": "Ebm",
+    "Gbm": "A", "A": "Gbm",
     "Fm": "Ab", "Ab": "Fm", "Gm": "Bb", "Bb": "Gm",
-    "Cm": "Eb", "Eb": "Cm", "Fsm": "A", "A": "Fsm",
-    "Bbm": "Db", "Db": "Bbm",
+    "Cm": "Eb", "Eb": "Cm",
 }
 
 
 def _keys_compatible(key_a, key_b):
-    """Check if two keys are relative major/minor."""
-    return _KEY_RELATIVES.get(key_a) == key_b or _KEY_RELATIVES.get(key_b) == key_a
+    """Check if two keys are relative major/minor (enharmonic-aware)."""
+    a = _normalize_key(key_a)
+    b = _normalize_key(key_b)
+    return _KEY_RELATIVES.get(a) == b or _KEY_RELATIVES.get(b) == a
 
 
 # ═══════════════════════════════════════════════════════════
@@ -457,14 +476,17 @@ def main():
                 total_pads += 1
         else:
             print(f"\n=== Bank {bank_letter.upper()}: {bank_config.get('name', bank_letter)} ===")
-            bpm = bank_config.get('bpm', '')
-            key = bank_config.get('key', '')
-            if bpm or key:
-                print(f"    Target: {bpm} BPM, Key: {key}")
+            bank_bpm = bank_config.get('bpm', '')
+            bank_key = bank_config.get('key', '')
+            if bank_bpm or bank_key:
+                print(f"    Target: {bank_bpm} BPM, Key: {bank_key}")
 
             fetched = 0
             for pad_num, pad_query in pads.items():
-                pad_num = int(pad_num)
+                try:
+                    pad_num = int(pad_num)
+                except (TypeError, ValueError):
+                    continue
                 print(f"  Pad {pad_num}: {pad_query}")
                 result = fetch_pad(bank_letter, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                 if result:

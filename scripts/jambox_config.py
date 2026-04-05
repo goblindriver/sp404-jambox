@@ -24,7 +24,9 @@ def _load_dotenv():
                 key, _, value = line.partition("=")
                 key = key.strip()
                 value = value.strip()
-                # Don't override existing env vars
+                if (value.startswith('"') and value.endswith('"')) or \
+                   (value.startswith("'") and value.endswith("'")):
+                    value = value[1:-1]
                 if key and key not in os.environ:
                     os.environ[key] = value
     except OSError:

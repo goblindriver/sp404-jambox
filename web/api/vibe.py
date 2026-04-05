@@ -38,7 +38,7 @@ def _normalize_prompt(payload):
 
 def _normalize_bank(bank):
     bank = str(bank or "a").lower().strip()
-    if bank not in "abcdefghij":
+    if len(bank) != 1 or bank not in "abcdefghij":
         raise ValueError(f"Invalid bank: {bank}")
     return bank
 
@@ -283,8 +283,7 @@ def populate_bank():
         for j in _vibe_jobs.values():
             if j.get("status") in ("starting", "generating", "saving", "loading", "fetching"):
                 return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
-
-    job_id = _create_vibe_job(bank, payload["prompt"])
+        job_id = _create_vibe_job(bank, payload["prompt"])
 
     prompt_data = {
         "prompt": payload["prompt"],
@@ -316,8 +315,8 @@ def apply_bank():
         for j in _vibe_jobs.values():
             if j.get("status") in ("starting", "generating", "reviewed", "saving", "loading", "fetching"):
                 return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
+        job_id = _create_vibe_job(bank, preset.get("vibe", ""))
 
-    job_id = _create_vibe_job(bank, preset.get("vibe", ""))
     repo_dir = current_app.config["REPO_DIR"]
     prompt_data = {
         "prompt": preset.get("vibe", ""),

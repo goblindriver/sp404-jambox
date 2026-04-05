@@ -84,7 +84,7 @@ FILENAME_TYPE_PATTERNS = [
     (re.compile(r"\bkick\b|\bbd\b|\bbass[\s_-]?drum\b"), "KIK"),
     (re.compile(r"\bsnare\b|\bsd\b|\bsnr\b"), "SNR"),
     (re.compile(r"\bclap\b|\bcp\b|\bsnap\b"), "CLP"),
-    (re.compile(r"\bh(?:i[\s_-]?)?hat\b|\bhh\b|\boh\b|\bch\b"), "HAT"),
+    (re.compile(r"\bh(?:i[\s_-]?)?hat\b|\bhh\b|\bopen[\s_-]?h(?:at)?\b|\boh[\s_-]?hat\b|\bclosed[\s_-]?h(?:at)?\b|\bch[\s_-]?hat\b"), "HAT"),
     (re.compile(r"\bcymbal\b|\bcrash\b|\bride\b"), "CYM"),
     (re.compile(r"\brimshot\b|\brim\b"), "RIM"),
     (re.compile(r"\bperc\b|\bconga\b|\bbongo\b|\btom\b|\bshaker\b|\btambourine\b|\bcowbell\b"), "PRC"),
@@ -574,7 +574,8 @@ def classify_playability(duration, type_code, filename, bpm):
         return "one-shot"
 
     # Longer samples
-    if "loop" in fname_lower or bpm or type_code == "BRK":
+    is_loop_hint = "loop" in fname_lower or type_code == "BRK"
+    if is_loop_hint or (bpm and duration >= 2):
         return "loop"
     if type_code in ("VOX", "SMP") and duration < 10:
         return "chop-ready"

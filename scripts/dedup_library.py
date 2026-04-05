@@ -36,7 +36,7 @@ LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 DUPES_DIR = os.path.join(LIBRARY, "_DUPES")
 FFMPEG = SETTINGS["FFMPEG_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", LONG_HOLD_DIRNAME}
+SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", "Stems", LONG_HOLD_DIRNAME}
 MAX_DECODE_SECONDS = 30
 
 
@@ -225,13 +225,16 @@ def main():
         keep = scored[0][0]
         dupes = [s[0] for s in scored[1:]]
 
-        if gi < 30:  # Show first 30 groups
+        for d in dupes:
+            sz = os.path.getsize(os.path.join(LIBRARY, d)) if os.path.exists(os.path.join(LIBRARY, d)) else 0
+            total_bytes_reclaimable += sz
+
+        if gi < 30:
             print(f"\n  Group {gi+1}:")
             print(f"    KEEP: {keep}")
             for d in dupes:
                 sz = os.path.getsize(os.path.join(LIBRARY, d)) if os.path.exists(os.path.join(LIBRARY, d)) else 0
                 print(f"    DUPE: {d} ({sz // 1024}KB)")
-                total_bytes_reclaimable += sz
 
         total_dupes += len(dupes)
 
