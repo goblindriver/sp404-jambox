@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from flask import Flask
@@ -94,6 +95,37 @@ class AudioSdcardApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["sessions"], [{"name": "session-2026-04-02", "count": 1}])
+
+    def test_sdcard_status_reports_mount_and_sample_counts(self):
+        with open(os.path.join(self.app.config["SD_SMPL_DIR"], "A0000001.WAV"), "wb") as handle:
+            handle.write(b"wav")
+
+        response = self.client.get("/api/sdcard/status")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["mounted"])
+        self.assertEqual(payload["sample_count"], 1)
+        self.assertEqual(payload["bank_a_count"], 1)
+
+    def test_sdcard_scan_rejects_when_not_mounted(self):
+        sd_smpl = self.app.config["SD_SMPL_DIR"]
+        os.rmdir(sd_smpl)
+
+        response = self.client.get("/api/sdcard/scan")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()["ok"])
+
+    def test_pull_bank_a_returns_saved_count(self):
+        fake_sync = SimpleNamespace(pull_bank_a=lambda: 7)
+        with patch.dict("sys.modules", {"sync_bank_a": fake_sync}):
+            response = self.client.post("/api/sdcard/pull-bank-a")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["saved"], 7)
 
 
 if __name__ == "__main__":

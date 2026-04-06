@@ -18,6 +18,7 @@ for path in (SCRIPTS_DIR, WEB_DIR):
         sys.path.insert(0, path)
 
 import api.music as music_api
+import api.library as library_api
 from api.music import music_bp
 from api.library import library_bp
 
@@ -25,7 +26,9 @@ from api.library import library_bp
 class MusicLibraryApiTests(unittest.TestCase):
     def setUp(self):
         music_api._split_jobs.clear()
+        library_api._retag_jobs.clear()
         self.addCleanup(music_api._split_jobs.clear)
+        self.addCleanup(library_api._retag_jobs.clear)
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
 
@@ -109,6 +112,63 @@ class MusicLibraryApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["pending_packs"], 0)
+
+    def test_library_tags_returns_dimension_counts(self):
+        with open(self.app.config["TAGS_FILE"], "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "Loops/foo.wav": {
+                        "tags": ["dusty", "funk"],
+                        "type_code": "BRK",
+                        "vibe": ["warm"],
+                        "genre": ["funk"],
+                        "texture": ["lo-fi"],
+                        "source": "dug",
+                        "energy": "mid",
+                        "playability": "loop",
+                        "bpm": 120,
+                    }
+                },
+                handle,
+            )
+
+        response = self.client.get("/api/library/tags")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["type_codes"]["BRK"], 1)
+        self.assertEqual(payload["vibes"]["warm"], 1)
+
+    def test_library_smart_retag_status_returns_not_found(self):
+        response = self.client.get("/api/library/smart-retag/missing")
+
+        self.assertEqual(response.status_code, 404)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"], "Job not found")
+
+    def test_library_smart_retag_starts_background_job(self):
+        started = {}
+
+        class FakeThread:
+            daemon = False
+
+            def __init__(self, target=None, args=None):
+                started["target"] = target
+                started["args"] = args
+
+            def start(self):
+                started["started"] = True
+
+        with patch("api.library.threading.Thread", side_effect=FakeThread):
+            response = self.client.post("/api/library/smart-retag", json={"limit": 5, "dry_run": True})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertIn("job_id", payload)
+        self.assertTrue(started["started"])
 
 
 if __name__ == "__main__":

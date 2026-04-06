@@ -181,6 +181,47 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertTrue(response.get_json()["ok"])
         self.assertTrue(thread_calls["started"])
 
+    def test_vibe_populate_status_returns_not_found(self):
+        response = self.client.get("/api/vibe/populate-status/missing")
+
+        self.assertEqual(response.status_code, 404)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"], "Job not found")
+
+    def test_vibe_populate_bank_rejects_empty_prompt(self):
+        response = self.client.post("/api/vibe/populate-bank", json={"prompt": "   ", "bank": "a"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "prompt must be a non-empty string")
+
+    def test_vibe_populate_bank_rejects_when_job_already_running(self):
+        from api.vibe import _vibe_jobs
+        _vibe_jobs["abcd1234"] = {"status": "fetching"}
+        response = self.client.post("/api/vibe/populate-bank", json={"prompt": "dusty funk", "bank": "a"})
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.get_json()["error"], "A vibe populate is already running")
+
+    def test_vibe_populate_bank_returns_session_warning_when_logging_fails(self):
+        class FakeThread:
+            daemon = False
+
+            def __init__(self, target=None, args=None):
+                self.target = target
+                self.args = args
+
+            def start(self):
+                return None
+
+        with patch("api.vibe.vts.create_session", side_effect=RuntimeError("db unavailable")), patch("api.vibe.threading.Thread", side_effect=FakeThread):
+            response = self.client.post("/api/vibe/populate-bank", json={"prompt": "dusty funk", "bank": "a", "fetch": False})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertIn("session_warning", payload)
+
 
 class DailyBankTests(unittest.TestCase):
     def test_build_daily_preset_uses_existing_preset_schema(self):

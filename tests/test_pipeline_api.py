@@ -125,6 +125,34 @@ class PipelineApiTests(unittest.TestCase):
         self.assertTrue(seen["started"])
         self.assertEqual(seen["args"][3:], ("b", 3))
 
+    def test_job_status_returns_not_found_for_missing_job(self):
+        response = self.client.get("/api/pipeline/status/missing-job")
+
+        self.assertEqual(response.status_code, 404)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"], "Job not found")
+
+    def test_downloads_path_get_returns_ok_and_path(self):
+        fake_ingest = SimpleNamespace(DOWNLOADS="/tmp/downloads")
+        with patch.dict("sys.modules", {"ingest_downloads": fake_ingest}):
+            response = self.client.get("/api/pipeline/downloads-path")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["path"], "/tmp/downloads")
+
+    def test_server_status_uses_configured_llm_endpoint(self):
+        self.app.config["LLM_ENDPOINT"] = ""
+        with patch.dict(os.environ, {"SP404_LLM_ENDPOINT": "http://env-only.example"}, clear=False):
+            response = self.client.get("/api/pipeline/server/status")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["features"]["llm"])
+
     def test_build_patterns_returns_timeout_error(self):
         with patch("api.pipeline.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="gen_patterns.py", timeout=1)):
             response = self.client.post("/api/pipeline/patterns")

@@ -70,6 +70,31 @@ class VibeTrainingStoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["session_status"], "applied")
         self.assertEqual(rows[0]["preset_ref"], "auto/test")
 
+    def test_update_generated_backfills_parse_fields(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            db_path = os.path.join(tempdir, "vibe.sqlite")
+            session_id = vibe_training_store.create_session(
+                {"prompt": "dusty funk", "bank": "b", "bpm": 110, "key": "Am"},
+                {},
+                {"VIBE_PARSER_MODE": "base", "LLM_MODEL": "qwen"},
+                db_path=db_path,
+            )
+            vibe_training_store.update_generated(
+                session_id,
+                {
+                    "query": "BRK dusty funk loop",
+                    "parsed": {"keywords": ["dusty", "funk"], "type_code": "BRK"},
+                    "draft_preset": {"pads": {1: "KIK dusty one-shot"}},
+                },
+                {"VIBE_PARSER_MODE": "rag", "LLM_MODEL": "qwen3"},
+                db_path=db_path,
+            )
+            rows = vibe_training_store.list_sessions(limit=1, db_path=db_path)
+
+        self.assertEqual(rows[0]["query"], "BRK dusty funk loop")
+        self.assertIn("dusty", rows[0]["parsed_json"])
+        self.assertIn("KIK dusty one-shot", rows[0]["draft_preset_json"])
+
 
 class VibeRetrievalTests(unittest.TestCase):
     def test_retrieve_session_examples_prefers_matching_prompts(self):
@@ -156,10 +181,11 @@ class ParserModeTests(unittest.TestCase):
 
 class EvalRunnerTests(unittest.TestCase):
     def test_evaluate_ranking_uses_fixture_library(self):
-        summary, details = vibe_eval_model.evaluate_ranking(
-            os.path.join(REPO_ROOT, "data", "evals", "prompt_to_ranking.jsonl"),
-            os.path.join(REPO_ROOT, "data", "evals", "ranking_fixture.json"),
-        )
+        with patch.dict(vibe_generate.SETTINGS, {"VIBE_PARSER_MODE": "base"}, clear=False):
+            summary, details = vibe_eval_model.evaluate_ranking(
+                os.path.join(REPO_ROOT, "data", "evals", "prompt_to_ranking.jsonl"),
+                os.path.join(REPO_ROOT, "data", "evals", "ranking_fixture.json"),
+            )
 
         self.assertEqual(summary["cases"], 6)
         self.assertGreaterEqual(summary["top1_accuracy"], 0.5)

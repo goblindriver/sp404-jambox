@@ -168,6 +168,40 @@ def update_review(session_id, reviewed_preset, reviewed_parsed, fetch_enabled, b
         conn.close()
 
 
+def update_generated(session_id, result_payload, settings, db_path=None):
+    """Backfill generated parse/draft data for an existing session."""
+    now = _utcnow()
+    conn = _connect(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                UPDATE vibe_sessions
+                SET updated_at = ?, model_mode = ?, model_label = ?,
+                    fallback_used = ?, fallback_code = ?, fallback_reason = ?, query = ?,
+                    parsed_json = ?, draft_preset_json = ?,
+                    bank_suggestions_json = ?, sample_suggestions_json = ?
+                WHERE id = ?
+                """,
+                (
+                    now,
+                    result_payload.get("model_mode") or settings.get("VIBE_PARSER_MODE", "base"),
+                    result_payload.get("model_label") or _normalize_label(settings),
+                    1 if result_payload.get("fallback_used") else 0,
+                    result_payload.get("fallback_code"),
+                    result_payload.get("fallback_reason"),
+                    result_payload.get("query"),
+                    _json_or_null(result_payload.get("parsed")),
+                    _json_or_null(result_payload.get("draft_preset")),
+                    _json_or_null(result_payload.get("bank_suggestions", [])),
+                    _json_or_null(result_payload.get("sample_suggestions", [])),
+                    session_id,
+                ),
+            )
+    finally:
+        conn.close()
+
+
 def complete_apply(session_id, applied_preset, preset_ref, fetch_summary, fetch_result_text, db_path=None):
     now = _utcnow()
     conn = _connect(db_path)
