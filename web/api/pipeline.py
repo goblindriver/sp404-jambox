@@ -491,20 +491,32 @@ def server_status():
 
 @pipeline_bp.route('/pipeline/server/restart', methods=['POST'])
 def server_restart():
-    """Gracefully restart the Flask server by re-exec'ing the process."""
+    """Gracefully restart Flask by launching replacement then terminating self."""
     import signal
+    settings = dict(current_app.config)
+    repo_dir = settings.get('REPO_DIR', current_app.config['REPO_DIR'])
+    web_dir = os.path.join(repo_dir, 'web')
+    app_py = os.path.join(web_dir, 'app.py')
+    python_bin = os.path.abspath(sys.executable or "python3")
+    env = build_subprocess_env(settings)
 
     def _restart():
-        """Re-exec current Python process; fallback to SIGTERM if exec fails."""
+        """Launch replacement server process, then terminate this process."""
         import time
-        time.sleep(0.25)
+        launch = f"sleep 0.35; exec \"{python_bin}\" \"{app_py}\""
         try:
-            python_bin = sys.executable or "python3"
-            argv = [python_bin] + sys.argv
-            os.execv(python_bin, argv)
-        except Exception as exc:
-            current_app.logger.exception("Server re-exec failed: %s", exc)
-            os.kill(os.getpid(), signal.SIGTERM)
+            subprocess.Popen(
+                ["/bin/sh", "-c", launch],
+                cwd=web_dir,
+                env=env,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+        time.sleep(0.2)
+        os.kill(os.getpid(), signal.SIGTERM)
 
     # Run in background so we can return the response first
     t = threading.Thread(target=_restart, daemon=True)

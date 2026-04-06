@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -354,27 +355,76 @@ def _get_retag_job(job_id):
         return dict(job) if isinstance(job, dict) else None
 
 
+def _terminate_retag_pid(pid, *, graceful_timeout=5):
+    """Terminate a smart-retag process group and ensure it exits."""
+    if not pid:
+        return False
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+
+    # Wait briefly for graceful shutdown.
+    for _ in range(max(1, int(graceful_timeout * 10))):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return True
+        import time as _time
+        _time.sleep(0.1)
+
+    # Force kill if still alive.
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+
+    for _ in range(20):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return True
+        import time as _time
+        _time.sleep(0.1)
+    return False
+
+
 def _run_smart_retag(job_id, repo_dir, settings, args_list):
     """Background worker for smart retagging."""
+    proc = None
     try:
         _update_retag_job(job_id, status="running")
         script = os.path.join(repo_dir, "scripts", "smart_retag.py")
         cmd = [sys.executable, script] + args_list
 
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             cwd=repo_dir,
             env=build_subprocess_env(settings),
-            timeout=600,
+            start_new_session=True,
         )
+        _update_retag_job(job_id, pid=proc.pid)
+
+        stdout, stderr = proc.communicate(timeout=600)
+        return_code = proc.returncode
         import time as _time
         _update_retag_job(
             job_id,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            status="done" if result.returncode == 0 else "error",
+            stdout=stdout,
+            stderr=stderr,
+            status="done" if return_code == 0 else "error",
+            pid=None,
             finished_at=_time.time(),
         )
 
@@ -383,16 +433,21 @@ def _run_smart_retag(job_id, repo_dir, settings, args_list):
         _tag_db_mtime = 0
 
     except subprocess.TimeoutExpired:
+        if proc is not None and proc.pid:
+            _terminate_retag_pid(proc.pid)
         import time as _time
         _update_retag_job(
             job_id,
             status="error",
             stderr="Smart retag timed out after 10 minutes",
+            pid=None,
             finished_at=_time.time(),
         )
     except Exception as e:
+        if proc is not None and proc.pid:
+            _terminate_retag_pid(proc.pid)
         import time as _time
-        _update_retag_job(job_id, status="error", stderr=str(e), finished_at=_time.time())
+        _update_retag_job(job_id, status="error", stderr=str(e), pid=None, finished_at=_time.time())
 
 
 @library_bp.route('/library/smart-retag', methods=['POST'])
@@ -443,6 +498,7 @@ def smart_retag():
             "status": "starting",
             "stdout": "",
             "stderr": "",
+            "pid": None,
         }
 
     repo_dir = current_app.config["REPO_DIR"]
@@ -461,3 +517,27 @@ def smart_retag_status(job_id):
     if not job:
         return jsonify({"ok": False, "error": "Job not found"}), 404
     return jsonify(job)
+
+
+@library_bp.route('/library/smart-retag/<job_id>/stop', methods=['POST'])
+def smart_retag_stop(job_id):
+    """Stop a running smart-retag job and verify process termination."""
+    with _retag_lock:
+        job = _retag_jobs.get(job_id)
+        if not isinstance(job, dict):
+            return jsonify({"ok": False, "error": "Job not found"}), 404
+        status = job.get("status")
+        pid = job.get("pid")
+        if status not in ("starting", "running"):
+            return jsonify({"ok": True, "already_stopped": True, "status": status})
+
+    stopped = _terminate_retag_pid(pid)
+    import time as _time
+    _update_retag_job(
+        job_id,
+        status="error",
+        stderr="Stopped by user request",
+        pid=None,
+        finished_at=_time.time(),
+    )
+    return jsonify({"ok": True, "stopped": stopped, "job_id": job_id})
