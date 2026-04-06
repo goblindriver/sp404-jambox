@@ -495,10 +495,16 @@ def server_restart():
     import signal
 
     def _restart():
-        """Send SIGTERM to self — the launch wrapper or preview_start will respawn."""
+        """Re-exec current Python process; fallback to SIGTERM if exec fails."""
         import time
-        time.sleep(0.5)
-        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(0.25)
+        try:
+            python_bin = sys.executable or "python3"
+            argv = [python_bin] + sys.argv
+            os.execv(python_bin, argv)
+        except Exception as exc:
+            current_app.logger.exception("Server re-exec failed: %s", exc)
+            os.kill(os.getpid(), signal.SIGTERM)
 
     # Run in background so we can return the response first
     t = threading.Thread(target=_restart, daemon=True)
