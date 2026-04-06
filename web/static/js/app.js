@@ -43,6 +43,8 @@ async function init() {
         document.getElementById('btn-fetch-bank').onclick = fetchCurrentBank;
         document.getElementById('btn-fetch-all').onclick = fetchAllBanks;
         document.getElementById('btn-export').onclick = exportToSD;
+        const cardIntelBtn = document.getElementById('btn-card-intel');
+        if (cardIntelBtn) cardIntelBtn.onclick = pullCardIntelligence;
 
         // Vibe panel
         document.getElementById('btn-vibe-populate').onclick = populateBankFromVibe;
@@ -201,7 +203,7 @@ function renderPadGrid(bank) {
 
         const statusIcon = pad.status === 'filled' ? '●' : pad.status === 'staged' ? '◐' : '○';
 
-        // Card indicator — show what's physically on the SD card
+        // Card indicator — show what's physically on the SD card with intelligence
         let cardIndicator = '';
         if (cardBank) {
             const cardPad = cardBank.pads.find(p => p.num === pad.num);
@@ -210,8 +212,26 @@ function renderPadGrid(bank) {
                 const mode = cardPad.loop ? 'LP' : cardPad.gate ? 'GT' : '';
                 const bpmStr = cardPad.bpm ? `${cardPad.bpm}` : '';
                 const parts = [mode, bpmStr].filter(Boolean).join(' ');
-                cardIndicator = `<span class="pad-card-badge" title="On SD: ${kb}KB ${parts}">${mode || '●'}</span>`;
+
+                // Provenance badge
+                const provIcons = {'device-created': '★', 'jambox': '⚙', 'user-loaded': '👤'};
+                const provIcon = provIcons[cardPad.provenance] || '●';
+                const provLabel = cardPad.provenance || 'unknown';
+
+                // Adjustment indicator
+                const adjusted = cardPad.bpm_adjusted ? ' ⚡' : '';
+
+                // Pattern heat — warm color if pad appears in patterns
+                const ptnStats = cardPad.pattern_stats;
+                let heatClass = '';
+                if (ptnStats && ptnStats.hit_count > 20) heatClass = ' pad-hot';
+                else if (ptnStats && ptnStats.hit_count > 5) heatClass = ' pad-warm';
+
+                const title = `${provLabel} · ${kb}KB ${parts}${adjusted ? ' · BPM adjusted' : ''}${ptnStats ? ` · ${ptnStats.hit_count} pattern hits` : ''}`;
+                cardIndicator = `<span class="pad-card-badge${heatClass}" title="${title}">${provIcon}${adjusted}</span>`;
                 el.classList.add('on-card');
+                if (cardPad.bpm_adjusted) el.classList.add('user-adjusted');
+                if (ptnStats && ptnStats.hit_count > 0) el.classList.add('pattern-used');
             }
         }
 
@@ -287,7 +307,7 @@ function selectPad(pad) {
         statusEl.className = 'detail-status empty';
     }
 
-    // Show SD card pad info if available
+    // Show SD card pad info with intelligence data
     const cardInfoEl = document.getElementById('detail-card-info');
     if (cardInfoEl) {
         const cardBank = state.sdCardData?.banks?.[bank.letter.toUpperCase()];
@@ -295,9 +315,33 @@ function selectPad(pad) {
         if (cardPad && cardPad.on_card) {
             const kb = Math.round(cardPad.size / 1024);
             const mode = cardPad.loop ? 'Loop' : cardPad.gate ? 'Gate' : 'Off';
-            const bpm = cardPad.bpm ? `${cardPad.bpm} BPM` : '';
             const rev = cardPad.reverse ? ' · Reverse' : '';
-            cardInfoEl.textContent = `SD: ${kb}KB · ${mode}${bpm ? ' · ' + bpm : ''}${rev}`;
+            const lofi = cardPad.lofi ? ' · Lo-Fi' : '';
+            const tier = cardBank.tier === 'bed' ? '🎵 Bed' : cardBank.tier === 'toolkit' ? '🔧 Toolkit' : '🎛 Session';
+
+            // BPM with adjustment indicator
+            let bpmInfo = '';
+            if (cardPad.bpm_adjusted) {
+                bpmInfo = ` · ⚡ BPM: ${cardPad.bpm_original} → ${cardPad.bpm_user}`;
+            } else if (cardPad.bpm) {
+                bpmInfo = ` · ${cardPad.bpm} BPM`;
+            }
+
+            // Provenance
+            const provLabels = {'device-created': '★ Device capture', 'jambox': '⚙ Jambox', 'user-loaded': '👤 User loaded'};
+            const prov = provLabels[cardPad.provenance] || cardPad.provenance || '';
+
+            // Pattern stats
+            let ptnInfo = '';
+            const ptn = cardPad.pattern_stats;
+            if (ptn) {
+                ptnInfo = ` · Patterns: ${ptn.hit_count} hits (vel ${ptn.avg_velocity}, ${ptn.patterns_appeared_in} ptns)`;
+            }
+
+            // PAD_INFO reliability note for Bank A
+            const reliabilityNote = !cardPad.padinfo_reliable ? ' · ⚠ Settings may not reflect hardware state' : '';
+
+            cardInfoEl.innerHTML = `<strong>${tier}</strong> · ${prov} · ${kb}KB · ${mode}${bpmInfo}${rev}${lofi}${ptnInfo}${reliabilityNote}`;
             cardInfoEl.classList.remove('hidden');
         } else if (cardBank) {
             cardInfoEl.textContent = 'SD: not on card';
@@ -422,15 +466,67 @@ async function scanSDCard() {
         state.sdCardData = data;
 
         const text = document.querySelector('.sd-text');
-        text.textContent = `SD: ${data.total_samples} samples · ${data.pattern_count} patterns · ${data.free_mb}MB free`;
+        const adjCount = (data.adjustments || []).length;
+        const adjNote = adjCount > 0 ? ` · ${adjCount} user adjustments` : '';
+        text.textContent = `SD: ${data.total_samples} samples · ${data.pattern_count} patterns · ${data.free_mb}MB free${adjNote}`;
 
-        toast(`SD card scanned: ${data.total_samples} samples across ${Object.values(data.banks).filter(b => b.filled_count > 0).length} banks`, 'success');
+        const activeBanks = Object.values(data.banks).filter(b => b.filled_count > 0).length;
+        toast(`SD card scanned: ${data.total_samples} samples across ${activeBanks} banks${adjNote}`, 'success');
 
         // Re-render to show card indicators
         if (state.currentBank) renderPadGrid(state.currentBank);
         renderBankTabs();
     } catch (e) {
         // Scan failed silently
+    }
+}
+
+async function pullCardIntelligence() {
+    toast('Pulling card intelligence...');
+    try {
+        const result = await api('/api/sdcard/pull-intelligence', {method: 'POST'});
+        if (!result.ok) {
+            toast(result.error || 'Intelligence pull failed', 'error');
+            return;
+        }
+
+        state.sdCardIntelligence = result.session;
+
+        const changes = result.changes || [];
+        const adjCount = (result.session?.session_banks?.adjustments || []).length;
+        const ptnFavs = (result.session?.session_banks?.pattern_usage?.most_used || []).length;
+        const bedCount = (result.session?.bed_context?.files || []).length;
+
+        let msg = `Intelligence captured: ${bedCount} beds, ${adjCount} adjustments, ${ptnFavs} pattern favorites`;
+        if (changes.length > 0 && changes[0].type !== 'first_session') {
+            msg += ` · ${changes.length} changes since last pull`;
+        }
+        toast(msg, 'success');
+
+        // Re-scan to refresh UI with latest data
+        await scanSDCard();
+    } catch (e) {
+        toast(`Intelligence pull failed: ${e.message}`, 'error');
+    }
+}
+
+async function reorganizeCard(moves) {
+    if (!moves || moves.length === 0) return;
+    toast(`Moving ${moves.length} pad(s)...`);
+    try {
+        const result = await api('/api/sdcard/reorganize', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({moves}),
+        });
+        if (result.ok) {
+            toast(`Moved ${result.moved} pad(s)`, 'success');
+            await scanSDCard();
+        } else {
+            toast((result.errors || []).join(', ') || 'Reorganize failed', 'error');
+        }
+    } catch (e) {
+        toast(`Reorganize failed: ${e.message}`, 'error');
     }
 }
 
@@ -1713,9 +1809,24 @@ async function saveBankEdit() {
 function setupPadDropZones() {
     const pads = document.querySelectorAll('.pad');
     pads.forEach(el => {
+        const padNum = parseInt(el.dataset.num);
+
+        // Make on-card pads draggable for reorganization
+        if (el.classList.contains('on-card') && state.sdMounted) {
+            el.draggable = true;
+            el.addEventListener('dragstart', (e) => {
+                const bank = state.currentBank.letter.toUpperCase();
+                e.dataTransfer.setData('application/x-card-pad', JSON.stringify({bank, pad: padNum}));
+                e.dataTransfer.effectAllowed = 'move';
+                el.classList.add('dragging');
+            });
+            el.addEventListener('dragend', () => el.classList.remove('dragging'));
+        }
+
         el.addEventListener('dragover', (e) => {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
+            const hasCardPad = e.dataTransfer.types.includes('application/x-card-pad');
+            e.dataTransfer.dropEffect = hasCardPad ? 'move' : 'copy';
             el.classList.add('drag-over');
         });
         el.addEventListener('dragleave', () => {
@@ -1724,18 +1835,35 @@ function setupPadDropZones() {
         el.addEventListener('drop', (e) => {
             e.preventDefault();
             el.classList.remove('drag-over');
-            const padNum = parseInt(el.dataset.num);
+            const targetPadNum = parseInt(el.dataset.num);
 
-            // Check for library drag first
+            // Card pad-to-pad reorganization
+            const cardPadData = e.dataTransfer.getData('application/x-card-pad');
+            if (cardPadData) {
+                try {
+                    const src = JSON.parse(cardPadData);
+                    const dstBank = state.currentBank.letter.toUpperCase();
+                    if (src.bank === dstBank && src.pad === targetPadNum) return;
+                    reorganizeCard([{
+                        from: {bank: src.bank, pad: src.pad},
+                        to: {bank: dstBank, pad: targetPadNum},
+                    }]);
+                } catch (err) {
+                    toast('Drag error: ' + err.message, 'error');
+                }
+                return;
+            }
+
+            // Check for library drag
             const libraryPath = e.dataTransfer.getData('application/x-library-path');
             if (libraryPath) {
-                assignToPad(state.currentBank.letter, padNum, libraryPath);
+                assignToPad(state.currentBank.letter, targetPadNum, libraryPath);
                 return;
             }
 
             // OS file drop
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                uploadToPad(state.currentBank.letter, padNum, e.dataTransfer.files[0]);
+                uploadToPad(state.currentBank.letter, targetPadNum, e.dataTransfer.files[0]);
             }
         });
     });

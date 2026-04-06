@@ -54,7 +54,7 @@ DEFAULT_VIBE_MAPPINGS = {
 }
 
 DEFAULT_SCORING = {
-    "score_version": 3,
+    "score_version": 4,
     "weights": {
         "type_exact": 10,
         "type_related": 3,
@@ -78,6 +78,12 @@ DEFAULT_SCORING = {
         "instrument_hint_match": 5,
         "energy_match": 3,
         "energy_mismatch": -2,
+        "performance_pattern_used": 4,
+        "performance_bpm_adjust": 3,
+        "performance_velocity_high": 2,
+        "bed_complement": 3,
+        "toolkit_survival": 5,
+        "session_survival": 2,
     },
 }
 

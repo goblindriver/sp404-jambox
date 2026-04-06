@@ -13,9 +13,9 @@ Usage:
     python scripts/smart_retag.py --dry-run --limit 10      # feature extraction only
 
 Env:
-    SP404_LLM_MODEL — primary Ollama model for SHORT clips (duration <= split; usually qwen3:32b).
+    SP404_LLM_MODEL — Ollama model (default: qwen3:8b).
     SP404_SMART_RETAG_DURATION_SPLIT_SEC — seconds; longer audio uses the fast retag model (default 60).
-    SP404_SMART_RETAG_LLM_MODEL — model for long clips; empty defaults to qwen3:8b.
+    SP404_SMART_RETAG_LLM_MODEL — model for long clips (default: qwen3:8b).
     SP404_SMART_RETAG_SKIP_ABOVE_SECONDS — if set, skip LLM entirely when duration >= this (features only).
 """
 
@@ -25,7 +25,9 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,8 +41,8 @@ SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 LLM_ENDPOINT = SETTINGS.get("LLM_ENDPOINT", "")
-# Short clips (<= split sec): main model. Long clips: fast model (defaults to 8b if env empty).
-PRIMARY_LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3")
+# All clips use qwen3:8b. Larger models deferred until DB is in shape.
+PRIMARY_LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3:8b")
 LONG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3:8b"
 SMART_RETAG_DURATION_SPLIT_SEC = int(SETTINGS.get("SMART_RETAG_DURATION_SPLIT_SEC", 60))
 SMART_RETAG_SKIP_ABOVE_SECONDS = SETTINGS.get("SMART_RETAG_SKIP_ABOVE_SECONDS")
@@ -54,6 +56,7 @@ AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
 SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 BATCH_SIZE = 50
+_tag_db_lock = threading.Lock()
 
 # Type code processing order — preset-demand-first
 TYPE_CODE_ORDER = [
@@ -654,7 +657,96 @@ def _entry_needs_smart_retag(entry):
     return False
 
 
-def retag_batch(files, tag_db, dry_run=False, verbose=True):
+def _get_stored_features(tag_db, rel_path):
+    """Reconstruct a features dict from stored vectors + entry metadata.
+
+    Returns a features dict suitable for LLM prompt building, or None if
+    the entry has no stored feature vectors.
+    """
+    entry = tag_db.get(rel_path, {})
+    stored = entry.get('features')
+    if not stored:
+        return None
+    features = dict(stored)
+    for k in ('duration', 'bpm', 'key', 'loudness_db'):
+        if entry.get(k) is not None:
+            features[k] = entry[k]
+    return features
+
+
+def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
+                         delete_low_quality):
+    """Process one file: extract features (or reuse stored), call LLM, merge.
+
+    Returns a result dict consumed by the batch coordinator.
+    Thread-safe: only reads tag_db under lock; writes happen in the caller.
+    """
+    fname = os.path.basename(rel_path)
+
+    with _tag_db_lock:
+        stored_features = _get_stored_features(tag_db, rel_path)
+        existing = dict(tag_db.get(rel_path, {}))
+
+    if stored_features and stored_features.get('spectral_centroid') is not None:
+        features = stored_features
+    else:
+        features = extract_features(full_path)
+
+    if not features:
+        return {"rel_path": rel_path, "status": "error", "reason": "no_features"}
+
+    if dry_run:
+        return {"rel_path": rel_path, "status": "tagged", "features": features,
+                "dry_run": True}
+
+    skipped_long = False
+    used_model = None
+    llm_tags = {}
+    usable = False
+    if LLM_ENDPOINT:
+        llm_tags, used_model, skipped_long = _llm_tag_with_repair(
+            full_path, features, verbose=verbose)
+        usable = _enrichment_usable(llm_tags)
+        if not usable and not skipped_long:
+            _llm_stats['incomplete'] += 1
+    mark_smart = bool(usable) if LLM_ENDPOINT else False
+    entry = _merge_tags(existing, llm_tags, features, rel_path,
+                        mark_smart_retag_complete=mark_smart)
+    entry['retag_model'] = used_model if (usable and LLM_ENDPOINT) else None
+
+    qs = entry.get('quality_score')
+    tc = entry.get('type_code', '?')
+
+    result = {
+        "rel_path": rel_path,
+        "full_path": full_path,
+        "entry": entry,
+        "usable": usable,
+        "skipped_long": skipped_long,
+        "llm_tags": llm_tags,
+        "mark_smart": mark_smart,
+        "qs": qs,
+        "tc": tc,
+    }
+
+    if usable and qs is not None and qs <= 2:
+        result["status"] = "low_quality"
+    elif usable:
+        result["status"] = "tagged"
+    elif skipped_long:
+        result["status"] = "skip_long"
+    elif LLM_ENDPOINT and not llm_tags:
+        result["status"] = "llm_fail"
+    elif LLM_ENDPOINT:
+        result["status"] = "incomplete"
+    else:
+        result["status"] = "features_only"
+
+    return result
+
+
+def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
+                delete_low_quality=False):
     """Process a batch through feature extraction + LLM tagging.
 
     Returns (tagged, quarantined, errors, incomplete_n, completed_rel_paths).
@@ -664,81 +756,81 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
     llm_failures = 0
     completed_rel_paths = []
 
-    for rel_path, full_path in files:
+    def _handle_result(r):
+        nonlocal tagged, quarantined, errors, incomplete_n, llm_failures
+        rel_path = r["rel_path"]
         fname = os.path.basename(rel_path)
+        status = r["status"]
 
-        # 1. Extract features
-        features = extract_features(full_path)
-        if not features:
+        if status == "error":
             if verbose:
                 print("  SKIP (no features): %s" % fname)
             errors += 1
             completed_rel_paths.append(rel_path)
-            continue
+            return
 
-        if dry_run:
+        if r.get("dry_run"):
+            f = r.get("features", {})
             if verbose:
                 print("  DRY-RUN: %s (dur=%.1fs centroid=%.0f onsets=%d)" % (
-                    fname, features.get('duration', 0),
-                    features.get('spectral_centroid', 0),
-                    features.get('onset_count', 0)))
+                    fname, f.get('duration', 0),
+                    f.get('spectral_centroid', 0),
+                    f.get('onset_count', 0)))
             tagged += 1
             completed_rel_paths.append(rel_path)
-            continue
+            return
 
-        # 2. LLM (with repair passes when output is too thin for fetch)
-        skipped_long = False
-        used_model = None
-        if LLM_ENDPOINT:
-            llm_tags, used_model, skipped_long = _llm_tag_with_repair(
-                full_path, features, verbose=verbose)
-            usable = _enrichment_usable(llm_tags)
-            if not usable and not skipped_long:
-                incomplete_n += 1
-                _llm_stats['incomplete'] += 1
-                if llm_tags and verbose:
-                    print("  INCOMPLETE (not checkpointed, will retry on next run): %s" % fname, flush=True)
-        else:
-            llm_tags = {}
-            usable = False
-
-        if not llm_tags and not skipped_long:
-            llm_failures += 1
-
-        # Only promote to smart_retag_v1 when enrichment is fetch-usable; without LLM we still checkpoint.
-        mark_smart = bool(usable) if LLM_ENDPOINT else False
-        existing = tag_db.get(rel_path, {})
-        entry = _merge_tags(
-            existing, llm_tags, features, rel_path,
-            mark_smart_retag_complete=mark_smart,
-        )
-        entry['retag_model'] = used_model if (usable and LLM_ENDPOINT) else None
-        tag_db[rel_path] = entry
-
-        qs = entry.get('quality_score')
-        tc = entry.get('type_code', '?')
+        entry = r["entry"]
+        full_path = r["full_path"]
+        qs = r["qs"]
+        tc = r["tc"]
+        usable = r["usable"]
+        skipped_long = r["skipped_long"]
+        mark_smart = r["mark_smart"]
         vibe_str = ','.join(entry.get('vibe', [])[:2])
         desc = (entry.get('sonic_description') or '')[:50]
 
-        # 3. Quarantine — only when we trust quality_score from a full LLM pass
-        if usable and qs is not None and qs <= 2:
-            os.makedirs(QUARANTINE_DIR, exist_ok=True)
-            q_dest = os.path.join(QUARANTINE_DIR, rel_path)
-            if not os.path.exists(q_dest):
-                os.makedirs(os.path.dirname(q_dest), exist_ok=True)
+        with _tag_db_lock:
+            tag_db[rel_path] = entry
+
+        if status == "low_quality":
+            if delete_low_quality:
                 try:
-                    shutil.move(full_path, q_dest)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                    with _tag_db_lock:
+                        tag_db.pop(rel_path, None)
                     quarantined += 1
-                    q_rel = os.path.join("_QUARANTINE", rel_path)
-                    entry['path'] = q_rel
-                    tag_db.pop(rel_path, None)
-                    tag_db[q_rel] = entry
                     if verbose:
-                        print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc))
+                        print("  DELETE q=%d %s: %s — %s" % (qs, tc, fname, desc))
                 except OSError:
                     pass
+            else:
+                os.makedirs(QUARANTINE_DIR, exist_ok=True)
+                q_dest = os.path.join(QUARANTINE_DIR, rel_path)
+                if not os.path.exists(q_dest):
+                    os.makedirs(os.path.dirname(q_dest), exist_ok=True)
+                    try:
+                        shutil.move(full_path, q_dest)
+                        quarantined += 1
+                        q_rel = os.path.join("_QUARANTINE", rel_path)
+                        entry['path'] = q_rel
+                        with _tag_db_lock:
+                            tag_db.pop(rel_path, None)
+                            tag_db[q_rel] = entry
+                        if verbose:
+                            print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc))
+                    except OSError:
+                        pass
             completed_rel_paths.append(rel_path)
-            continue
+            return
+
+        if status == "llm_fail":
+            llm_failures += 1
+        if status == "incomplete":
+            incomplete_n += 1
+            if r.get("llm_tags") and verbose:
+                print("  INCOMPLETE (not checkpointed, will retry on next run): %s" % fname, flush=True)
 
         tagged += 1
         if usable:
@@ -748,7 +840,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
             src = "SKIP-LONG"
             q_show = "—"
         elif LLM_ENDPOINT:
-            src = "features" if not llm_tags else "THIN"
+            src = "features" if not r.get("llm_tags") else "THIN"
             q_show = qs if qs is not None else "?"
         else:
             src = "features"
@@ -756,9 +848,35 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True):
         if verbose:
             print("  %s q=%s %s [%s]: %s — %s" % (src, q_show, tc, vibe_str, fname, desc))
 
-        # Checkpoint: done for resume if enriched, no-LLM run, or duration skip (avoid retry loop).
         if mark_smart or not LLM_ENDPOINT or skipped_long:
             completed_rel_paths.append(rel_path)
+
+    if workers > 1 and not dry_run:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_process_single_file, rel, full, tag_db, dry_run,
+                            verbose, delete_low_quality): rel
+                for rel, full in files
+            }
+            for fut in as_completed(futures):
+                try:
+                    _handle_result(fut.result())
+                except Exception as exc:
+                    rel = futures[fut]
+                    print("  ERROR %s: %s" % (rel, exc), file=sys.stderr)
+                    errors += 1
+                    completed_rel_paths.append(rel)
+    else:
+        for rel_path, full_path in files:
+            try:
+                result = _process_single_file(
+                    rel_path, full_path, tag_db, dry_run, verbose,
+                    delete_low_quality)
+                _handle_result(result)
+            except Exception as exc:
+                print("  ERROR %s: %s" % (rel_path, exc), file=sys.stderr)
+                errors += 1
+                completed_rel_paths.append(rel_path)
 
     if llm_failures and verbose:
         print("  [batch LLM empty/fail: %d/%d]" % (llm_failures, len(files)))
@@ -864,14 +982,18 @@ def run(args):
         return
 
     print("Processing %d files...\n" % len(files))
+    workers = getattr(args, 'workers', 1) or 1
+    delete_low_quality = getattr(args, 'delete_low_quality', False)
+
     if LLM_ENDPOINT:
         skip_note = (
             " | skip LLM if duration >= %ss" % SMART_RETAG_SKIP_ABOVE_SECONDS
             if SMART_RETAG_SKIP_ABOVE_SECONDS is not None
             else ""
         )
+        workers_note = " | workers=%d" % workers if workers > 1 else ""
         print(
-            "LLM: <=%ds -> %s | >%ds -> %s%s | read timeout %ds | up to %d attempts/file"
+            "LLM: <=%ds -> %s | >%ds -> %s%s | read timeout %ds | up to %d attempts/file%s"
             % (
                 SMART_RETAG_DURATION_SPLIT_SEC,
                 PRIMARY_LLM_MODEL,
@@ -880,9 +1002,13 @@ def run(args):
                 skip_note,
                 _retag_llm_read_timeout_seconds(),
                 _retag_llm_retries() + 1,
+                workers_note,
             ),
             flush=True,
         )
+
+    if delete_low_quality:
+        print("  DELETE mode: quality_score <= 2 files will be permanently deleted")
 
     total_tagged = total_quarantined = total_errors = total_incomplete = 0
     processed_files = []
@@ -902,11 +1028,8 @@ def run(args):
             batch_num, total_batches, rate * 60, eta))
 
         t, q, e, inc, batch_done = retag_batch(
-            batch, tag_db, dry_run=args.dry_run, verbose=not args.quiet)
-        total_tagged += t
-        total_quarantined += q
-        total_errors += e
-        total_incomplete += inc
+            batch, tag_db, dry_run=args.dry_run, verbose=not args.quiet,
+            workers=workers, delete_low_quality=delete_low_quality)
 
         for rel in batch_done:
             processed_files.append(rel)
@@ -1272,6 +1395,10 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Feature extraction only')
     parser.add_argument('--force', action='store_true', help='Retag already tagged files')
     parser.add_argument('--quiet', '-q', action='store_true', help='Less output')
+    parser.add_argument('--workers', type=int, default=1,
+                        help='Concurrent LLM workers (default: 1, try 2-4 for throughput)')
+    parser.add_argument('--delete-low-quality', action='store_true',
+                        help='Permanently delete quality_score <= 2 files instead of quarantining')
     parser.add_argument('--revibe', action='store_true',
                         help='Re-vibe pass: re-interpret stored features with updated prompt')
     parser.add_argument('--retry-llm-failures', action='store_true',

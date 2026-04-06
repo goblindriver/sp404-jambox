@@ -711,6 +711,33 @@ main {
     border-color: rgba(0, 188, 212, 0.25);
 }
 
+.pad.user-adjusted {
+    border-color: rgba(255, 183, 77, 0.5);
+    box-shadow: 0 0 6px rgba(255, 183, 77, 0.15);
+}
+
+.pad.pattern-used {
+    border-color: rgba(129, 199, 132, 0.35);
+}
+
+.pad-card-badge.pad-warm {
+    background: rgba(255, 183, 77, 0.2);
+    color: #FFB74D;
+    border-color: rgba(255, 183, 77, 0.3);
+}
+
+.pad-card-badge.pad-hot {
+    background: rgba(239, 83, 80, 0.2);
+    color: #EF5350;
+    border-color: rgba(239, 83, 80, 0.3);
+    animation: pulse-hot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-hot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 /* Bank tab card badge */
 .tab-card-badge {
     font-size: 9px;
@@ -794,6 +821,14 @@ main {
 
 .btn-deploy:hover { filter: brightness(1.15); }
 .btn-deploy:disabled { background: #333; border-color: #333; color: #666; }
+
+.btn-intel {
+    background: transparent;
+    color: #FFB74D;
+    border-color: rgba(255, 183, 77, 0.4);
+    font-size: 11px;
+}
+.btn-intel:hover { background: rgba(255, 183, 77, 0.15); }
 
 /* Sidebar */
 .sidebar {

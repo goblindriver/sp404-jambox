@@ -83,7 +83,7 @@ def _load_bank_config():
 def _parser_runtime():
     mode = SETTINGS.get("VIBE_PARSER_MODE", "base")
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
-    model = SETTINGS.get("LLM_MODEL", "qwen3")
+    model = SETTINGS.get("LLM_MODEL", "qwen3:8b")
     if mode == "fine_tuned":
         endpoint = SETTINGS.get("FINE_TUNED_LLM_ENDPOINT", "").strip() or endpoint
         model = SETTINGS.get("FINE_TUNED_LLM_MODEL", "").strip() or model
@@ -394,7 +394,7 @@ def build_bank_from_vibe(prompt_data):
         "fallback_reason": llm_result["fallback_reason"],
         "fallback_code": llm_result["fallback_code"],
         "model_mode": llm_result.get("model_mode", SETTINGS.get("VIBE_PARSER_MODE", "base")),
-        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3")),
+        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3:8b")),
         "retrieval_context": llm_result.get("retrieval_context"),
     }
 
@@ -437,7 +437,7 @@ def generate_vibe_suggestions(prompt_data):
         "fallback_reason": llm_result["fallback_reason"],
         "fallback_code": llm_result["fallback_code"],
         "model_mode": llm_result.get("model_mode", SETTINGS.get("VIBE_PARSER_MODE", "base")),
-        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3")),
+        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3:8b")),
         "retrieval_context": llm_result.get("retrieval_context"),
     }
 

@@ -265,9 +265,8 @@ def load_settings(repo_dir):
         "TOOL_PATH_PREFIX": tool_path_prefix,
         "WEB_DEBUG": _read_bool("SP404_WEB_DEBUG", default=False),
         "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
-        "LLM_MODEL": _read_command("SP404_LLM_MODEL", "qwen3"),
-        # smart_retag: model for LONG clips only (see SMART_RETAG_DURATION_SPLIT_SEC). Empty = qwen3:8b.
-        "SMART_RETAG_LLM_MODEL": _read_command("SP404_SMART_RETAG_LLM_MODEL", ""),
+        "LLM_MODEL": _read_command("SP404_LLM_MODEL", "qwen3:8b"),
+        "SMART_RETAG_LLM_MODEL": _read_command("SP404_SMART_RETAG_LLM_MODEL", "qwen3:8b"),
         "SMART_RETAG_DURATION_SPLIT_SEC": _read_int(
             "SP404_SMART_RETAG_DURATION_SPLIT_SEC", 60, minimum=0
         ),
@@ -430,8 +429,15 @@ def load_tag_db(tags_file):
     return payload if isinstance(payload, dict) else {}
 
 
-def save_tag_db(tags_file, db):
-    """Save the tag database to SQLite. Also writes JSON for compatibility."""
+def save_tag_db(tags_file, db, *, allow_shrink=False):
+    """Save the tag database to SQLite. Also writes JSON for compatibility.
+
+    Stale-row deletion is blocked when the incoming dict is dramatically
+    smaller than the existing DB — this prevents partial-save corruption
+    from background processes that loaded an incomplete snapshot.
+
+    Pass allow_shrink=True for intentional bulk deletes (e.g. library trim).
+    """
     import sqlite3
     db_path = _tags_sqlite_path(tags_file)
 
@@ -447,11 +453,18 @@ def save_tag_db(tags_file, db):
         existing = {r[0] for r in conn.execute("SELECT rel_path FROM tags").fetchall()}
         stale = existing - set(db.keys())
         if stale:
-            stale_ratio = len(stale) / max(existing_count, 1)
-            if stale_ratio > 0.5 and existing_count > 500:
-                print(f"[TAG_DB] WARNING: refusing to delete {len(stale):,} of {existing_count:,} rows "
-                      f"({stale_ratio:.0%}) — looks like a partial save. Skipping stale cleanup.")
-            else:
+            safe_to_delete = allow_shrink
+            if not allow_shrink:
+                stale_ratio = len(stale) / max(existing_count, 1)
+                if stale_ratio > 0.10 and existing_count > 100:
+                    print(f"[TAG_DB] BLOCKED: refusing to delete {len(stale):,} of {existing_count:,} rows "
+                          f"({stale_ratio:.0%}). Pass allow_shrink=True for intentional trim.")
+                elif len(stale) > len(db):
+                    print(f"[TAG_DB] BLOCKED: stale count ({len(stale):,}) exceeds incoming "
+                          f"({len(db):,}). Likely partial save — skipping stale cleanup.")
+                else:
+                    safe_to_delete = True
+            if safe_to_delete:
                 conn.executemany("DELETE FROM tags WHERE rel_path=?", [(k,) for k in stale])
         conn.commit()
     finally:

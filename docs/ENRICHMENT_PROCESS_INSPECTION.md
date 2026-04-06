@@ -231,3 +231,4 @@ Snapshot generated from live artifacts and one deterministic fetch-fitness audit
 4. **P2 - Cache persistence reliability**
   - Baseline run initially failed on score cache atomic replace on external volume.
   - Action: keep the new temp-file retry path in `scripts/jambox_cache.py` and observe recurrence frequency.
+

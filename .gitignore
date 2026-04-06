@@ -33,6 +33,9 @@ artifacts/models/
 data/crunch_*.log
 data/repair_*.log
 data/audit_reports/
+# Card intelligence sessions (local machine state)
+data/card_sessions/
+
 # Smart retag / taste (local machine state)
 data/retag_checkpoint.json
 data/taste_profile.json

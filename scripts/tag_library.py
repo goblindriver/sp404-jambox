@@ -715,9 +715,13 @@ def load_existing_tags():
 
 
 def save_tags(db):
-    """Save tag database via jambox_config (SQLite + JSON)."""
+    """Save tag database via jambox_config (SQLite + JSON).
+
+    Uses allow_shrink=True because a full tag_library scan is the authoritative
+    source — stale entries from deleted/moved files should be cleaned up.
+    """
     from jambox_config import save_tag_db
-    save_tag_db(TAGS_FILE, db)
+    save_tag_db(TAGS_FILE, db, allow_shrink=True)
     print(f"Saved {len(db)} entries to tag DB")
 
 
