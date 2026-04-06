@@ -536,6 +536,10 @@ async function reorganizeCard(moves) {
 
 // ── Pipeline Actions ──
 async function fetchSamples(bank, pad) {
+    if (state.vibeJobRunning) {
+        toast('Wait for the draft job to finish first', 'error');
+        return;
+    }
     if (state.fetchJobId) {
         toast('A fetch is already in progress', 'error');
         return;
@@ -561,9 +565,13 @@ async function fetchSamples(bank, pad) {
         }
 
         state.fetchJobId = result.job_id;
+        state.pipelineJobRunning = true;
+        updateBankToolbarState();
         showProgress(`Fetching ${label}...`, 5);
         pollFetchStatus(result.job_id, label);
     } catch (e) {
+        state.pipelineJobRunning = false;
+        updateBankToolbarState();
         toast(`Fetch failed: ${e.message}`, 'error');
     }
 }
@@ -652,13 +660,17 @@ async function runInspire(seedGenre) {
 
 async function draftCurrentBankPads() {
     if (!state.currentBank) return;
-    const notes = state.currentBank.notes;
-    if (!notes && !state.currentBank.name) {
-        toast('Add bank metadata first (name / notes) or use Inspire', 'error');
+    const notes = (state.currentBank.notes || '').trim();
+    if (!notes) {
+        toast('Add bank notes first (or use Inspire)', 'error');
         return;
     }
     if (state.vibeJobRunning) {
         toast('A draft job is already running', 'error');
+        return;
+    }
+    if (state.pipelineJobRunning) {
+        toast('Wait for the fetch job to finish first', 'error');
         return;
     }
 
@@ -697,8 +709,8 @@ async function draftCurrentBankPads() {
 function updateBankToolbarState() {
     const draftBtn = document.getElementById('btn-draft-pads');
     if (draftBtn && state.currentBank) {
-        const hasMetadata = !!(state.currentBank.notes || state.currentBank.name);
-        draftBtn.disabled = !hasMetadata;
+        const hasNotes = !!(state.currentBank.notes || '').trim();
+        draftBtn.disabled = !hasNotes || state.vibeJobRunning || state.pipelineJobRunning;
     }
 }
 
@@ -735,6 +747,8 @@ async function pollFetchStatus(jobId, label, _retries = 0) {
         if (data.status === 'running' || data.status === 'starting') {
             if (_retries >= maxRetries) {
                 state.fetchJobId = null;
+                state.pipelineJobRunning = false;
+                updateBankToolbarState();
                 hideProgress();
                 toast('Fetch timed out — check server logs', 'error');
                 return;
@@ -744,6 +758,8 @@ async function pollFetchStatus(jobId, label, _retries = 0) {
             setTimeout(() => pollFetchStatus(jobId, label, _retries + 1), 1500);
         } else {
             state.fetchJobId = null;
+            state.pipelineJobRunning = false;
+            updateBankToolbarState();
             showProgress(data.progress || 'Finishing...', 100);
             setTimeout(hideProgress, 800);
             if (data.status === 'done') {
@@ -755,6 +771,8 @@ async function pollFetchStatus(jobId, label, _retries = 0) {
         }
     } catch (e) {
         state.fetchJobId = null;
+        state.pipelineJobRunning = false;
+        updateBankToolbarState();
         hideProgress();
         toast(`Fetch status failed: ${e.message}`, 'error');
     }
@@ -970,11 +988,13 @@ function toggleSettingsMenu() {
 
 function pollPopulateJob(jobId, bankLetter, doneLabel, onDone) {
     state.vibeJobRunning = true;
+    updateBankToolbarState();
     let pollCount = 0;
     const maxPolls = 150;
 
     function finish() {
         state.vibeJobRunning = false;
+        updateBankToolbarState();
         hideProgress();
         if (typeof onDone === 'function') onDone();
     }
