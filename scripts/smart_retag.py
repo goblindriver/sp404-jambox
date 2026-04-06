@@ -1405,6 +1405,11 @@ def main():
                         help='Re-run LLM on files that have features but no LLM enrichment')
     args = parser.parse_args()
 
+    if getattr(args, 'delete_low_quality', False) and not args.force:
+        print("ERROR: --delete-low-quality permanently removes files. "
+              "Add --force to confirm.", file=sys.stderr)
+        sys.exit(1)
+
     if args.revibe:
         run_revibe(args)
         return

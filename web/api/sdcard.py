@@ -1,5 +1,5 @@
 """SD card status, scan, and Bank A sync API."""
-import os, hashlib, shutil, struct
+import os, shutil, struct
 from flask import Blueprint, jsonify, request, current_app
 
 sdcard_bp = Blueprint('sdcard', __name__)
@@ -44,185 +44,25 @@ def status():
 BANKS = 'ABCDEFGHIJ'
 INTERNAL_BANKS = frozenset('AB')
 
-# Roland SP-404 uses a fixed default date when it creates files on-device
-# (resampling, recording). The hardware clock is typically never set.
-ROLAND_DEFAULT_YEAR = 2009
+
+def _get_card_intelligence():
+    """Lazy import card_intelligence to avoid circular imports at module load."""
+    import sys
+    sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
+    import card_intelligence
+    return card_intelligence
 
 
 def _decode_padinfo(path):
-    """Decode PAD_INFO.BIN into per-pad metadata.
-
-    Returns dict keyed by ``(bank_letter, pad_num)`` with full settings
-    including user-adjusted tempo and sample trim boundaries.
-
-    Bank A entries are decoded but flagged ``padinfo_reliable: False``
-    because the SP-404A stores internal-memory pad state separately.
-    """
-    try:
-        with open(path, 'rb') as f:
-            data = f.read()
-    except (OSError, IOError):
-        return {}
-
-    if len(data) < 3840:
-        return {}
-
-    result = {}
-    for bank_idx, bank_letter in enumerate(BANKS):
-        for pad_num in range(1, 13):
-            offset = (bank_idx * 12 + (pad_num - 1)) * 32
-            record = data[offset:offset + 32]
-            if len(record) < 32:
-                continue
-
-            fields = struct.unpack('>IIII BBBBBBBB II', record)
-            orig_start, orig_end = fields[0], fields[1]
-            user_start, user_end = fields[2], fields[3]
-            volume = fields[4]
-            lofi = bool(fields[5])
-            loop = bool(fields[6])
-            gate = bool(fields[7])
-            reverse = bool(fields[8])
-            channels = fields[10]
-            tempo_mode = fields[11]
-            orig_tempo_raw, user_tempo_raw = fields[12], fields[13]
-            bpm_original = round(orig_tempo_raw / 10, 1) if orig_tempo_raw else 0
-            bpm_user = round(user_tempo_raw / 10, 1) if user_tempo_raw else 0
-
-            has_sample = orig_end > orig_start
-            bpm_adjusted = tempo_mode == 2 and bpm_original != bpm_user
-            trimmed = (user_start != orig_start or user_end != orig_end) and has_sample
-
-            entry = {
-                'volume': volume,
-                'lofi': lofi,
-                'loop': loop,
-                'gate': gate,
-                'reverse': reverse,
-                'channels': channels,
-                'tempo_mode': tempo_mode,
-                'bpm_original': bpm_original,
-                'bpm_user': bpm_user,
-                'bpm': bpm_user if bpm_adjusted else bpm_original,
-                'bpm_adjusted': bpm_adjusted,
-                'has_sample': has_sample,
-                'trimmed': trimmed,
-                'trim_start': user_start if trimmed else None,
-                'trim_end': user_end if trimmed else None,
-                'internal_memory': bank_letter in INTERNAL_BANKS,
-                'padinfo_reliable': bank_letter not in INTERNAL_BANKS or bank_letter == 'B',
-            }
-            result[(bank_letter, pad_num)] = entry
-
-    return result
-
-
-def decode_padinfo_diffs(path):
-    """Return only pads where the user changed settings on the hardware.
-
-    Skips Bank A (unreliable PAD_INFO for internal memory).
-    A pad counts as "modified" if any of: BPM adjusted, sample trimmed,
-    reverse enabled, lofi enabled, or volume != 127.
-    """
-    all_pads = _decode_padinfo(path)
-    diffs = {}
-    for (bank, pad), info in all_pads.items():
-        if bank == 'A':
-            continue
-        modifications = []
-        if info['bpm_adjusted']:
-            modifications.append({
-                'field': 'bpm', 'original': info['bpm_original'],
-                'user': info['bpm_user'],
-            })
-        if info['trimmed']:
-            modifications.append({
-                'field': 'trim', 'trim_start': info['trim_start'],
-                'trim_end': info['trim_end'],
-            })
-        if info['reverse']:
-            modifications.append({'field': 'reverse'})
-        if info['lofi']:
-            modifications.append({'field': 'lofi'})
-        if info['volume'] != 127:
-            modifications.append({
-                'field': 'volume', 'value': info['volume'],
-            })
-        if modifications:
-            diffs[(bank, pad)] = {
-                'settings': info,
-                'modifications': modifications,
-            }
-    return diffs
+    return _get_card_intelligence().decode_padinfo(path)
 
 
 def _wav_identity(wav_path, chunk_size=65536):
-    """Compute a stable identity hash for a WAV file.
-
-    Uses SHA-256 of the first ``chunk_size`` bytes of audio data (after
-    the RIFF header).  Skips RLND chunks so the hash is stable across
-    Jambox re-deploys that only change the RLND pad index.
-    """
-    try:
-        with open(wav_path, 'rb') as f:
-            header = f.read(12)
-            if len(header) < 12 or header[:4] != b'RIFF':
-                return None
-            h = hashlib.sha256()
-            # Walk chunks until we hit 'data', then hash its payload
-            while True:
-                chunk_hdr = f.read(8)
-                if len(chunk_hdr) < 8:
-                    break
-                cid = chunk_hdr[:4]
-                csz = struct.unpack('<I', chunk_hdr[4:])[0]
-                if cid == b'data':
-                    to_read = min(csz, chunk_size)
-                    h.update(f.read(to_read))
-                    return h.hexdigest()
-                f.read(csz + (csz % 2))  # skip non-data chunks (incl. RLND)
-    except (OSError, struct.error):
-        pass
-    return None
+    return _get_card_intelligence().wav_identity(wav_path, chunk_size)
 
 
 def _wav_provenance(wav_path):
-    """Classify how a WAV ended up on the card.
-
-    Returns one of: ``device-created``, ``jambox``, ``user-loaded``.
-    """
-    import datetime
-    has_rlnd = False
-    try:
-        with open(wav_path, 'rb') as f:
-            header = f.read(12)
-            if len(header) < 12:
-                return 'user-loaded'
-            while True:
-                chunk_hdr = f.read(8)
-                if len(chunk_hdr) < 8:
-                    break
-                cid = chunk_hdr[:4]
-                csz = struct.unpack('<I', chunk_hdr[4:])[0]
-                if cid == b'RLND':
-                    has_rlnd = True
-                    break
-                f.read(csz + (csz % 2))
-    except (OSError, struct.error):
-        pass
-
-    if has_rlnd:
-        return 'jambox'
-
-    try:
-        mtime = os.path.getmtime(wav_path)
-        dt = datetime.datetime.fromtimestamp(mtime)
-        if dt.year <= ROLAND_DEFAULT_YEAR:
-            return 'device-created'
-    except OSError:
-        pass
-
-    return 'user-loaded'
+    return _get_card_intelligence().wav_provenance(wav_path)
 
 
 @sdcard_bp.route('/sdcard/scan')

@@ -38,56 +38,6 @@ FETCH_TOP_N = int(SETTINGS.get("FETCH_DIVERSITY_TOP_N", 8) or 8)
 FETCH_DETERMINISTIC = str(SETTINGS.get("FETCH_DETERMINISTIC", "0")).strip().lower() in ("1", "true", "yes", "on")
 FETCH_COOLDOWN_SECONDS = int(SETTINGS.get("FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 * 3600) or 21600)
 
-# SD Card Intelligence — performance data for scoring boosts
-_PERFORMANCE_PROFILE = None
-
-def _load_performance_profile():
-    """Build per-library-file performance profile from card session history."""
-    global _PERFORMANCE_PROFILE
-    if _PERFORMANCE_PROFILE is not None:
-        return _PERFORMANCE_PROFILE
-
-    _PERFORMANCE_PROFILE = {}
-    sessions_dir = os.path.join(REPO_DIR, "data", "card_sessions")
-    if not os.path.isdir(sessions_dir):
-        return _PERFORMANCE_PROFILE
-
-    sessions = sorted(f for f in os.listdir(sessions_dir) if f.endswith(".json"))
-    for sess_file in sessions:
-        try:
-            with open(os.path.join(sessions_dir, sess_file), encoding="utf-8") as fh:
-                session = json.load(fh)
-        except (OSError, json.JSONDecodeError):
-            continue
-
-        # Track which library files have performance data
-        # Session bank pads carry identity hashes we can match later
-        sess_banks = session.get("session_banks", {})
-        for adj in sess_banks.get("adjustments", []):
-            key = f"{adj.get('bank', '')}{adj.get('pad', '')}"
-            profile = _PERFORMANCE_PROFILE.setdefault(key, {
-                "sessions_seen": 0, "bpm_adjustments": [],
-                "pattern_hits": 0, "avg_velocity": 0,
-            })
-            if adj.get("field") == "bpm":
-                profile["bpm_adjustments"].append({
-                    "original": adj.get("original"), "user": adj.get("user"),
-                })
-
-        ptn = sess_banks.get("pattern_usage", {})
-        for item in ptn.get("most_used", []):
-            pad_key = item.get("pad", "")
-            profile = _PERFORMANCE_PROFILE.setdefault(pad_key, {
-                "sessions_seen": 0, "bpm_adjustments": [],
-                "pattern_hits": 0, "avg_velocity": 0,
-            })
-            profile["pattern_hits"] += item.get("hit_count", 0)
-            profile["avg_velocity"] = max(
-                profile["avg_velocity"], item.get("avg_velocity", 0)
-            )
-
-    return _PERFORMANCE_PROFILE
-
 # ═══════════════════════════════════════════════════════════
 # Tag database scoring
 # ═══════════════════════════════════════════════════════════
@@ -303,19 +253,6 @@ def score_from_tags(entry, parsed_query, bank_config):
         score += weights["plex_moods_bonus"]
     if entry.get("plex_play_count", 0) > 0:
         score += weights["plex_play_count_bonus"]
-
-    # --- SD Card performance intelligence ---
-    perf = _load_performance_profile()
-    if perf:
-        card_identity = entry.get("card_identity")
-        if card_identity and card_identity in perf:
-            p = perf[card_identity]
-            if p.get("pattern_hits", 0) > 0:
-                score += weights.get("performance_pattern_used", 0)
-            if p.get("bpm_adjustments"):
-                score += weights.get("performance_bpm_adjust", 0)
-            if p.get("avg_velocity", 0) > 90:
-                score += weights.get("performance_velocity_high", 0)
 
     return score
 
