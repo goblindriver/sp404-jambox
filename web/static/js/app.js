@@ -591,6 +591,42 @@ function fetchAllBanks() {
 
 // ── Stepped Vibe Workflow ──
 
+// ── Inspire seed history (localStorage, max 3) ──
+
+const INSPIRE_HISTORY_KEY = 'jambox-inspire-seeds';
+const INSPIRE_HISTORY_MAX = 3;
+
+function loadInspireHistory() {
+    try {
+        const raw = localStorage.getItem(INSPIRE_HISTORY_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr.slice(0, INSPIRE_HISTORY_MAX) : [];
+    } catch { return []; }
+}
+
+function saveInspireSeed(seed) {
+    if (!seed) return;
+    const history = loadInspireHistory().filter(s => s !== seed);
+    history.unshift(seed);
+    localStorage.setItem(INSPIRE_HISTORY_KEY, JSON.stringify(history.slice(0, INSPIRE_HISTORY_MAX)));
+}
+
+function renderInspireHistory() {
+    let container = document.getElementById('inspire-history');
+    if (!container) return;
+    const seeds = loadInspireHistory();
+    if (seeds.length === 0) { container.innerHTML = ''; return; }
+    container.innerHTML = seeds.map(s =>
+        `<button class="inspire-seed-chip" title="Re-use: ${escapeHtml(s)}">${escapeHtml(s)}</button>`
+    ).join('');
+    container.querySelectorAll('.inspire-seed-chip').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            runInspire(btn.textContent.trim());
+        };
+    });
+}
+
 function toggleInspirePopover(e) {
     e && e.stopPropagation();
     const popover = document.getElementById('inspire-popover');
@@ -600,6 +636,7 @@ function toggleInspirePopover(e) {
         popover.style.top = `${rect.bottom + 6}px`;
         popover.style.left = `${rect.left}px`;
         popover.classList.remove('hidden');
+        renderInspireHistory();
         document.getElementById('inspire-genre-seed').focus();
     } else {
         popover.classList.add('hidden');
@@ -649,12 +686,14 @@ async function runInspire(seedGenre) {
         const idx = state.banks.findIndex(b => b.letter === letter);
         if (idx >= 0) state.banks[idx] = updated;
         switchBank(updated);
+        if (seedGenre) saveInspireSeed(seedGenre);
         toast(`Inspired: ${meta.name}`, 'success');
     } catch (e) {
         toast(`Inspire failed: ${e.message}`, 'error');
     } finally {
         btn.classList.remove('working');
         btn.disabled = false;
+        reconcileActionState();
     }
 }
 
@@ -706,12 +745,54 @@ async function draftCurrentBankPads() {
     }
 }
 
-function updateBankToolbarState() {
+function reconcileActionState() {
+    const anyJob = state.vibeJobRunning || state.pipelineJobRunning;
+    const vibe = state.vibeJobRunning;
+    const pipeline = state.pipelineJobRunning;
+
+    // Bank toolbar
     const draftBtn = document.getElementById('btn-draft-pads');
     if (draftBtn && state.currentBank) {
         const hasNotes = !!(state.currentBank.notes || '').trim();
-        draftBtn.disabled = !hasNotes || state.vibeJobRunning || state.pipelineJobRunning;
+        draftBtn.disabled = !hasNotes || vibe || pipeline;
     }
+    const fetchBtn = document.getElementById('btn-fetch-current');
+    if (fetchBtn) fetchBtn.disabled = vibe || pipeline;
+
+    const inspireBtn = document.getElementById('btn-inspire');
+    if (inspireBtn) inspireBtn.disabled = vibe || pipeline;
+
+    // Settings menu actions
+    const settingsMenu = document.getElementById('settings-menu');
+    if (settingsMenu) {
+        settingsMenu.querySelectorAll('button').forEach(btn => {
+            const text = btn.textContent.trim();
+            if (text === 'Fetch All Banks') btn.disabled = anyJob;
+            if (text.startsWith('Run All')) btn.disabled = anyJob;
+        });
+    }
+
+    // Header lock chip
+    const chip = document.getElementById('job-lock-chip');
+    if (chip) {
+        if (vibe) {
+            chip.textContent = 'Drafting...';
+            chip.title = 'Draft job running';
+            chip.classList.remove('hidden');
+        } else if (pipeline) {
+            chip.textContent = 'Fetching...';
+            chip.title = 'Fetch job running';
+            chip.classList.remove('hidden');
+        } else {
+            chip.classList.add('hidden');
+            chip.textContent = '';
+            chip.title = '';
+        }
+    }
+}
+
+function updateBankToolbarState() {
+    reconcileActionState();
 }
 
 // Eject SD Card
@@ -737,6 +818,137 @@ async function doEject() {
     } catch (e) {
         toast(`Eject failed: ${e.message}`, 'error');
     }
+}
+
+// ── Run All: Inspire -> Draft -> Fetch (sequential) ──
+
+function showRunAllModal() {
+    if (state.vibeJobRunning || state.pipelineJobRunning) {
+        toast('A job is already running', 'error');
+        return;
+    }
+    document.getElementById('run-all-modal').classList.remove('hidden');
+}
+
+function hideRunAllModal() {
+    document.getElementById('run-all-modal').classList.add('hidden');
+}
+
+async function executeRunAll() {
+    hideRunAllModal();
+    if (!state.currentBank) return;
+    if (state.vibeJobRunning || state.pipelineJobRunning) {
+        toast('A job is already running', 'error');
+        return;
+    }
+
+    const bankLetter = state.currentBank.letter;
+    const seedInput = document.getElementById('run-all-seed');
+    const seed = seedInput ? seedInput.value.trim() : '';
+
+    toast(`Run All: Inspire -> Draft -> Fetch for Bank ${bankLetter.toUpperCase()}...`);
+    showProgress('Step 1/3: Inspiring...', 5);
+
+    try {
+        // Step 1: Inspire
+        const inspireResult = await api('/api/vibe/inspire-bank', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ genre: seed || undefined }),
+        });
+        if (!inspireResult.ok) {
+            throw new Error(inspireResult.error || 'Inspire failed');
+        }
+        const meta = inspireResult.metadata;
+        if (seed) saveInspireSeed(seed);
+
+        const putResult = await api(`/api/banks/${bankLetter}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: meta.name, notes: meta.notes, bpm: meta.bpm, key: meta.key }),
+        });
+        if (!putResult.ok) throw new Error(putResult.error || 'Bank update failed');
+
+        const updated = await api(`/api/banks/${bankLetter}`);
+        if (updated.error) throw new Error(updated.error);
+        const idx = state.banks.findIndex(b => b.letter === bankLetter);
+        if (idx >= 0) state.banks[idx] = updated;
+        switchBank(updated);
+        showProgress('Step 2/3: Drafting pads...', 20);
+
+        // Step 2: Draft pads (fetch:false)
+        const draftResponse = await api('/api/vibe/generate-fetch-bank', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ bank: bankLetter, bpm: meta.bpm, key: meta.key, fetch: false }),
+        });
+        if (!draftResponse.ok) throw new Error(draftResponse.error || 'Draft failed');
+
+        await waitForVibeJob(draftResponse.job_id);
+        await refreshBanks();
+        const afterDraft = state.banks.find(b => b.letter === bankLetter);
+        if (afterDraft) switchBank(afterDraft);
+        showProgress('Step 3/3: Fetching samples...', 60);
+
+        // Step 3: Fetch
+        const fetchResponse = await api('/api/pipeline/fetch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ bank: bankLetter }),
+        });
+        if (fetchResponse.error) throw new Error(fetchResponse.error);
+
+        state.fetchJobId = fetchResponse.job_id;
+        state.pipelineJobRunning = true;
+        reconcileActionState();
+        pollFetchStatus(fetchResponse.job_id, `Bank ${bankLetter.toUpperCase()}`);
+        toast(`Run All: Fetch started for Bank ${bankLetter.toUpperCase()}`, 'success');
+
+    } catch (e) {
+        hideProgress();
+        state.vibeJobRunning = false;
+        state.pipelineJobRunning = false;
+        reconcileActionState();
+        toast(`Run All failed: ${e.message}`, 'error');
+    }
+}
+
+function waitForVibeJob(jobId) {
+    return new Promise((resolve, reject) => {
+        state.vibeJobRunning = true;
+        reconcileActionState();
+        let polls = 0;
+        const interval = setInterval(async () => {
+            polls++;
+            if (polls > 150) {
+                clearInterval(interval);
+                state.vibeJobRunning = false;
+                reconcileActionState();
+                reject(new Error('Draft timed out'));
+                return;
+            }
+            try {
+                const status = await api(`/api/vibe/populate-status/${jobId}`);
+                showProgress(status.progress || 'Drafting...', 20 + Math.min(polls, 40));
+                if (status.status === 'done') {
+                    clearInterval(interval);
+                    state.vibeJobRunning = false;
+                    reconcileActionState();
+                    resolve(status);
+                } else if (status.status === 'error') {
+                    clearInterval(interval);
+                    state.vibeJobRunning = false;
+                    reconcileActionState();
+                    reject(new Error(status.progress || 'Draft failed'));
+                }
+            } catch (e) {
+                clearInterval(interval);
+                state.vibeJobRunning = false;
+                reconcileActionState();
+                reject(e);
+            }
+        }, 2000);
+    });
 }
 
 async function pollFetchStatus(jobId, label, _retries = 0) {
@@ -969,6 +1181,7 @@ function toggleSettingsMenu() {
     }
 
     if (wasHidden) {
+        reconcileActionState();
         setTimeout(() => {
             _settingsMenuHandler = (e) => {
                 if (!menu.contains(e.target) && e.target.id !== 'btn-settings') {

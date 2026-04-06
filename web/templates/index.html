@@ -27,6 +27,7 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v8"/><path d="M16.24 5.76a9 9 0 1 1-8.48 0"/></svg>
                 </button>
             </div>
+            <span id="job-lock-chip" class="job-lock-chip hidden"></span>
             <div class="header-divider"></div>
             <div class="header-hw-group">
                 <div id="sd-status" class="sd-indicator">
@@ -257,6 +258,7 @@
 
     <!-- Settings dropdown (gear menu) -->
     <div id="settings-menu" class="settings-menu hidden">
+        <button onclick="showRunAllModal()">Run All (Inspire &rarr; Draft &rarr; Fetch)</button>
         <button onclick="fetchAllBanks()">Fetch All Banks</button>
         <hr style="border:none;border-top:1px solid var(--border);margin:4px 0"/>
         <button onclick="ingestDownloads()">Ingest Downloads</button>
@@ -332,6 +334,19 @@
         </div>
     </div>
 
+    <!-- Run All confirmation modal -->
+    <div id="run-all-modal" class="confirm-modal hidden">
+        <div class="confirm-modal-inner">
+            <p>Run full sequence on current bank?</p>
+            <p class="confirm-modal-subtitle">Inspire &rarr; Draft pads &rarr; Fetch samples</p>
+            <input type="text" id="run-all-seed" class="inspire-input" placeholder="Genre seed (optional)" />
+            <div class="confirm-modal-actions">
+                <button id="run-all-confirm" class="btn btn-accent" onclick="executeRunAll()">Run All</button>
+                <button class="btn" onclick="hideRunAllModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Eject confirmation modal -->
     <div id="eject-modal" class="confirm-modal hidden">
         <div class="confirm-modal-inner">
@@ -346,6 +361,7 @@
     <!-- Inspire seed popover -->
     <div id="inspire-popover" class="inspire-popover hidden">
         <input type="text" id="inspire-genre-seed" class="inspire-input" placeholder="Genre seed (optional)" />
+        <div id="inspire-history" class="inspire-history"></div>
         <div class="inspire-popover-actions">
             <button id="inspire-go" class="btn btn-sm btn-accent">Inspire</button>
             <button id="inspire-surprise" class="btn btn-sm">Surprise me</button>
