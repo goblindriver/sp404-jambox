@@ -461,7 +461,8 @@ def inspire_bank_route():
 
     try:
         result = vibe_generate.inspire_bank(seed=seed or None, bank_letter=bank)
-    except Exception:
+    except Exception as exc:
+        current_app.logger.exception("inspire_bank failed: %s", exc)
         return jsonify({"ok": False, "error": "Inspire failed"}), 500
 
     # Apply to bank via same logic as PUT /api/banks/<letter>
@@ -475,7 +476,8 @@ def inspire_bank_route():
         config[bank_key]["bpm"] = int(result["bpm"])
         config[bank_key]["key"] = result["key"]
         pu._save_config(config)
-    except Exception:
+    except Exception as exc:
+        current_app.logger.exception("Failed to update bank config: %s", exc)
         return jsonify({"ok": False, "error": "Failed to update bank config"}), 500
 
     return jsonify({"ok": True, "bank": result})
