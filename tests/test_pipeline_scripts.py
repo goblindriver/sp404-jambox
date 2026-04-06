@@ -108,6 +108,27 @@ class FetchSamplesScriptTests(unittest.TestCase):
         self.assertEqual(len(second), 2)
         self.assertEqual(score_spy.call_count, 2)
 
+    def test_choose_diverse_match_returns_top_result_in_deterministic_mode(self):
+        matches = [
+            {"path": "/tmp/a.wav", "score": 22},
+            {"path": "/tmp/b.wav", "score": 20},
+        ]
+        picked = fetch_samples.choose_diverse_match(matches, deterministic=True)
+        self.assertEqual(picked["path"], "/tmp/a.wav")
+
+    def test_choose_diverse_match_applies_recent_use_penalty(self):
+        matches = [
+            {"path": "/tmp/recent.wav", "score": 30},
+            {"path": "/tmp/older.wav", "score": 10},
+        ]
+        now = 1_700_000_000
+        history = {"last_used": {"/tmp/recent.wav": now - 60}}
+
+        with patch("fetch_samples.time.time", return_value=now), patch.object(fetch_samples, "FETCH_COOLDOWN_SECONDS", 3600), patch.object(fetch_samples, "_load_fetch_history", return_value=history), patch("fetch_samples.random.uniform", return_value=9.9):
+            picked = fetch_samples.choose_diverse_match(matches, deterministic=False)
+
+        self.assertEqual(picked["path"], "/tmp/older.wav")
+
 
 class IngestDownloadsScriptTests(unittest.TestCase):
     def test_one_shot_ingest_returns_zero_when_downloads_missing(self):

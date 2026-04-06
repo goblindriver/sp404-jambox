@@ -123,11 +123,43 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["error"], "Request body must be a JSON object")
 
-    def test_create_set_rejects_invalid_banks_payload(self):
+    def test_set_routes_are_removed(self):
         response = self.client.post("/api/sets", json={"name": "Weekend", "banks": []})
+        self.assertEqual(response.status_code, 404)
 
+    def test_generate_fetch_bank_rejects_invalid_bank(self):
+        response = self.client.post("/api/vibe/generate-fetch-bank", json={"bank": "zzz"})
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json()["error"], "banks must be an object")
+        self.assertFalse(response.get_json()["ok"])
+
+    def test_generate_fetch_bank_starts_background_job(self):
+        thread_calls = {}
+
+        class FakeThread:
+            daemon = False
+
+            def __init__(self, target=None, args=None):
+                thread_calls["target"] = target
+                thread_calls["args"] = args
+
+            def start(self):
+                thread_calls["started"] = True
+
+        with patch("api.vibe._build_metadata_prompt", return_value="bank b metadata"), patch("api.vibe.vts.create_session", return_value="sess_1"), patch("api.vibe.threading.Thread", FakeThread):
+            response = self.client.post("/api/vibe/generate-fetch-bank", json={"bank": "b", "fetch": False})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["session_id"], "sess_1")
+        self.assertTrue(thread_calls["started"])
+
+    def test_get_preset_returns_validation_error_for_invalid_shape(self):
+        with patch("api.presets.pu.load_preset", side_effect=ValueError("preset must define pads 1-12")):
+            response = self.client.get("/api/presets/community/bad")
+
+        self.assertEqual(response.status_code, 422)
+        self.assertFalse(response.get_json()["ok"])
 
     def test_vibe_route_rejects_non_object_json_body(self):
         response = self.client.post("/api/vibe/generate", json=["dusty funk drums"])

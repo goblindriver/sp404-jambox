@@ -83,7 +83,23 @@ class PresetUtilsTests(unittest.TestCase):
             os.makedirs(cat_dir, exist_ok=True)
             preset_path = os.path.join(cat_dir, "odd.yaml")
             with open(preset_path, "w", encoding="utf-8") as handle:
-                handle.write("name: Odd Preset\ntags: dusty\npads:\n  1: BRK dusty loop\n")
+                handle.write(
+                    "name: Odd Preset\n"
+                    "tags: dusty\n"
+                    "pads:\n"
+                    "  1: BRK dusty loop\n"
+                    "  2: KIK dusty one-shot\n"
+                    "  3: SNR dusty one-shot\n"
+                    "  4: HAT dusty one-shot\n"
+                    "  5: BRK dusty loop\n"
+                    "  6: BAS dusty loop\n"
+                    "  7: SYN warm loop\n"
+                    "  8: VOX chopped loop\n"
+                    "  9: KEY warm loop\n"
+                    "  10: PAD airy loop\n"
+                    "  11: FX riser transition\n"
+                    "  12: FX impact one-shot\n"
+                )
 
             with patch.object(preset_utils, "PRESETS_DIR", tempdir):
                 results = preset_utils.list_presets(tag="dusty")
@@ -99,6 +115,25 @@ class PresetUtilsTests(unittest.TestCase):
 
             with patch.object(preset_utils, "CONFIG_PATH", config_path):
                 self.assertEqual(preset_utils._load_config(), {})
+
+    def test_validate_preset_payload_rejects_missing_required_pads(self):
+        with self.assertRaisesRegex(ValueError, "preset must define pads 1-12"):
+            preset_utils.validate_preset_payload(
+                {"name": "Incomplete", "pads": {1: "KIK dusty one-shot"}},
+                require_full_pads=True,
+            )
+
+    def test_load_preset_raises_for_invalid_shape(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            cat_dir = os.path.join(tempdir, "community")
+            os.makedirs(cat_dir, exist_ok=True)
+            preset_path = os.path.join(cat_dir, "broken-shape.yaml")
+            with open(preset_path, "w", encoding="utf-8") as handle:
+                handle.write("name: Broken Shape\npads:\n  1: KIK dusty one-shot\n")
+
+            with patch.object(preset_utils, "PRESETS_DIR", tempdir):
+                with self.assertRaisesRegex(ValueError, "preset must define pads 1-12"):
+                    preset_utils.load_preset("community/broken-shape")
 
 
 if __name__ == "__main__":

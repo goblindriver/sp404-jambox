@@ -59,28 +59,6 @@ def _normalize_bank_name(value):
     return bank
 
 
-def _normalize_banks_map(value):
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError('banks must be an object')
-    normalized = {}
-    for key, bank_value in value.items():
-        if not isinstance(key, str):
-            raise ValueError('banks keys must be strings')
-        if key in pu.BANK_LETTERS:
-            if bank_value is not None and not isinstance(bank_value, str):
-                raise ValueError(f'banks.{key} must be a preset ref string or null')
-            normalized[key] = bank_value
-        elif key.endswith('_meta') and key[:-5] in pu.BANK_LETTERS:
-            if not isinstance(bank_value, dict):
-                raise ValueError(f'banks.{key} must be an object')
-            normalized[key] = bank_value
-        else:
-            raise ValueError(f'Invalid bank slot: {key}')
-    return normalized
-
-
 # ── Presets ──
 
 @presets_bp.route('/presets')
@@ -105,12 +83,16 @@ def list_categories():
 @presets_bp.route('/presets/<path:ref>')
 def get_preset(ref):
     """Get full preset detail by reference."""
-    preset = pu.load_preset(ref)
+    try:
+        preset = pu.load_preset(ref, require_full_pads=True)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 422
     if not preset:
-        return jsonify({'error': f'Preset not found: {ref}'}), 404
+        return jsonify({'ok': False, 'error': f'Preset not found: {ref}'}), 404
     # Remove internal fields
     result = {k: v for k, v in preset.items() if not k.startswith('_')}
     result['ref'] = ref
+    result['ok'] = True
     return jsonify(result)
 
 
@@ -120,17 +102,17 @@ def save_bank_as_preset(letter):
     try:
         data = _json_object_body()
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'ok': False, 'error': str(e)}), 400
     try:
         letter = _normalize_bank_name(letter)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'ok': False, 'error': str(e)}), 400
     if not letter:
-        return jsonify({'error': 'bank letter required'}), 400
+        return jsonify({'ok': False, 'error': 'bank letter required'}), 400
 
     preset = pu.bank_to_preset(letter)
     if not preset:
-        return jsonify({'error': f'Bank {letter.upper()} has no pads'}), 400
+        return jsonify({'ok': False, 'error': f'Bank {letter.upper()} has no pads'}), 400
 
     # Override with user-provided values
     try:
@@ -139,19 +121,23 @@ def save_bank_as_preset(letter):
         tags = _normalize_tags(data.get('tags'))
         category = _normalize_string_field(data, 'category') or 'community'
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'ok': False, 'error': str(e)}), 400
 
+    updated_preset = dict(preset)
     if name:
-        preset['name'] = name
-        preset['slug'] = pu.slugify(name)
+        updated_preset['name'] = name
+        updated_preset['slug'] = pu.slugify(name)
     if vibe:
-        preset['vibe'] = vibe
+        updated_preset['vibe'] = vibe
     if tags is not None:
-        preset['tags'] = tags
+        updated_preset['tags'] = tags
 
-    ref = pu.save_preset(preset, category=category)
+    try:
+        ref = pu.save_preset(updated_preset, category=category)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 422
 
-    return jsonify({'ok': True, 'ref': ref, 'slug': preset['slug']})
+    return jsonify({'ok': True, 'ref': ref, 'slug': updated_preset['slug']})
 
 
 @presets_bp.route('/presets/load', methods=['POST'])
@@ -162,16 +148,18 @@ def load_preset_to_bank():
         ref = _normalize_string_field(data, 'ref')
         bank = _normalize_bank_name(data.get('bank', ''))
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'ok': False, 'error': str(e)}), 400
 
     if not ref or not bank:
-        return jsonify({'error': 'ref and bank required'}), 400
+        return jsonify({'ok': False, 'error': 'ref and bank required'}), 400
 
     try:
         result = pu.load_preset_to_bank(ref, bank)
         return jsonify({'ok': True, 'bank': bank, 'name': result.get('name')})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 404
+        message = str(e)
+        code = 404 if message.startswith('Preset not found') else 422
+        return jsonify({'ok': False, 'error': message}), code
 
 
 @presets_bp.route('/presets/daily', methods=['POST'])
@@ -182,7 +170,7 @@ def generate_daily_preset():
         source = _normalize_string_field(data, 'source')
         bank = _normalize_bank_name(data.get('bank', ''))
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'ok': False, 'error': str(e)}), 400
     try:
         result = db.build_daily_preset(source=source)
         if bank:
@@ -191,99 +179,3 @@ def generate_daily_preset():
         return jsonify({'ok': True, **result})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-
-
-# ── Sets ──
-
-@presets_bp.route('/sets')
-def list_sets():
-    """List all sets."""
-    results = pu.list_sets()
-    # Mark which is active
-    try:
-        config = pu._load_config()
-        active = config.get('active_set')
-    except Exception:
-        active = None
-    for s in results:
-        s['active'] = s['slug'] == active
-    return jsonify({'sets': results, 'active': active})
-
-
-@presets_bp.route('/sets/<slug>')
-def get_set(slug):
-    """Get full set detail with resolved preset names."""
-    set_data = pu.load_set(slug)
-    if not set_data:
-        return jsonify({'error': f'Set not found: {slug}'}), 404
-
-    # Resolve preset names for display
-    banks_detail = {}
-    for letter, ref in set_data.get('banks', {}).items():
-        if ref:
-            preset = pu.load_preset(ref)
-            banks_detail[letter] = {
-                'ref': ref,
-                'name': preset.get('name', ref) if preset else f'(missing: {ref})',
-                'bpm': preset.get('bpm') if preset else None,
-                'key': preset.get('key') if preset else None,
-                'vibe': preset.get('vibe', '') if preset else '',
-            }
-        else:
-            banks_detail[letter] = None
-
-    result = {k: v for k, v in set_data.items() if not k.startswith('_')}
-    result['banks_detail'] = banks_detail
-    return jsonify(result)
-
-
-@presets_bp.route('/sets', methods=['POST'])
-def create_set():
-    """Create a new set."""
-    try:
-        data = _json_object_body()
-        name = _normalize_string_field(data, 'name')
-        notes = _normalize_string_field(data, 'notes') or ''
-        banks = _normalize_banks_map(data.get('banks', {}))
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-    if not name:
-        return jsonify({'error': 'name required'}), 400
-
-    set_data = {
-        'name': name,
-        'slug': pu.slugify(name),
-        'notes': notes,
-        'banks': banks,
-    }
-    slug = pu.save_set(set_data)
-    return jsonify({'ok': True, 'slug': slug})
-
-
-@presets_bp.route('/sets/save-current', methods=['POST'])
-def save_current_as_set():
-    """Snapshot current bank config as a new set."""
-    try:
-        data = _json_object_body()
-        name = _normalize_string_field(data, 'name') or 'Untitled Set'
-        notes = _normalize_string_field(data, 'notes') or ''
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    try:
-        slug = pu.save_current_as_set(name, notes)
-        return jsonify({'ok': True, 'slug': slug})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@presets_bp.route('/sets/<slug>/apply', methods=['POST'])
-def apply_set(slug):
-    """Apply a set: regenerate bank_config.yaml from preset references."""
-    try:
-        config = pu.apply_set(slug)
-        return jsonify({'ok': True, 'active_set': slug})
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500

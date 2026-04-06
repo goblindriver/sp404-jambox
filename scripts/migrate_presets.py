@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-One-time migration: convert current bank_config.yaml into preset files + default set.
+One-time migration: convert current bank_config.yaml into preset files.
 
 Usage:
     python scripts/migrate_presets.py              # migrate
@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from preset_utils import (
     _load_config, _save_config, bank_to_preset, save_preset,
-    save_set, slugify, BANK_LETTERS, PRESETS_DIR, SETS_DIR
+    BANK_LETTERS, PRESETS_DIR
 )
 
 # Map bank letters to categories
@@ -36,11 +36,10 @@ def main():
     args = parser.parse_args()
 
     config = _load_config()
-    set_banks = {}
+    bank_refs = {}
 
     print("Migrating bank_config.yaml to preset system...")
     print(f"Presets dir: {PRESETS_DIR}")
-    print(f"Sets dir: {SETS_DIR}")
     print()
 
     for letter in BANK_LETTERS:
@@ -48,24 +47,24 @@ def main():
         bank = config.get(bank_key, {})
         if not isinstance(bank, dict):
             print(f"  Bank {letter.upper()}: invalid config entry, skipping")
-            set_banks[letter] = None
+            bank_refs[letter] = None
             continue
         name = bank.get('name', f'Bank {letter.upper()}')
 
         if not bank.get('pads'):
             print(f"  Bank {letter.upper()}: {name} — no pads, skipping")
-            set_banks[letter] = None
+            bank_refs[letter] = None
             continue
 
         try:
             preset = bank_to_preset(letter, config)
         except (TypeError, ValueError) as exc:
             print(f"  Bank {letter.upper()}: {name} — migration failed ({exc})")
-            set_banks[letter] = None
+            bank_refs[letter] = None
             continue
         if not preset:
             print(f"  Bank {letter.upper()}: {name} — could not extract preset")
-            set_banks[letter] = None
+            bank_refs[letter] = None
             continue
 
         category = BANK_CATEGORIES.get(letter, 'community')
@@ -78,41 +77,27 @@ def main():
         if not args.dry_run:
             save_preset(preset, category=category)
 
-        set_banks[letter] = ref
+        bank_refs[letter] = ref
 
-    # Create default set
-    set_data = {
-        'name': 'Default Set',
-        'slug': 'default',
-        'author': 'jambox',
-        'created': '2026-04-01',
-        'notes': 'Original v3 bank layout — funk/disco/electroclash/nu-rave/aggressive',
-        'banks': set_banks,
-    }
-
-    print(f"\n  Set: default")
-    for letter, ref in set_banks.items():
+    print("\n  Preset refs by bank")
+    for letter, ref in bank_refs.items():
         status = ref or '(empty)'
         print(f"    {letter.upper()}: {status}")
 
-    if not args.dry_run:
-        save_set(set_data)
-        print(f"\n  → sets/default.yaml")
-
-    # Update bank_config.yaml with preset references and active_set
+    # Update bank_config.yaml with preset references
     if not args.dry_run:
         for letter in BANK_LETTERS:
             bank_key = f'bank_{letter}'
-            ref = set_banks.get(letter)
+            ref = bank_refs.get(letter)
             if ref:
                 bank = config.get(bank_key)
                 if not isinstance(bank, dict):
                     bank = {}
                     config[bank_key] = bank
                 bank['preset'] = ref
-        config['active_set'] = 'default'
+        config.pop('active_set', None)
         _save_config(config)
-        print(f"\n  → bank_config.yaml updated (active_set: default, preset refs added)")
+        print("\n  → bank_config.yaml updated (preset refs added)")
 
     print("\nDone!" if not args.dry_run else "\nDry run complete — no files written.")
 

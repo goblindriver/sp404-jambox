@@ -1381,35 +1381,6 @@ main {
     opacity: 0.7;
 }
 
-/* ── Set Selector Bar ── */
-.set-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 16px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-}
-.set-bar-label {
-    color: var(--text-muted);
-    font-family: 'Space Mono', monospace;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-.set-selector {
-    background: var(--bg-raised);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 3px 8px;
-    font-size: 12px;
-    font-family: 'Inter', sans-serif;
-    min-width: 180px;
-}
-.set-selector:focus { border-color: var(--accent); outline: none; }
-
 /* ── Preset Browser ── */
 .preset-categories {
     display: flex;

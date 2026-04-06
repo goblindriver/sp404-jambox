@@ -57,6 +57,41 @@ def _normalize_bank(bank):
     return bank
 
 
+def _build_metadata_prompt(bank, repo_dir):
+    """Build a metadata-first prompt from current bank + preset context."""
+    scripts_dir = os.path.join(repo_dir, "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import preset_utils as pu
+
+    config = pu._load_config()
+    bank_key = f"bank_{bank}"
+    bank_data = config.get(bank_key, {}) if isinstance(config, dict) else {}
+    preset_ref = str(bank_data.get("preset") or "").strip()
+    preset_data = None
+    if preset_ref:
+        try:
+            preset_data = pu.load_preset(preset_ref, require_full_pads=True)
+        except ValueError:
+            preset_data = None
+
+    parts = [
+        f"Bank {bank.upper()}",
+        f"name: {bank_data.get('name') or ''}",
+        f"notes: {bank_data.get('notes') or ''}",
+        f"bpm: {bank_data.get('bpm') or ''}",
+        f"key: {bank_data.get('key') or ''}",
+    ]
+    if preset_ref:
+        parts.append(f"preset: {preset_ref}")
+    if preset_data:
+        parts.append(f"preset_vibe: {preset_data.get('vibe') or ''}")
+        tags = preset_data.get("tags") or []
+        if tags:
+            parts.append(f"preset_tags: {', '.join(str(t) for t in tags[:12])}")
+    return " | ".join(part for part in parts if str(part).strip())
+
+
 def _normalize_preset_payload(payload):
     preset = payload.get("preset")
     if not isinstance(preset, dict):
@@ -190,7 +225,7 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, settings, preset_override=
             sys.path.insert(0, scripts_dir)
         import vibe_generate
         import preset_utils as pu
-        import fetch_samples as fs
+        from api import pipeline as pipeline_api
 
         if preset_override is None:
             _update_vibe_job(job_id, status="generating", progress="Asking LLM to parse your vibe...")
@@ -233,28 +268,14 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, settings, preset_override=
         # Step 4: Fetch samples
         if prompt_data.get("fetch", True):
             _update_vibe_job(job_id, status="fetching")
-            config = fs.load_config()
-            bank_key = f"bank_{bank}"
-            bank_config = config.get(bank_key, {})
-
-            if bank_config and bank_config.get("pads"):
-                from jambox_cache import load_score_cache, save_score_cache
-                tag_db = fs.load_tag_db()
-                used_files = set()
-                score_cache = load_score_cache(fs.LIBRARY)
-                os.makedirs(fs.STAGING, exist_ok=True)
-
-                fetched = 0
-                total = len(bank_config["pads"])
-                for pad_num, pad_query in bank_config["pads"].items():
-                    pad_num = int(pad_num)
-                    _update_vibe_job(job_id, progress=f"Fetching Pad {pad_num}/{total}: {pad_query[:30]}")
-                    result_path = fs.fetch_pad(bank, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
-                    if result_path:
-                        fetched += 1
-                save_score_cache(fs.LIBRARY, score_cache)
-
-                _update_vibe_job(job_id, fetched=f"{fetched}/{total}", progress=f"Fetched {fetched}/{total} samples")
+            summary = pipeline_api.execute_fetch_scope(
+                settings,
+                bank=bank,
+                progress_callback=lambda progress, _percent: _update_vibe_job(job_id, progress=progress),
+            )
+            fetched = summary.get("total_fetched", 0)
+            total = summary.get("total_pads", 0)
+            _update_vibe_job(job_id, fetched=f"{fetched}/{total}", progress=f"Fetched {fetched}/{total} samples")
 
         _update_vibe_job(job_id, status="done", progress="Bank populated!")
         if session_id:
@@ -349,6 +370,57 @@ def populate_bank():
     t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, settings, None, session_id))
     t.daemon = True
     t.start()
+
+    response = {"ok": True, "job_id": job_id, "session_id": session_id}
+    if session_error:
+        response["session_warning"] = "Session logging unavailable for this job"
+    return jsonify(response)
+
+
+@vibe_bp.route("/vibe/generate-fetch-bank", methods=["POST"])
+def generate_fetch_bank():
+    """Metadata-first generation+fetch for one bank."""
+    try:
+        payload = _json_object_body()
+        bank = _normalize_bank(payload.get("bank", "a"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    with _vibe_lock:
+        for job in _vibe_jobs.values():
+            if job.get("status") in ("starting", "generating", "reviewed", "saving", "loading", "fetching"):
+                return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
+        prompt_for_job = str(payload.get("prompt") or "").strip() or f"Bank {bank.upper()} metadata"
+        job_id = _create_vibe_job(bank, prompt_for_job)
+
+    repo_dir = current_app.config["REPO_DIR"]
+    prompt = str(payload.get("prompt") or "").strip()
+    if not prompt:
+        prompt = _build_metadata_prompt(bank, repo_dir)
+    if not prompt:
+        return jsonify({"ok": False, "error": "Unable to derive bank metadata prompt"}), 400
+
+    prompt_data = {
+        "prompt": prompt,
+        "bpm": payload.get("bpm"),
+        "key": payload.get("key"),
+        "bank": bank,
+        "fetch": payload.get("fetch", True),
+    }
+
+    session_id = None
+    session_error = None
+    try:
+        session_id = vts.create_session(prompt_data, {}, current_app.config)
+    except Exception as exc:
+        session_error = str(exc)
+        current_app.logger.warning("Failed to create metadata generate/fetch session: %s", exc)
+
+    settings = dict(current_app.config)
+    _update_vibe_job(job_id, session_id=session_id)
+    worker = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, settings, None, session_id))
+    worker.daemon = True
+    worker.start()
 
     response = {"ok": True, "job_id": job_id, "session_id": session_id}
     if session_error:

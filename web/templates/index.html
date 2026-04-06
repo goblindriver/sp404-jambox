@@ -36,11 +36,6 @@
         <!-- Filled by JS -->
     </nav>
 
-    <div class="set-bar" id="set-bar">
-        <span class="set-bar-label">SET:</span>
-        <select id="set-selector" class="set-selector" onchange="switchSet(this.value)"></select>
-    </div>
-
     <div class="bank-info" id="bank-info">
         <span id="bank-name" class="bank-name"></span>
         <span id="bank-meta" class="bank-meta"></span>
@@ -50,7 +45,6 @@
     <div class="vibe-panel" id="vibe-panel">
         <div class="vibe-input-row">
             <input type="text" id="vibe-prompt" class="vibe-prompt" placeholder="Describe a vibe..." />
-            <button id="btn-vibe-generate" class="btn btn-sm btn-accent">Suggest</button>
             <button id="btn-vibe-populate" class="btn btn-sm btn-primary" style="display:none">Apply Draft</button>
             <select id="vibe-bank-select" class="vibe-field" style="display:none">
                 <option value="a">A</option><option value="b">B</option><option value="c">C</option>
@@ -256,8 +250,8 @@
             <div class="progress-text" id="progress-text"></div>
             <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
         </div>
-        <button id="btn-fetch-bank" class="btn btn-accent">Fetch Bank</button>
-        <button id="btn-fetch-all" class="btn btn-accent-dim">Fetch Set</button>
+        <button id="btn-fetch-bank" class="btn btn-accent">Generate/Fetch Bank</button>
+        <button id="btn-fetch-all" class="btn btn-accent-dim">Fetch All Banks</button>
         <button id="btn-export" class="btn btn-deploy">Export to SD</button>
     </footer>
 

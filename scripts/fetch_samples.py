@@ -8,7 +8,7 @@ Usage:
     python scripts/fetch_samples.py --bank b     # single bank
     python scripts/fetch_samples.py --bank b --pad 1  # single pad
 """
-import os, sys, re, json, argparse, hashlib
+import os, sys, re, json, argparse, hashlib, random, time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
@@ -33,6 +33,10 @@ TAGS_FILE = SETTINGS["TAGS_FILE"]
 CONFIG_PATH = SETTINGS["CONFIG_PATH"]
 STAGING = SETTINGS["STAGING_DIR"]
 SMPL_DIR = SETTINGS["SMPL_DIR"]
+FETCH_HISTORY_FILE = SETTINGS.get("FETCH_HISTORY_FILE", os.path.join(REPO_DIR, "data", "fetch_history.json"))
+FETCH_TOP_N = int(SETTINGS.get("FETCH_DIVERSITY_TOP_N", 8) or 8)
+FETCH_DETERMINISTIC = str(SETTINGS.get("FETCH_DETERMINISTIC", "0")).strip().lower() in ("1", "true", "yes", "on")
+FETCH_COOLDOWN_SECONDS = int(SETTINGS.get("FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 * 3600) or 21600)
 
 # ═══════════════════════════════════════════════════════════
 # Tag database scoring
@@ -314,12 +318,13 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entr
         bank_config=bank_config,
         tag_db=tag_db,
         used_files=used_files,
-        limit=1,
+        limit=max(2, FETCH_TOP_N),
         min_score=min_score,
         cache_entries=cache_entries,
     )
     if matches:
-        return matches[0]["path"], matches[0]["score"]
+        picked = choose_diverse_match(matches, deterministic=FETCH_DETERMINISTIC)
+        return picked["path"], picked["score"]
     return None, 0
 
 
@@ -381,6 +386,70 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
         if item["path"] not in used_files and item["score"] >= min_score
     ]
     return filtered[:limit]
+
+
+def _load_fetch_history():
+    try:
+        with open(FETCH_HISTORY_FILE, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {"last_used": {}}
+    if not isinstance(data, dict):
+        return {"last_used": {}}
+    last_used = data.get("last_used")
+    if not isinstance(last_used, dict):
+        last_used = {}
+    return {"last_used": last_used}
+
+
+def _save_fetch_history(history):
+    try:
+        os.makedirs(os.path.dirname(FETCH_HISTORY_FILE), exist_ok=True)
+        with open(FETCH_HISTORY_FILE, "w", encoding="utf-8") as handle:
+            json.dump(history, handle, indent=2, sort_keys=True)
+    except OSError:
+        pass
+
+
+def choose_diverse_match(matches, deterministic=False):
+    """Pick from top-N with recency penalties to reduce repetition."""
+    if not matches:
+        return None
+    top = matches[:max(1, FETCH_TOP_N)]
+    if deterministic:
+        return top[0]
+
+    now = int(time.time())
+    history = _load_fetch_history()
+    last_used = history.get("last_used", {})
+    weighted = []
+    for item in top:
+        base = max(float(item.get("score", 0)), 0.1)
+        path = item.get("path")
+        last_ts = int(last_used.get(path, 0) or 0)
+        age = now - last_ts
+        cooldown_factor = 1.0 if age >= FETCH_COOLDOWN_SECONDS else max(0.1, age / max(FETCH_COOLDOWN_SECONDS, 1))
+        weight = max(0.001, base * cooldown_factor)
+        weighted.append((item, weight))
+
+    total_weight = sum(weight for _, weight in weighted)
+    if total_weight <= 0:
+        return top[0]
+    roll = random.uniform(0, total_weight)
+    cursor = 0.0
+    chosen = top[0]
+    for item, weight in weighted:
+        cursor += weight
+        if roll <= cursor:
+            chosen = item
+            break
+
+    chosen_path = chosen.get("path")
+    if chosen_path:
+        last_used[chosen_path] = now
+        history["last_used"] = last_used
+        _save_fetch_history(history)
+    return chosen
 
 
 def load_config():

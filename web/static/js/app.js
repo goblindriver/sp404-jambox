@@ -45,11 +45,9 @@ async function init() {
         document.getElementById('btn-export').onclick = exportToSD;
 
         // Vibe panel
-        document.getElementById('btn-vibe-generate').onclick = generateVibeSuggestions;
         document.getElementById('btn-vibe-populate').onclick = populateBankFromVibe;
 
-        // Load sets and check watcher on startup
-        loadSets();
+        // Check watcher on startup
         checkWatcherStatus();
 
         // Bank edit
@@ -76,7 +74,7 @@ async function init() {
             searchTimer = setTimeout(() => searchLibrary(e.target.value), 300);
         };
         document.getElementById('vibe-prompt').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') generateVibeSuggestions();
+            if (e.key === 'Enter') fetchCurrentBank();
         });
 
         // Audio ended
@@ -472,7 +470,7 @@ async function fetchSamples(bank, pad) {
 
 function fetchCurrentBank() {
     if (!state.currentBank) return;
-    fetchSamples(state.currentBank.letter);
+    generateFetchBank(state.currentBank.letter);
 }
 
 function fetchAllBanks() {
@@ -726,6 +724,10 @@ async function generateVibeSuggestions() {
     }
 
     const genBtn = document.getElementById('btn-vibe-generate');
+    if (!genBtn) {
+        toast('Suggest flow is retired. Use Generate/Fetch Bank.', 'error');
+        return;
+    }
     if (genBtn.disabled) return;
     genBtn.disabled = true;
     const origText = genBtn.textContent;
@@ -772,6 +774,79 @@ async function generateVibeSuggestions() {
         genBtn.disabled = false;
         genBtn.textContent = origText;
     }
+}
+
+async function generateFetchBank(bankLetter) {
+    if (!bankLetter) return;
+    const promptInput = document.getElementById('vibe-prompt');
+    const promptOverride = promptInput?.value?.trim() || null;
+    const payload = {
+        bank: bankLetter,
+        fetch: true,
+    };
+    if (promptOverride) {
+        payload.prompt = promptOverride;
+    }
+    toast(`Generating + fetching Bank ${bankLetter.toUpperCase()}...`);
+    showProgress(`Building intent for Bank ${bankLetter.toUpperCase()}...`, 10);
+
+    let response;
+    try {
+        response = await api('/api/vibe/generate-fetch-bank', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+    } catch (e) {
+        hideProgress();
+        toast(`Generate/Fetch failed: ${e.message}`, 'error');
+        return;
+    }
+
+    if (!response.ok) {
+        hideProgress();
+        toast(response.error || 'Generate/Fetch failed', 'error');
+        return;
+    }
+
+    pollPopulateJob(response.job_id, bankLetter, 'Generate/Fetch Bank');
+}
+
+function pollPopulateJob(jobId, bankLetter, doneLabel) {
+    let pollCount = 0;
+    const maxPolls = 150;
+    const pollInterval = setInterval(async () => {
+        pollCount++;
+        if (pollCount > maxPolls) {
+            clearInterval(pollInterval);
+            hideProgress();
+            toast('Generate/Fetch timed out — check server logs', 'error');
+            return;
+        }
+        try {
+            const status = await api(`/api/vibe/populate-status/${jobId}`);
+            showProgress(status.progress || 'Generating bank draft...', vibeProgressPercent(status.status));
+            if (status.status === 'done') {
+                clearInterval(pollInterval);
+                hideProgress();
+                const doneMessage = status.fallback_used
+                    ? `${doneLabel} completed with fallback parsing. ${status.fetched || ''}`
+                    : `${doneLabel} completed. ${status.fetched || ''}`;
+                toast(doneMessage.trim(), status.fallback_used ? 'error' : 'success');
+                await refreshBanks();
+                const updated = state.banks.find((item) => item.letter === bankLetter);
+                if (updated) switchBank(updated);
+            } else if (status.status === 'error') {
+                clearInterval(pollInterval);
+                hideProgress();
+                toast(`Generate/Fetch error: ${status.progress}`, 'error');
+            }
+        } catch (e) {
+            clearInterval(pollInterval);
+            hideProgress();
+            toast(`Generate/Fetch status failed: ${e.message}`, 'error');
+        }
+    }, 2000);
 }
 
 function renderVibeResults(result) {
@@ -941,7 +1016,6 @@ async function generateDailyBank() {
         });
         if (result.ok) {
             await refreshBanks();
-            await loadSets();
             toast(`Daily bank loaded from ${result.ref}`, 'success');
         } else {
             toast(result.error || 'Daily bank generation failed', 'error');
@@ -2003,54 +2077,6 @@ async function saveAsPreset() {
             toast(`Saved as preset: ${result.ref}`, 'success');
             presetData = null; // force reload
             closeBankEdit();
-        } else {
-            toast(result.error || 'Save failed', 'error');
-        }
-    } catch (e) {
-        toast('Save failed: ' + e.message, 'error');
-    }
-}
-
-// ── Set Management ──
-
-async function loadSets() {
-    try {
-        const data = await api('/api/sets');
-        const sel = document.getElementById('set-selector');
-        sel.innerHTML = data.sets.map(s =>
-            `<option value="${s.slug}" ${s.active ? 'selected' : ''}>${s.name}</option>`
-        ).join('');
-    } catch (e) {}
-}
-
-async function switchSet(slug) {
-    toast(`Switching to set: ${slug}...`);
-    try {
-        const result = await api(`/api/sets/${slug}/apply`, { method: 'POST' });
-        if (result.ok) {
-            toast('Set applied', 'success');
-            await refreshBanks();
-            await loadSets();
-        } else {
-            toast(result.error || 'Switch failed', 'error');
-        }
-    } catch (e) {
-        toast('Switch failed: ' + e.message, 'error');
-    }
-}
-
-async function saveCurrentSet() {
-    const name = prompt('Set name:');
-    if (!name) return;
-    try {
-        const result = await api('/api/sets/save-current', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name}),
-        });
-        if (result.ok) {
-            toast(`Set saved: ${result.slug}`, 'success');
-            loadSets();
         } else {
             toast(result.error || 'Save failed', 'error');
         }

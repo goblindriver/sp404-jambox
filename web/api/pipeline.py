@@ -98,91 +98,113 @@ def _run_script(script_name, timeout=None):
     return jsonify(payload)
 
 
+def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
+    """Execute fetch_samples for a bank/pad scope and return run summary."""
+    repo_dir = settings['REPO_DIR']
+    scripts_dir = os.path.join(repo_dir, 'scripts')
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+
+    import fetch_samples as fs
+    from jambox_cache import load_score_cache, save_score_cache
+
+    config = fs.load_config()
+    os.makedirs(fs.STAGING, exist_ok=True)
+    if bank is None and pad is None:
+        _clear_staging_wavs(fs.STAGING)
+    else:
+        fs.clear_staging_wavs(bank=bank, pad=pad)
+
+    tag_db = fs.load_tag_db()
+    used_files = set()
+    score_cache = load_score_cache(fs.LIBRARY)
+    generated_files = []
+    total_fetched = 0
+    total_pads = 0
+
+    pad_count_total = 0
+    pad_count_done = 0
+    for key, bank_config in config.items():
+        if not key.startswith('bank_') or not bank_config:
+            continue
+        letter = key.split('_')[1]
+        if bank and letter.lower() != bank.lower():
+            continue
+        pads = bank_config.get('pads', {})
+        if pad is not None:
+            pad_count_total += 1 if (pads.get(pad) or pads.get(str(pad))) else 0
+        else:
+            pad_count_total += len(pads)
+
+    for key, bank_config in config.items():
+        if not key.startswith('bank_') or not bank_config:
+            continue
+        letter = key.split('_')[1]
+        if bank and letter.lower() != bank.lower():
+            continue
+
+        pads = bank_config.get('pads', {})
+        if not pads:
+            continue
+
+        if pad is not None:
+            pad_query = pads.get(pad)
+            if pad_query is None:
+                pad_query = pads.get(str(pad))
+            if pad_query:
+                pad_count_done += 1
+                pct = int(pad_count_done * 100 / max(pad_count_total, 1))
+                if progress_callback:
+                    progress_callback(f"Bank {letter.upper()} Pad {pad}", pct)
+                result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
+                if result:
+                    total_fetched += 1
+                    generated_files.append(result)
+                total_pads += 1
+        else:
+            for pad_num, pad_query in pads.items():
+                pad_num = int(pad_num)
+                pad_count_done += 1
+                pct = int(pad_count_done * 100 / max(pad_count_total, 1))
+                if progress_callback:
+                    progress_callback(f"Bank {letter.upper()} Pad {pad_num}: {str(pad_query)[:40]}", pct)
+                result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
+                if result:
+                    total_fetched += 1
+                    generated_files.append(result)
+                total_pads += 1
+
+    save_score_cache(fs.LIBRARY, score_cache)
+
+    smpl_dir = settings['SMPL_DIR']
+    if total_fetched > 0:
+        os.makedirs(smpl_dir, exist_ok=True)
+        import shutil
+        for path in generated_files:
+            shutil.copy2(path, smpl_dir)
+
+    return {
+        'total_fetched': total_fetched,
+        'total_pads': total_pads,
+        'generated_files': generated_files,
+    }
+
+
 def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
     """Run fetch_samples in a background thread."""
     try:
-        sys.path.insert(0, os.path.join(repo_dir, 'scripts'))
-        import fetch_samples as fs
-
         _update_job(job_id, status='running')
-        config = fs.load_config()
-        os.makedirs(fs.STAGING, exist_ok=True)
-        _clear_staging_wavs(fs.STAGING)
-
-        from jambox_cache import load_score_cache, save_score_cache
-        tag_db = fs.load_tag_db()
-        used_files = set()
-        score_cache = load_score_cache(fs.LIBRARY)
-        generated_files = []
-
-        total_fetched = 0
-        total_pads = 0
-
-        # Count total pads for progress
-        pad_count_total = 0
-        pad_count_done = 0
-        for key, bc in config.items():
-            if not key.startswith('bank_') or not bc:
-                continue
-            l = key.split('_')[1]
-            if bank and l.lower() != bank.lower():
-                continue
-            p = bc.get('pads', {})
-            if pad is not None:
-                pad_count_total += 1 if (p.get(pad) or p.get(str(pad))) else 0
-            else:
-                pad_count_total += len(p)
-
-        for key, bank_config in config.items():
-            if not key.startswith('bank_') or not bank_config:
-                continue
-            letter = key.split('_')[1]
-            if bank and letter.lower() != bank.lower():
-                continue
-
-            pads = bank_config.get('pads', {})
-            if not pads:
-                continue
-
-            if pad is not None:
-                pad_query = pads.get(pad)
-                if pad_query is None:
-                    pad_query = pads.get(str(pad))
-                if pad_query:
-                    pad_count_done += 1
-                    pct = int(pad_count_done * 100 / max(pad_count_total, 1))
-                    _update_job(job_id, progress=f"Bank {letter.upper()} Pad {pad}", percent=pct)
-                    result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
-                    if result:
-                        total_fetched += 1
-                        generated_files.append(result)
-                    total_pads += 1
-            else:
-                for pad_num, pad_query in pads.items():
-                    pad_num = int(pad_num)
-                    pad_count_done += 1
-                    pct = int(pad_count_done * 100 / max(pad_count_total, 1))
-                    _update_job(job_id, progress=f"Bank {letter.upper()} Pad {pad_num}: {pad_query[:40]}", percent=pct)
-                    result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
-                    if result:
-                        total_fetched += 1
-                        generated_files.append(result)
-                    total_pads += 1
-
-        save_score_cache(fs.LIBRARY, score_cache)
-
-        # Copy to SMPL
-        smpl_dir = settings['SMPL_DIR']
-        if total_fetched > 0:
-            os.makedirs(smpl_dir, exist_ok=True)
-            import shutil
-            for f in generated_files:
-                shutil.copy2(f, smpl_dir)
+        summary = execute_fetch_scope(
+            settings,
+            bank=bank,
+            pad=pad,
+            progress_callback=lambda progress, percent: _update_job(job_id, progress=progress, percent=percent),
+        )
 
         _update_job(
             job_id,
             status='done',
-            result=f"{total_fetched}/{total_pads} pads filled",
+            result=f"{summary['total_fetched']}/{summary['total_pads']} pads filled",
             finished_at=_time.time(),
         )
 
