@@ -259,10 +259,10 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, settings, preset_override=
         ref = pu.save_preset(preset, category="auto")
         _update_vibe_job(job_id, preset_ref=ref, progress=f"Saved preset: {ref}")
 
-        # Step 3: Load into bank
+        # Step 3: Load into bank (preserve user-authored name/notes)
         bank = prompt_data.get("bank", "a").lower()
         _update_vibe_job(job_id, status="loading")
-        pu.load_preset_to_bank(ref, bank)
+        pu.load_preset_to_bank(ref, bank, preserve_fields=("name", "notes"))
         _update_vibe_job(job_id, progress=f"Loaded into Bank {bank.upper()}")
 
         # Step 4: Fetch samples
@@ -321,6 +321,30 @@ def _create_vibe_job(bank, prompt):
         "fallback_reason": "",
     }
     return job_id
+
+
+@vibe_bp.route("/vibe/inspire-bank", methods=["POST"])
+def inspire_bank():
+    """Generate bank-level metadata (name, notes, bpm, key) via LLM."""
+    try:
+        payload = _json_object_body()
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    seed_genre = str(payload.get("genre") or "").strip() or None
+
+    repo_dir = current_app.config["REPO_DIR"]
+    scripts_dir = os.path.join(repo_dir, "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import vibe_generate
+
+    try:
+        result = vibe_generate.inspire_bank_metadata(seed_genre)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    return jsonify({"ok": True, "metadata": result})
 
 
 @vibe_bp.route("/vibe/populate-bank", methods=["POST"])
@@ -400,10 +424,25 @@ def generate_fetch_bank():
     if not prompt:
         return jsonify({"ok": False, "error": "Unable to derive bank metadata prompt"}), 400
 
+    # Merge bpm/key from bank_config when client omits them
+    bpm = payload.get("bpm")
+    key = payload.get("key")
+    if bpm is None or key is None:
+        scripts_dir = os.path.join(repo_dir, "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import preset_utils as pu
+        config = pu._load_config()
+        bank_data = (config.get(f"bank_{bank}") or {}) if isinstance(config, dict) else {}
+        if bpm is None:
+            bpm = bank_data.get("bpm")
+        if key is None:
+            key = bank_data.get("key")
+
     prompt_data = {
         "prompt": prompt,
-        "bpm": payload.get("bpm"),
-        "key": payload.get("key"),
+        "bpm": bpm,
+        "key": key,
         "bank": bank,
         "fetch": payload.get("fetch", True),
     }

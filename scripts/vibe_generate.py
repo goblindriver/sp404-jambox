@@ -442,6 +442,78 @@ def generate_vibe_suggestions(prompt_data):
     }
 
 
+def inspire_bank_metadata(seed_genre=None):
+    """Ask the LLM to generate bank-level metadata from an optional genre seed.
+
+    Returns dict with keys: name, notes, bpm, key.
+    Falls back to a deterministic default on LLM failure.
+    """
+    runtime = _parser_runtime()
+    endpoint = runtime["endpoint"]
+
+    if not endpoint:
+        return _inspire_fallback(seed_genre)
+
+    system_prompt = get_system_prompt(
+        "You are a creative music producer naming SP-404 sampler banks. "
+        "Given an optional genre seed, invent a compelling bank name, "
+        "a short evocative description (1-2 sentences), a BPM (integer 60-180), "
+        "and a musical key (e.g. Am, Dm, F, Gm). "
+        "Return ONLY a JSON object with keys: name, notes, bpm, key. "
+        "No markdown, no explanation."
+    )
+    user_msg = {"task": "inspire_bank"}
+    if seed_genre:
+        user_msg["genre_seed"] = seed_genre
+
+    timeout = SETTINGS.get("LLM_TIMEOUT", 30)
+    try:
+        payload = call_json_endpoint(
+            endpoint,
+            {
+                "model": runtime["model"],
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(user_msg)},
+                ],
+                "temperature": 0.7,
+            },
+            timeout=timeout,
+        )
+        content = _strip_code_fences(_extract_content(payload))
+        if not content:
+            return _inspire_fallback(seed_genre)
+
+        parsed = json.loads(content)
+        return {
+            "name": str(parsed.get("name") or "Untitled Bank").strip()[:60],
+            "notes": str(parsed.get("notes") or "").strip()[:200],
+            "bpm": _coerce_int(parsed.get("bpm"), 120, minimum=40),
+            "key": str(parsed.get("key") or "Am").strip()[:4],
+        }
+    except (IntegrationFailure, json.JSONDecodeError, OSError, Exception):
+        return _inspire_fallback(seed_genre)
+
+
+_INSPIRE_DEFAULTS = [
+    {"name": "Midnight Funk", "notes": "Sweaty basement grooves, tight rhythms.", "bpm": 112, "key": "Em"},
+    {"name": "Golden Hour Soul", "notes": "Warm dusty vinyl, late afternoon light.", "bpm": 98, "key": "G"},
+    {"name": "Neon Warehouse", "notes": "Blog-house filters, strobe-lit energy.", "bpm": 128, "key": "F"},
+    {"name": "Dub Meditation", "notes": "Deep echo chambers, melodica over bass.", "bpm": 100, "key": "Am"},
+    {"name": "Boom Bap Cipher", "notes": "Golden age hip-hop, vinyl crackle.", "bpm": 90, "key": "Dm"},
+]
+
+
+def _inspire_fallback(seed_genre=None):
+    import hashlib
+    if seed_genre:
+        idx = int(hashlib.md5(seed_genre.encode()).hexdigest(), 16) % len(_INSPIRE_DEFAULTS)
+    else:
+        import time
+        idx = int(time.time()) % len(_INSPIRE_DEFAULTS)
+    return dict(_INSPIRE_DEFAULTS[idx])
+
+
 def main():
     try:
         prompt_data = _read_input()

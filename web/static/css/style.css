@@ -230,173 +230,122 @@ header .accent {
     font-size: 14px;
     padding: 2px 8px;
     border-radius: var(--radius-sm);
-    margin-left: auto;
 }
 
 .btn-edit-bank:hover { border-color: var(--accent); color: var(--accent); }
 
-.vibe-panel {
+/* Bank Toolbar — Inspire / Draft / Fetch icons */
+.bank-toolbar {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 0 24px 12px;
-}
-
-.vibe-input-row {
-    display: flex;
-    gap: 6px;
     align-items: center;
+    gap: 6px;
+    margin-left: auto;
 }
 
-/* .vibe-btn-row removed — buttons now inline in .vibe-input-row */
-
-.vibe-prompt {
-    min-width: 280px;
-    flex: 1;
-    background: var(--bg-raised);
-    color: var(--text);
-    border: 1px solid var(--border);
+.bank-tool-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
     border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font-size: 13px;
-}
-
-.vibe-prompt:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.vibe-field {
-    background: var(--bg-raised);
-    color: var(--text);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font-size: 12px;
-    width: 60px;
-}
-
-.vibe-field:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-select.vibe-field {
-    width: 48px;
+    background: none;
+    color: var(--text-dim);
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
 }
 
-.vibe-results {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
+.bank-tool-btn:hover { color: var(--accent); border-color: var(--accent); }
+.bank-tool-btn:disabled { opacity: 0.35; cursor: default; }
+.bank-tool-btn:disabled:hover { color: var(--text-dim); border-color: var(--border); }
+.bank-tool-btn svg { pointer-events: none; }
+
+.bank-tool-btn.working {
+    color: var(--accent);
+    border-color: var(--accent);
+    animation: pulse-tool 1.2s ease-in-out infinite;
+}
+@keyframes pulse-tool { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* Header icon groups */
+.header-app-group, .header-hw-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
-.vibe-result-card {
+.header-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+}
+
+/* Eject button */
+.eject-btn { color: var(--text-dim); }
+.eject-btn:hover:not(:disabled) { color: #ef5350; border-color: #ef5350; }
+.eject-btn:disabled { opacity: 0.3; cursor: default; }
+
+/* Confirm modal (eject etc.) */
+.confirm-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+}
+.confirm-modal.hidden { display: none; }
+.confirm-modal-inner {
     background: var(--bg-raised);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font-size: 12px;
-    color: var(--text-dim);
+    border-radius: var(--radius);
+    padding: 24px 32px;
+    text-align: center;
+    min-width: 260px;
 }
-
-.vibe-result-wide {
-    grid-column: 1 / -1;
-}
-
-.vibe-result-card strong {
+.confirm-modal-inner p {
+    margin: 0 0 16px;
+    font-size: 15px;
     color: var(--text);
-    font-family: 'Space Mono', monospace;
+}
+.confirm-modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
 }
 
-.vibe-tag-pill {
-    display: inline-block;
-    background: var(--accent);
-    color: var(--bg);
-    border-radius: 10px;
-    padding: 2px 8px;
-    font-size: 10px;
-    margin: 2px 2px;
-    font-weight: 600;
-}
-
-.vibe-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--text-dim);
-}
-
-.vibe-result-note {
-    margin-top: 8px;
-    font-size: 11px;
-    color: var(--accent);
-}
-
-.vibe-parse-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 8px;
-}
-
-.vibe-parse-row {
+/* Inspire popover */
+.inspire-popover {
+    position: absolute;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    z-index: 300;
+    min-width: 220px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--text-dim);
+    gap: 8px;
 }
-
-.vibe-parse-input {
+.inspire-popover.hidden { display: none; }
+.inspire-input {
     background: var(--bg-surface);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 6px 8px;
     font-size: 12px;
+    width: 100%;
+    box-sizing: border-box;
 }
-
-.vibe-parse-input:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.vibe-draft-list {
-    display: grid;
+.inspire-input:focus { outline: none; border-color: var(--accent); }
+.inspire-popover-actions {
+    display: flex;
     gap: 6px;
-    margin-top: 8px;
-}
-
-.vibe-draft-row {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr) auto auto auto auto;
-    gap: 6px;
-    align-items: center;
-}
-
-.vibe-draft-pad {
-    font-family: 'Space Mono', monospace;
-    color: var(--text);
-    font-size: 11px;
-}
-
-.vibe-draft-input {
-    min-width: 0;
-    background: var(--bg-surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 6px 8px;
-    font-size: 12px;
-}
-
-.vibe-draft-input:focus {
-    outline: none;
-    border-color: var(--accent);
 }
 
 .btn-primary {
@@ -822,13 +771,7 @@ main {
 .btn-deploy:hover { filter: brightness(1.15); }
 .btn-deploy:disabled { background: #333; border-color: #333; color: #666; }
 
-.btn-intel {
-    background: transparent;
-    color: #FFB74D;
-    border-color: rgba(255, 183, 77, 0.4);
-    font-size: 11px;
-}
-.btn-intel:hover { background: rgba(255, 183, 77, 0.15); }
+/* .btn-intel moved to header icon row */
 
 /* Sidebar */
 .sidebar {

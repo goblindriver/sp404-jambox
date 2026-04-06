@@ -1,5 +1,5 @@
 """SD card status, scan, and Bank A sync API."""
-import os, hashlib, shutil, struct
+import os, hashlib, shutil, struct, subprocess
 from flask import Blueprint, jsonify, request, current_app
 
 sdcard_bp = Blueprint('sdcard', __name__)
@@ -521,3 +521,29 @@ def gold_sessions():
             continue
         sessions.append({'name': d, 'count': len(files)})
     return jsonify({'sessions': sessions})
+
+
+@sdcard_bp.route('/sdcard/eject', methods=['POST'])
+def eject_card():
+    """Eject the SD card volume (macOS only)."""
+    sd_card = _sd_card()
+    if not os.path.isdir(sd_card):
+        return jsonify({'ok': False, 'error': 'SD card is not mounted'}), 400
+
+    try:
+        result = subprocess.run(
+            ['diskutil', 'eject', sd_card],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode == 0:
+            return jsonify({'ok': True, 'message': f'Ejected {sd_card}'})
+        return jsonify({
+            'ok': False,
+            'error': result.stderr.strip() or result.stdout.strip() or 'Eject failed',
+        }), 500
+    except FileNotFoundError:
+        return jsonify({'ok': False, 'error': 'diskutil not found (macOS only)'}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'error': 'Eject timed out'}), 500
+    except OSError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500

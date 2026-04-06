@@ -276,16 +276,25 @@ def bank_to_preset(letter, config=None):
     }, require_full_pads=True)
 
 
-def load_preset_to_bank(ref, bank_letter):
-    """Load a preset into a specific bank slot in bank_config.yaml."""
+def load_preset_to_bank(ref, bank_letter, preserve_fields=None):
+    """Load a preset into a specific bank slot in bank_config.yaml.
+
+    Args:
+        ref: Preset reference (slug or path).
+        bank_letter: Target bank letter (a-j).
+        preserve_fields: Optional iterable of bank-level field names to keep
+            from the existing bank config instead of overwriting with preset
+            values (e.g. ("name", "notes") to keep user-authored metadata).
+    """
     preset = load_preset(ref, require_full_pads=True)
     if not preset:
         raise ValueError(f"Preset not found: {ref}")
 
     config = _load_config()
     bank_key = f'bank_{bank_letter.lower()}'
+    existing = config.get(bank_key) or {}
 
-    config[bank_key] = {
+    new_bank = {
         'preset': ref,
         'name': preset.get('name', ref),
         'bpm': preset.get('bpm'),
@@ -294,6 +303,12 @@ def load_preset_to_bank(ref, bank_letter):
         'pads': dict(preset.get('pads', {})),
     }
 
+    if preserve_fields:
+        for field in preserve_fields:
+            if field in existing and existing[field]:
+                new_bank[field] = existing[field]
+
+    config[bank_key] = new_bank
     _save_config(config)
     return config[bank_key]
 

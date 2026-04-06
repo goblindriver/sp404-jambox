@@ -14,20 +14,31 @@
             <h1>SP-404 <span class="accent">JAMBOX</span></h1>
         </div>
         <div class="header-right">
-            <button id="btn-help" class="header-icon-btn" title="How it works">?</button>
-            <button id="btn-settings" class="header-icon-btn" title="Settings &amp; admin">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-            </button>
-            <button id="btn-watcher" class="header-status-btn" title="File watcher">
-                <span id="watcher-dot" class="watcher-dot"></span>
-                <span id="watcher-label">Watch</span>
-            </button>
-            <button id="btn-power" class="header-icon-btn power-btn" title="Server status &amp; restart">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v8"/><path d="M16.24 5.76a9 9 0 1 1-8.48 0"/></svg>
-            </button>
-            <div id="sd-status" class="sd-indicator">
-                <span class="sd-dot"></span>
-                <span class="sd-text">Checking...</span>
+            <div class="header-app-group">
+                <button id="btn-help" class="header-icon-btn" title="How it works">?</button>
+                <button id="btn-settings" class="header-icon-btn" title="Settings &amp; admin">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                </button>
+                <button id="btn-watcher" class="header-status-btn" title="File watcher">
+                    <span id="watcher-dot" class="watcher-dot"></span>
+                    <span id="watcher-label">Watch</span>
+                </button>
+                <button id="btn-power" class="header-icon-btn power-btn" title="Server status &amp; restart">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v8"/><path d="M16.24 5.76a9 9 0 1 1-8.48 0"/></svg>
+                </button>
+            </div>
+            <div class="header-divider"></div>
+            <div class="header-hw-group">
+                <div id="sd-status" class="sd-indicator">
+                    <span class="sd-dot"></span>
+                    <span class="sd-text">Checking...</span>
+                </div>
+                <button id="btn-eject" class="header-icon-btn eject-btn" title="Eject SD card" disabled>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-7 8h14l-7-8z"/><rect x="5" y="16" width="14" height="2" rx="1"/></svg>
+                </button>
+                <button id="btn-card-intel" class="header-icon-btn" title="Pull card intelligence">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                </button>
             </div>
         </div>
     </header>
@@ -39,27 +50,18 @@
     <div class="bank-info" id="bank-info">
         <span id="bank-name" class="bank-name"></span>
         <span id="bank-meta" class="bank-meta"></span>
-        <button id="btn-edit-bank" class="btn-edit-bank" title="Edit bank settings">&#9998;</button>
-    </div>
-
-    <div class="vibe-panel" id="vibe-panel">
-        <div class="vibe-input-row">
-            <input type="text" id="vibe-prompt" class="vibe-prompt" placeholder="Describe a vibe..." />
-            <button id="btn-vibe-populate" class="btn btn-sm btn-primary" style="display:none">Apply Draft</button>
-            <select id="vibe-bank-select" class="vibe-field" style="display:none">
-                <option value="a">A</option><option value="b">B</option><option value="c">C</option>
-                <option value="d">D</option><option value="e">E</option><option value="f">F</option>
-                <option value="g">G</option><option value="h">H</option><option value="i">I</option>
-                <option value="j">J</option>
-            </select>
-            <label id="vibe-auto-fetch-wrap" class="vibe-toggle hidden">
-                <input type="checkbox" id="vibe-auto-fetch" checked />
-                Auto-fetch
-            </label>
+        <div class="bank-toolbar">
+            <button id="btn-edit-bank" class="btn-edit-bank" title="Edit bank settings">&#9998;</button>
+            <button id="btn-inspire" class="bank-tool-btn" title="Inspire — LLM generates name, BPM, key, description">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/></svg>
+            </button>
+            <button id="btn-draft-pads" class="bank-tool-btn" title="Draft pads — LLM generates pad descriptions from bank metadata" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </button>
+            <button id="btn-fetch-current" class="bank-tool-btn" title="Fetch samples for this bank">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
         </div>
-        <input type="hidden" id="vibe-bpm" />
-        <input type="hidden" id="vibe-key" />
-        <div id="vibe-results" class="vibe-results"></div>
     </div>
 
     <div id="bank-edit-modal" class="bank-edit-modal hidden">
@@ -250,14 +252,13 @@
             <div class="progress-text" id="progress-text"></div>
             <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
         </div>
-        <button id="btn-fetch-bank" class="btn btn-accent">Generate/Fetch Bank</button>
-        <button id="btn-fetch-all" class="btn btn-accent-dim">Fetch All Banks</button>
         <button id="btn-export" class="btn btn-deploy">Export to SD</button>
-        <button id="btn-card-intel" class="btn btn-intel" title="Pull card intelligence: read performance data, patterns, user adjustments">📊 Card Intel</button>
     </footer>
 
     <!-- Settings dropdown (gear menu) -->
     <div id="settings-menu" class="settings-menu hidden">
+        <button onclick="fetchAllBanks()">Fetch All Banks</button>
+        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0"/>
         <button onclick="ingestDownloads()">Ingest Downloads</button>
         <button onclick="toggleDiskPanel()">Disk &amp; Cleanup</button>
         <button onclick="generatePattern()">Generate Pattern</button>
@@ -289,36 +290,36 @@
                 <div class="tutorial-step">
                     <div class="step-num">1</div>
                     <div class="step-content">
-                        <h4>Describe your sounds</h4>
-                        <p>Click any pad to describe what you want on it. Each bank has a genre and key &mdash; pads 1-4 are drum hits, 5-12 are loops and melodic content.</p>
+                        <h4>Inspire a bank</h4>
+                        <p>Click the <strong>&#10022; Inspire</strong> button next to a bank name. The LLM picks a genre, BPM, key, and description for you &mdash; or type your own in the edit modal.</p>
                     </div>
                 </div>
                 <div class="tutorial-step">
                     <div class="step-num">2</div>
                     <div class="step-content">
-                        <h4>Fetch samples</h4>
-                        <p>Hit <strong>Fetch All</strong> to search your local library for matches. Or click a pad and hit <strong>Fetch</strong> for just that one.</p>
+                        <h4>Draft pad descriptions</h4>
+                        <p>Press the <strong>grid icon</strong> to let the LLM write pad descriptions from the bank&rsquo;s metadata. Review and tweak them if you like.</p>
                     </div>
                 </div>
                 <div class="tutorial-step">
                     <div class="step-num">3</div>
                     <div class="step-content">
-                        <h4>Ingest new packs</h4>
-                        <p>Drop sample packs into <code>~/Downloads</code> and hit <strong>Ingest Downloads</strong>. RAR archives get extracted, WAVs get categorized into your library automatically.</p>
+                        <h4>Fetch samples</h4>
+                        <p>Hit the <strong>download icon</strong> to search your library for matches. Need all banks at once? Find <strong>Fetch All Banks</strong> in Settings.</p>
                     </div>
                 </div>
                 <div class="tutorial-step">
                     <div class="step-num">4</div>
                     <div class="step-content">
-                        <h4>Build &amp; deploy</h4>
-                        <p>Hit <strong>Build</strong> to generate PAD_INFO.BIN and starter patterns. Then insert your SD card and hit <strong>Deploy to SD</strong>.</p>
+                        <h4>Export &amp; jam</h4>
+                        <p>Hit <strong>Export to SD</strong> to build PAD_INFO and deploy. Bank A is yours &mdash; resample and chop on-device. Plug the card back in to pull your edits.</p>
                     </div>
                 </div>
                 <div class="tutorial-step">
                     <div class="step-num">5</div>
                     <div class="step-content">
-                        <h4>Jam &amp; save your gold</h4>
-                        <p>Bank A is yours &mdash; resample and chop on-device. When you plug the card back in, your Bank A edits get saved to the gold library.</p>
+                        <h4>Grow your library</h4>
+                        <p>Drop sample packs into <code>~/Downloads</code> and choose <strong>Ingest Downloads</strong> from Settings. Archives get extracted and categorized automatically.</p>
                     </div>
                 </div>
                 <div class="tutorial-stats" id="tutorial-stats">
@@ -328,6 +329,26 @@
             <div class="tutorial-footer">
                 <button id="tutorial-go" class="btn btn-accent">Let's Go</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Eject confirmation modal -->
+    <div id="eject-modal" class="confirm-modal hidden">
+        <div class="confirm-modal-inner">
+            <p>Eject SP-404 SD card?</p>
+            <div class="confirm-modal-actions">
+                <button id="eject-confirm" class="btn btn-accent">Eject</button>
+                <button id="eject-cancel" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inspire seed popover -->
+    <div id="inspire-popover" class="inspire-popover hidden">
+        <input type="text" id="inspire-genre-seed" class="inspire-input" placeholder="Genre seed (optional)" />
+        <div class="inspire-popover-actions">
+            <button id="inspire-go" class="btn btn-sm btn-accent">Inspire</button>
+            <button id="inspire-surprise" class="btn btn-sm">Surprise me</button>
         </div>
     </div>
 
