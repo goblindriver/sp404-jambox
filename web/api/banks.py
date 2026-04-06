@@ -1,13 +1,13 @@
 """Bank and pad configuration API."""
-import os, yaml
+import os
 from flask import Blueprint, jsonify, request, current_app
-from jambox_config import atomic_write_yaml
+from jambox_config import atomic_write_yaml, load_bank_config
 
 banks_bp = Blueprint('banks', __name__)
 
 
 def _config_path():
-    return os.path.join(current_app.config['REPO_DIR'], 'bank_config.yaml')
+    return current_app.config.get('CONFIG_PATH') or os.path.join(current_app.config['REPO_DIR'], 'bank_config.yaml')
 
 
 def _smpl_dir():
@@ -15,12 +15,7 @@ def _smpl_dir():
 
 
 def _load_config():
-    try:
-        with open(_config_path()) as f:
-            payload = yaml.safe_load(f)
-    except (FileNotFoundError, yaml.YAMLError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return load_bank_config(_config_path(), strict=False)
 
 
 def _json_object_body():
@@ -103,11 +98,11 @@ def get_bank(letter):
     try:
         letter = _normalize_letter(letter)
     except ValueError:
-        return jsonify({'error': 'Bank not found'}), 404
+        return jsonify({'ok': False, 'error': 'Bank not found'}), 404
     config = _load_config()
     bank_config = config.get(f'bank_{letter}')
     if not bank_config:
-        return jsonify({'error': 'Bank not found'}), 404
+        return jsonify({'ok': False, 'error': 'Bank not found'}), 404
 
     pads = bank_config.get('pads', {})
     pad_list = []
@@ -138,7 +133,7 @@ def update_bank(letter):
         data = _json_object_body()
     except ValueError as e:
         status = 404 if str(e) == 'Bank not found' else 400
-        return jsonify({'error': str(e)}), status
+        return jsonify({'ok': False, 'error': str(e)}), status
     config = _load_config()
     bank_key = f'bank_{letter}'
     if bank_key not in config or not config[bank_key]:
@@ -146,7 +141,7 @@ def update_bank(letter):
 
     if 'name' in data:
         if data['name'] is not None and not isinstance(data['name'], str):
-            return jsonify({'error': 'name must be a string'}), 400
+            return jsonify({'ok': False, 'error': 'name must be a string'}), 400
         config[bank_key]['name'] = (data['name'] or '').strip() if data['name'] is not None else ''
     if 'bpm' in data:
         if data['bpm'] in (None, ''):
@@ -155,14 +150,14 @@ def update_bank(letter):
             try:
                 config[bank_key]['bpm'] = int(data['bpm'])
             except (TypeError, ValueError):
-                return jsonify({'error': 'bpm must be an integer'}), 400
+                return jsonify({'ok': False, 'error': 'bpm must be an integer'}), 400
     if 'key' in data:
         if data['key'] is not None and not isinstance(data['key'], str):
-            return jsonify({'error': 'key must be a string'}), 400
+            return jsonify({'ok': False, 'error': 'key must be a string'}), 400
         config[bank_key]['key'] = data['key'].strip() if data['key'] else None
     if 'notes' in data:
         if data['notes'] is not None and not isinstance(data['notes'], str):
-            return jsonify({'error': 'notes must be a string'}), 400
+            return jsonify({'ok': False, 'error': 'notes must be a string'}), 400
         config[bank_key]['notes'] = data['notes'] or ''
 
     atomic_write_yaml(_config_path(), config)
@@ -178,10 +173,10 @@ def update_pad(letter, num):
         data = _json_object_body()
     except ValueError as e:
         status = 404 if str(e) == 'Bank not found' else 400
-        return jsonify({'error': str(e)}), status
+        return jsonify({'ok': False, 'error': str(e)}), status
     desc = data.get('description', '')
     if desc is not None and not isinstance(desc, str):
-        return jsonify({'error': 'description must be a string'}), 400
+        return jsonify({'ok': False, 'error': 'description must be a string'}), 400
 
     config = _load_config()
     bank_key = f'bank_{letter}'

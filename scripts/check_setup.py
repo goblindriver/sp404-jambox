@@ -7,7 +7,13 @@ import importlib.util
 import os
 import sys
 
-from jambox_config import ConfigError, build_subprocess_env, load_settings_for_script, resolve_command
+from jambox_config import (
+    ConfigError,
+    build_subprocess_env,
+    load_settings_for_script,
+    load_tag_db,
+    resolve_command,
+)
 
 
 REQUIRED_PYTHON_MODULES = {
@@ -144,12 +150,10 @@ def run_checks():
 
     messages.append("")
     messages.append("Tag database health:")
-    tags_file = os.path.join(settings["SAMPLE_LIBRARY"], "_tags.json")
+    tags_file = settings.get("TAGS_FILE", os.path.join(settings["SAMPLE_LIBRARY"], "_tags.json"))
     if os.path.isfile(tags_file):
         try:
-            import json
-            with open(tags_file, "r", encoding="utf-8") as fh:
-                tag_db = json.load(fh)
+            tag_db = load_tag_db(tags_file)
             total = len(tag_db)
             smart_v1 = sum(1 for e in tag_db.values() if e.get("tag_source") == "smart_retag_v1")
             pending = sum(1 for e in tag_db.values() if e.get("smart_retag_pending"))

@@ -10,12 +10,13 @@ import os
 import re
 import yaml
 from datetime import datetime
-from jambox_config import atomic_write_yaml
+from jambox_config import atomic_write_yaml, load_bank_config, load_settings_for_script
 
-REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SETTINGS = load_settings_for_script(__file__)
+REPO_DIR = SETTINGS['REPO_DIR']
 PRESETS_DIR = os.path.join(REPO_DIR, 'presets')
 SETS_DIR = os.path.join(REPO_DIR, 'sets')
-CONFIG_PATH = os.path.join(REPO_DIR, 'bank_config.yaml')
+CONFIG_PATH = SETTINGS['CONFIG_PATH']
 
 BANK_LETTERS = list('abcdefghij')
 CATEGORIES = ['genre', 'utility', 'song-kits', 'palette', 'community', 'auto']
@@ -380,12 +381,7 @@ def load_preset_to_bank(ref, bank_letter):
 
 def _load_config():
     """Load bank_config.yaml."""
-    try:
-        with open(CONFIG_PATH) as f:
-            payload = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return load_bank_config(CONFIG_PATH, strict=False)
 
 
 def _save_config(config):

@@ -8,13 +8,13 @@ Usage:
     python scripts/fetch_samples.py --bank b     # single bank
     python scripts/fetch_samples.py --bank b --pad 1  # single pad
 """
-import os, sys, re, json, yaml, argparse, hashlib
+import os, sys, re, json, argparse, hashlib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-from jambox_config import is_excluded_rel_path, load_settings_for_script
+from jambox_config import is_excluded_rel_path, load_bank_config, load_settings_for_script
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from jambox_tuning import SCORE_VERSION, load_scoring_config
 from wav_utils import convert_and_tag
@@ -384,18 +384,7 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
 
 
 def load_config():
-    try:
-        with open(CONFIG_PATH) as f:
-            payload = yaml.safe_load(f)
-    except FileNotFoundError as exc:
-        raise ValueError(f"Config file not found: {CONFIG_PATH}") from exc
-    except yaml.YAMLError as exc:
-        raise ValueError(f"Config file is invalid YAML: {CONFIG_PATH}") from exc
-    if payload is None:
-        return {}
-    if not isinstance(payload, dict):
-        raise ValueError(f"Config file must contain a mapping: {CONFIG_PATH}")
-    return payload
+    return load_bank_config(CONFIG_PATH, strict=True)
 
 
 def clear_staging_wavs(bank=None, pad=None):

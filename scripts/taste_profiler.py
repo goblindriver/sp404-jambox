@@ -31,8 +31,8 @@ SETTINGS = load_settings_for_script(__file__)
 REPO_DIR = SETTINGS["REPO_DIR"]
 
 # External drive paths
-QNAP = "/Volumes/Temp QNAP"
-DROBO = "/Volumes/Jansen's FL Drobo"
+QNAP = SETTINGS["QNAP_ROOT"]
+DROBO = SETTINGS["DROBO_ROOT"]
 
 # ── Vibe signal mappings ──
 

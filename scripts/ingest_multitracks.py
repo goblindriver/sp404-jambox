@@ -34,9 +34,9 @@ LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 FFMPEG = SETTINGS["FFMPEG_BIN"]
 
-SESSIONS_ROOT = "/Volumes/Temp QNAP/Video Production/Multitrack Sessions/FUN SESSIONS"
-H4N_ROOT = "/Volumes/Temp QNAP/Video Production/H4N"
-FILM_ROOT = "/Volumes/Temp QNAP/Video Production/Finished Movies"
+SESSIONS_ROOT = SETTINGS["MULTITRACK_SESSIONS_ROOT"]
+H4N_ROOT = SETTINGS["MULTITRACK_H4N_ROOT"]
+FILM_ROOT = SETTINGS["MULTITRACK_FILM_ROOT"]
 
 # Skip non-audio directories
 SKIP_DIRS = {'Session File Backups', 'Plug-In Settings', 'Fade Files',

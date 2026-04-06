@@ -39,6 +39,8 @@ _load_dotenv()
 DEFAULT_SAMPLE_LIBRARY = "~/Music/SP404-Sample-Library"
 DEFAULT_DOWNLOADS = "~/Downloads"
 DEFAULT_SD_CARD = "/Volumes/SP-404SX"
+DEFAULT_QNAP_ROOT = "/Volumes/Temp QNAP"
+DEFAULT_DROBO_ROOT = "/Volumes/Jansen's FL Drobo"
 DEFAULT_TOOL_PATH_PREFIX = "/opt/homebrew/bin"
 DEFAULT_LLM_TIMEOUT = 30
 
@@ -232,6 +234,8 @@ def load_settings(repo_dir):
     sample_library = _read_required_path("SP404_SAMPLE_LIBRARY", DEFAULT_SAMPLE_LIBRARY)
     downloads_path = _read_required_path("SP404_DOWNLOADS", DEFAULT_DOWNLOADS)
     sd_card = _read_required_path("SP404_SD_CARD", DEFAULT_SD_CARD)
+    qnap_root = _read_required_path("SP404_QNAP_ROOT", DEFAULT_QNAP_ROOT)
+    drobo_root = _read_required_path("SP404_DROBO_ROOT", DEFAULT_DROBO_ROOT)
     tool_path_prefix = _read_optional_path("SP404_TOOL_PATH_PREFIX", DEFAULT_TOOL_PATH_PREFIX)
 
     return {
@@ -239,6 +243,8 @@ def load_settings(repo_dir):
         "SAMPLE_LIBRARY": sample_library,
         "DOWNLOADS_PATH": downloads_path,
         "SD_CARD": sd_card,
+        "QNAP_ROOT": qnap_root,
+        "DROBO_ROOT": drobo_root,
         "SD_SMPL_DIR": os.path.join(sd_card, "ROLAND", "SP-404SX", "SMPL"),
         "GOLD_BANK_A_DIR": os.path.join(sample_library, "_GOLD", "Bank-A"),
         "INGEST_LOG": os.path.join(sample_library, "_ingest_log.json"),
@@ -292,7 +298,50 @@ def load_settings(repo_dir):
         "VIBE_RETRIEVAL_LIMIT": _read_int("SP404_VIBE_RETRIEVAL_LIMIT", 4, minimum=0),
         # Optional second clone: blackout "Live crunch" reads retag checkpoint + crunch logs here
         "CRUNCH_REPO": _read_optional_path("SP404_CRUNCH_REPO", ""),
+        "MULTITRACK_SESSIONS_ROOT": _read_required_path(
+            "SP404_MULTITRACK_SESSIONS_ROOT",
+            os.path.join(qnap_root, "Video Production", "Multitrack Sessions", "FUN SESSIONS"),
+        ),
+        "MULTITRACK_H4N_ROOT": _read_required_path(
+            "SP404_MULTITRACK_H4N_ROOT",
+            os.path.join(qnap_root, "Video Production", "H4N"),
+        ),
+        "MULTITRACK_FILM_ROOT": _read_required_path(
+            "SP404_MULTITRACK_FILM_ROOT",
+            os.path.join(qnap_root, "Video Production", "Finished Movies"),
+        ),
     }
+
+
+def load_bank_config(config_path, *, strict=False):
+    """Load a bank config YAML mapping.
+
+    strict=False:
+      - missing/invalid files return {}
+    strict=True:
+      - raises ValueError for missing/invalid/non-mapping payloads
+    """
+    import yaml
+
+    try:
+        with open(config_path, "r") as fh:
+            payload = yaml.safe_load(fh)
+    except FileNotFoundError as exc:
+        if strict:
+            raise ValueError(f"Config file not found: {config_path}") from exc
+        return {}
+    except (OSError, yaml.YAMLError) as exc:
+        if strict:
+            raise ValueError(f"Config file is invalid YAML: {config_path}") from exc
+        return {}
+
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        if strict:
+            raise ValueError(f"Config file must contain a mapping: {config_path}")
+        return {}
+    return payload
 
 
 def _tags_sqlite_path(tags_file):

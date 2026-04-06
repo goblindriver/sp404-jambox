@@ -37,6 +37,8 @@ def call_json_endpoint(url, payload, *, timeout, headers=None):
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
+    except TimeoutError as exc:
+        raise IntegrationFailure("timeout", "Request timed out") from exc
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise IntegrationFailure("http_error", f"Request failed: {exc.code}", detail=detail) from exc
@@ -46,9 +48,12 @@ def call_json_endpoint(url, payload, *, timeout, headers=None):
         raise IntegrationFailure("invalid_json", "Integration returned invalid JSON") from exc
 
 
-def run_command(command, *, cwd, timeout):
+def run_command(command, *, cwd, timeout, settings=None, env=None):
+    if env is None and settings is not None:
+        from jambox_config import build_subprocess_env
+        env = build_subprocess_env(settings)
     try:
-        result = subprocess.run(command, capture_output=True, text=True, cwd=cwd, timeout=timeout)
+        result = subprocess.run(command, capture_output=True, text=True, cwd=cwd, timeout=timeout, env=env)
     except subprocess.TimeoutExpired as exc:
         raise IntegrationFailure("timeout", "Integration timed out") from exc
     except OSError as exc:

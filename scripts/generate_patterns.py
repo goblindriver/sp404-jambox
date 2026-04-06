@@ -329,7 +329,7 @@ def generate_pattern(payload):
         try:
             variant, checkpoint_path = _resolve_checkpoint(payload)
             command, preferred_output = _build_magenta_command(payload, checkpoint_path, tmpdir)
-            result = run_command(command, cwd=REPO_DIR, timeout=MAGENTA_TIMEOUT)
+            result = run_command(command, cwd=REPO_DIR, timeout=MAGENTA_TIMEOUT, settings=SETTINGS)
             midi_path = _find_generated_midi(tmpdir, preferred_output)
             note_events, midi_ticks_per_quarter = _parse_midi_file(midi_path)
             pattern = _pattern_from_midi(note_events, midi_ticks_per_quarter, bars, bank, variant)
