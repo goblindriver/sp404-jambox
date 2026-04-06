@@ -47,9 +47,13 @@ INTERNAL_BANKS = frozenset('AB')
 
 def _get_card_intelligence():
     """Lazy import card_intelligence to avoid circular imports at module load."""
+    mod = getattr(_get_card_intelligence, '_mod', None)
+    if mod is not None:
+        return mod
     import sys
     sys.path.insert(0, os.path.join(current_app.config['REPO_DIR'], 'scripts'))
     import card_intelligence
+    _get_card_intelligence._mod = card_intelligence
     return card_intelligence
 
 
