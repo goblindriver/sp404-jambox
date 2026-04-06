@@ -793,7 +793,7 @@ function toggleSettingsMenu() {
 async function inspireBank() {
     if (!state.currentBank) return;
     const seed = prompt('Enter a genre/vibe seed (or leave blank for surprise):');
-    if (seed === null) return; // user cancelled — treat as "surprise me"
+    if (seed === null) return; // user cancelled prompt dialog
 
     toast('Inspiring bank...');
     try {

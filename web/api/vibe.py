@@ -448,8 +448,8 @@ def inspire_bank_route():
     try:
         payload = _json_object_body()
         bank = _normalize_bank(payload.get("bank", "c"))
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid request"}), 400
 
     seed = str(payload.get("seed") or "").strip()
     repo_dir = current_app.config["REPO_DIR"]
