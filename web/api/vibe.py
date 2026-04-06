@@ -458,12 +458,11 @@ def inspire_bank_route():
         sys.path.insert(0, scripts_dir)
     import vibe_generate
     import preset_utils as pu
-    from jambox_config import atomic_write_yaml
 
     try:
         result = vibe_generate.inspire_bank(seed=seed or None, bank_letter=bank)
-    except Exception as exc:
-        return jsonify({"ok": False, "error": f"Inspire failed: {exc}"}), 500
+    except Exception:
+        return jsonify({"ok": False, "error": "Inspire failed"}), 500
 
     # Apply to bank via same logic as PUT /api/banks/<letter>
     try:
@@ -476,8 +475,8 @@ def inspire_bank_route():
         config[bank_key]["bpm"] = int(result["bpm"])
         config[bank_key]["key"] = result["key"]
         pu._save_config(config)
-    except Exception as exc:
-        return jsonify({"ok": False, "error": f"Failed to update bank config: {exc}"}), 500
+    except Exception:
+        return jsonify({"ok": False, "error": "Failed to update bank config"}), 500
 
     return jsonify({"ok": True, "bank": result})
 

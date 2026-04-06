@@ -485,7 +485,7 @@ def inspire_bank(seed=None, bank_letter="c"):
                 return {
                     "name": str(parsed.get("name", "Inspired Bank")).strip()[:60],
                     "notes": str(parsed.get("notes", "")).strip()[:200],
-                    "bpm": _coerce_int(parsed.get("bpm"), 120, minimum=40),
+                    "bpm": _coerce_int(parsed.get("bpm"), 120, minimum=60),
                     "key": str(parsed.get("key", "Am")).strip() or "Am",
                 }
         except (IntegrationFailure, json.JSONDecodeError, Exception):
