@@ -1,6 +1,7 @@
 """Bank and pad configuration API."""
 import os, yaml
 from flask import Blueprint, jsonify, request, current_app
+from jambox_config import atomic_write_yaml
 
 banks_bp = Blueprint('banks', __name__)
 
@@ -164,8 +165,7 @@ def update_bank(letter):
             return jsonify({'error': 'notes must be a string'}), 400
         config[bank_key]['notes'] = data['notes'] or ''
 
-    with open(_config_path(), 'w') as f:
-        yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    atomic_write_yaml(_config_path(), config)
 
     return jsonify({'ok': True})
 
@@ -191,7 +191,6 @@ def update_pad(letter, num):
         config[bank_key]['pads'] = {}
     config[bank_key]['pads'][num] = desc or ''
 
-    with open(_config_path(), 'w') as f:
-        yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    atomic_write_yaml(_config_path(), config)
 
     return jsonify({'ok': True})

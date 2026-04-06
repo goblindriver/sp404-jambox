@@ -1,5 +1,5 @@
 """Pipeline control API — fetch, build, deploy, watcher."""
-import os, sys, threading, subprocess, uuid, json
+import os, sys, time as _time, threading, subprocess, uuid, json
 from flask import Blueprint, jsonify, request, current_app
 from jambox_config import build_subprocess_env
 
@@ -8,9 +8,21 @@ pipeline_bp = Blueprint('pipeline', __name__)
 # In-memory job tracking
 _jobs = {}
 _job_lock = threading.Lock()
+_JOB_MAX_AGE = 600
 PADINFO_TIMEOUT = 120
 PATTERN_BUILD_TIMEOUT = 180
 DEPLOY_TIMEOUT = 180
+
+
+def _prune_finished_jobs():
+    """Remove completed/errored pipeline jobs older than _JOB_MAX_AGE."""
+    now = _time.time()
+    with _job_lock:
+        stale = [jid for jid, j in _jobs.items()
+                 if j['status'] in ('done', 'error')
+                 and now - j.get('finished_at', 0) > _JOB_MAX_AGE]
+        for jid in stale:
+            del _jobs[jid]
 
 
 def _settings():
@@ -157,10 +169,12 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
 
         _jobs[job_id]['status'] = 'done'
         _jobs[job_id]['result'] = f"{total_fetched}/{total_pads} pads filled"
+        _jobs[job_id]['finished_at'] = _time.time()
 
     except Exception as e:
         _jobs[job_id]['status'] = 'error'
         _jobs[job_id]['result'] = str(e)
+        _jobs[job_id]['finished_at'] = _time.time()
 
 
 @pipeline_bp.route('/pipeline/fetch', methods=['POST'])
@@ -172,7 +186,7 @@ def fetch():
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
-    # Only one fetch at a time
+    _prune_finished_jobs()
     with _job_lock:
         for j in _jobs.values():
             if j['type'] == 'fetch' and j['status'] in {'starting', 'running'}:

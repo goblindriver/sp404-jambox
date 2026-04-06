@@ -168,12 +168,14 @@ class PlexMusicDB:
         """Auto-detect the music library section ID (section_type=8 for music)."""
         try:
             conn = self._connect()
-            row = conn.execute("""
-                SELECT id FROM library_sections
-                WHERE section_type = 8
-                ORDER BY id LIMIT 1
-            """).fetchone()
-            conn.close()
+            try:
+                row = conn.execute("""
+                    SELECT id FROM library_sections
+                    WHERE section_type = 8
+                    ORDER BY id LIMIT 1
+                """).fetchone()
+            finally:
+                conn.close()
             if row:
                 return row['id']
         except Exception:
@@ -247,9 +249,11 @@ class PlexMusicDB:
         """Check if Plex database is accessible."""
         try:
             conn = self._connect()
-            conn.execute("SELECT 1 FROM library_sections WHERE id=?",
-                         (self._section_id,)).fetchone()
-            conn.close()
+            try:
+                conn.execute("SELECT 1 FROM library_sections WHERE id=?",
+                             (self._section_id,)).fetchone()
+            finally:
+                conn.close()
             return True
         except Exception:
             return False

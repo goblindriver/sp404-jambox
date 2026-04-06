@@ -271,6 +271,7 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None):
 
 
 def apply_clean(report_groups, db):
+    from jambox_config import save_tag_db
     os.makedirs(DUPES_DIR, exist_ok=True)
     updated_db = dict(db)
     for group in report_groups:
@@ -281,11 +282,14 @@ def apply_clean(report_groups, db):
                 continue
             dst = os.path.join(DUPES_DIR, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.move(src, dst)
+            try:
+                shutil.move(src, dst)
+            except OSError as e:
+                print(f"  WARNING: could not move {rel_path}: {e}")
+                continue
             updated_db.pop(rel_path, None)
 
-    with open(TAGS_FILE, "w") as handle:
-        json.dump(updated_db, handle, indent=2, sort_keys=True)
+    save_tag_db(TAGS_FILE, updated_db)
     return updated_db
 
 

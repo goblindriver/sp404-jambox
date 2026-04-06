@@ -25,6 +25,7 @@ if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
 from jambox_config import (  # noqa: E402
+    LIBRARY_SKIP_DIRS,
     LONG_HOLD_DIRNAME,
     is_long_hold_rel_path,
     load_settings_for_script,
@@ -37,14 +38,7 @@ SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 
-SKIP_DIRS = {
-    "_RAW-DOWNLOADS",
-    "_GOLD",
-    "_DUPES",
-    "_QUARANTINE",
-    "Stems",
-    LONG_HOLD_DIRNAME,
-}
+SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 
 def _duration_for_file(rel_path: str, full_path: str, db: dict) -> float:

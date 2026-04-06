@@ -28,7 +28,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
+from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script
 
 try:
     from audio_analysis import analyze_audio, is_available as librosa_available
@@ -41,7 +41,7 @@ LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
 FFPROBE = SETTINGS["FFPROBE_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", LONG_HOLD_DIRNAME}
+SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 # ═══════════════════════════════════════════════════════════
 # Type Code Detection (3-letter codes per TAGGING_SPEC)

@@ -21,13 +21,13 @@ import subprocess
 import sys
 import time
 import numpy as np
-from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script, save_tag_db as _config_save_tag_db
+from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script, save_tag_db as _config_save_tag_db
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 FFMPEG = SETTINGS["FFMPEG_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", LONG_HOLD_DIRNAME}
+SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 
 def read_pcm_samples(filepath, max_seconds=60):

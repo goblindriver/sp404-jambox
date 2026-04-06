@@ -45,8 +45,20 @@ DEFAULT_LLM_TIMEOUT = 30
 # Raw/long material lives here until chopped; excluded from pad fetch and bulk library walks.
 LONG_HOLD_DIRNAME = "_LONG-HOLD"
 
+# Canonical set of directories to skip in library walks.
+# Every script that walks the sample library should import this instead of
+# defining its own copy.  ".git" is omitted because library roots should not
+# be repos; add it locally only if you scan a repo tree.
+LIBRARY_SKIP_DIRS = frozenset({
+    "_RAW-DOWNLOADS",
+    "_GOLD",
+    "_DUPES",
+    "_QUARANTINE",
+    "Stems",
+    LONG_HOLD_DIRNAME,
+})
 
-_EXCLUDED_PREFIXES = (LONG_HOLD_DIRNAME, "_DUPES", "_QUARANTINE", "_RAW-DOWNLOADS")
+_EXCLUDED_PREFIXES = LIBRARY_SKIP_DIRS
 
 
 def is_excluded_rel_path(rel_path):
@@ -68,6 +80,46 @@ def is_long_hold_rel_path(rel_path):
     if not norm:
         return False
     return norm.split("/", 1)[0] == LONG_HOLD_DIRNAME
+
+
+def atomic_write_json(path, data, indent=2, sort_keys=True):
+    """Write a JSON file atomically via temp-file-then-rename."""
+    import tempfile
+    target_dir = os.path.dirname(path) or "."
+    os.makedirs(target_dir, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(suffix=".json", dir=target_dir)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(data, fh, indent=indent, sort_keys=sort_keys)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def atomic_write_yaml(path, data, **kwargs):
+    """Write a YAML file atomically via temp-file-then-rename."""
+    import tempfile
+    import yaml
+    target_dir = os.path.dirname(path) or "."
+    os.makedirs(target_dir, exist_ok=True)
+    kwargs.setdefault("default_flow_style", False)
+    kwargs.setdefault("allow_unicode", True)
+    kwargs.setdefault("sort_keys", False)
+    fd, tmp = tempfile.mkstemp(suffix=".yaml", dir=target_dir)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            yaml.safe_dump(data, fh, **kwargs)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class ConfigError(ValueError):
@@ -359,15 +411,7 @@ def save_tag_db(tags_file, db):
     estimated_size = len(db) * 1100
     if estimated_size < 50 * 1024 * 1024:
         try:
-            import tempfile
-            fd, tmp = tempfile.mkstemp(suffix=".json", dir=os.path.dirname(tags_file) or ".")
-            try:
-                with os.fdopen(fd, "w") as fh:
-                    json.dump(db, fh, indent=1, sort_keys=True)
-                os.replace(tmp, tags_file)
-            except BaseException:
-                os.unlink(tmp)
-                raise
+            atomic_write_json(tags_file, db, indent=1)
         except OSError:
             pass
 

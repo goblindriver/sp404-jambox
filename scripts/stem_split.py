@@ -32,7 +32,7 @@ import subprocess
 import sys
 import time
 
-from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
+from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -249,9 +249,8 @@ def find_splittable_files(search_dir=None):
 
     for root, dirs, files in os.walk(scan_dir):
         # Skip utility dirs
-        dirs[:] = [d for d in dirs if d not in {
-            "_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", "Stems", LONG_HOLD_DIRNAME,
-        } and not d.startswith(".")]
+        dirs[:] = [d for d in dirs
+                   if d not in LIBRARY_SKIP_DIRS and not d.startswith(".")]
         for f in files:
             ext = os.path.splitext(f)[1].lower()
             if ext not in {".wav", ".mp3", ".flac", ".aif", ".aiff", ".m4a", ".ogg"}:

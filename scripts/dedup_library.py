@@ -29,14 +29,14 @@ import tempfile
 import time
 import numpy as np
 from jambox_cache import file_marker, get_cached_fingerprint, load_fingerprint_cache, put_cached_fingerprint, save_fingerprint_cache
-from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
+from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 DUPES_DIR = os.path.join(LIBRARY, "_DUPES")
 FFMPEG = SETTINGS["FFMPEG_BIN"]
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", "Stems", LONG_HOLD_DIRNAME}
+SKIP_DIRS = LIBRARY_SKIP_DIRS
 MAX_DECODE_SECONDS = 30
 
 

@@ -25,7 +25,7 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from jambox_config import load_settings_for_script
+from jambox_config import atomic_write_json, load_settings_for_script
 
 SETTINGS = load_settings_for_script(__file__)
 REPO_DIR = SETTINGS["REPO_DIR"]
@@ -347,24 +347,21 @@ def main():
         production_path = os.path.join(data_dir, 'taste_profile_production.json')
         combined_path = os.path.join(data_dir, 'taste_profile.json')
 
-        with open(consumption_path, 'w') as f:
-            json.dump({
-                'mode': 'consumption',
-                'description': 'What Jason consumes — context for vibe vocabulary, NOT the optimization target',
-                'vibe_weights': profile['consumption_profile'],
-                'sources': profile['sources'],
-            }, f, indent=2)
+        atomic_write_json(consumption_path, {
+            'mode': 'consumption',
+            'description': 'What Jason consumes — context for vibe vocabulary, NOT the optimization target',
+            'vibe_weights': profile['consumption_profile'],
+            'sources': profile['sources'],
+        })
 
-        with open(production_path, 'w') as f:
-            json.dump({
-                'mode': 'production',
-                'description': 'What Jambox optimizes for — quality_score 5 means makes people dance at a block party',
-                'philosophy': profile['philosophy'],
-                'vibe_weights': profile['production_profile'],
-            }, f, indent=2)
+        atomic_write_json(production_path, {
+            'mode': 'production',
+            'description': 'What Jambox optimizes for — quality_score 5 means makes people dance at a block party',
+            'philosophy': profile['philosophy'],
+            'vibe_weights': profile['production_profile'],
+        })
 
-        with open(combined_path, 'w') as f:
-            json.dump(profile, f, indent=2)
+        atomic_write_json(combined_path, profile)
 
         print(f"Exported:")
         print(f"  {consumption_path}")

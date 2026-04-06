@@ -23,6 +23,8 @@ _RETRY_SECONDS = 60
 
 # Background extraction jobs
 _extract_jobs = {}
+_extract_lock = threading.Lock()
+_EXTRACT_JOB_MAX_AGE = 600
 
 
 def _get_media_db():
@@ -165,7 +167,7 @@ def extract_clips():
     if not db:
         return jsonify({'error': 'Plex not available'}), 404
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     movie_id = data.get('movie_id')
     show_id = data.get('show_id')
     season = data.get('season')
@@ -194,15 +196,24 @@ def extract_clips():
     if not sources:
         return jsonify({'error': 'No sources found with accessible files'}), 404
 
-    # Run extraction in background
     import uuid
-    job_id = str(uuid.uuid4())[:8]
-    _extract_jobs[job_id] = {
-        'status': 'running',
-        'sources': len(sources),
-        'clips': 0,
-        'started': time.time(),
-    }
+
+    with _extract_lock:
+        # Prune finished jobs older than 10 minutes
+        now = time.time()
+        stale = [jid for jid, j in _extract_jobs.items()
+                 if j['status'] in ('complete', 'error')
+                 and now - j.get('finished_at', 0) > _EXTRACT_JOB_MAX_AGE]
+        for jid in stale:
+            del _extract_jobs[jid]
+
+        job_id = str(uuid.uuid4())[:8]
+        _extract_jobs[job_id] = {
+            'status': 'running',
+            'sources': len(sources),
+            'clips': 0,
+            'started': now,
+        }
 
     def _run_extract():
         try:
@@ -218,9 +229,11 @@ def extract_clips():
             _extract_jobs[job_id]['status'] = 'complete'
             _extract_jobs[job_id]['total_clips'] = len(all_clips)
             _extract_jobs[job_id]['clip_details'] = all_clips
+            _extract_jobs[job_id]['finished_at'] = time.time()
         except Exception as e:
             _extract_jobs[job_id]['status'] = 'error'
             _extract_jobs[job_id]['error'] = str(e)
+            _extract_jobs[job_id]['finished_at'] = time.time()
 
     thread = threading.Thread(target=_run_extract, daemon=True)
     thread.start()

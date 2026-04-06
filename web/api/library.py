@@ -352,21 +352,26 @@ def _run_smart_retag(job_id, repo_dir, settings, args_list):
             env=build_subprocess_env(settings),
             timeout=600,
         )
+        import time as _time
         _retag_jobs[job_id]["stdout"] = result.stdout
         _retag_jobs[job_id]["stderr"] = result.stderr
         _retag_jobs[job_id]["status"] = "done" if result.returncode == 0 else "error"
+        _retag_jobs[job_id]["finished_at"] = _time.time()
 
-        # Invalidate tag cache
         global _tag_db_cache, _tag_db_mtime
         _tag_db_cache = None
         _tag_db_mtime = 0
 
     except subprocess.TimeoutExpired:
+        import time as _time
         _retag_jobs[job_id]["status"] = "error"
         _retag_jobs[job_id]["stderr"] = "Smart retag timed out after 10 minutes"
+        _retag_jobs[job_id]["finished_at"] = _time.time()
     except Exception as e:
+        import time as _time
         _retag_jobs[job_id]["status"] = "error"
         _retag_jobs[job_id]["stderr"] = str(e)
+        _retag_jobs[job_id]["finished_at"] = _time.time()
 
 
 @library_bp.route('/library/smart-retag', methods=['POST'])
@@ -381,15 +386,8 @@ def smart_retag():
         force: re-process already enriched (default false)
         dry_run: preview only (default false)
     """
-    # Only one retag at a time
-    with _retag_lock:
-        for j in _retag_jobs.values():
-            if j.get("status") == "running":
-                return jsonify({"ok": False, "error": "A smart retag is already running"}), 409
-
     payload = request.get_json(silent=True) or {}
 
-    # Build CLI args
     args_list = []
     if payload.get("type_code"):
         args_list += ["--type", payload["type_code"]]
@@ -404,14 +402,27 @@ def smart_retag():
     limit = payload.get("limit", 50)
     args_list += ["--limit", str(limit)]
 
-    import uuid
-    job_id = str(uuid.uuid4())[:8]
-    _retag_jobs[job_id] = {
-        "id": job_id,
-        "status": "starting",
-        "stdout": "",
-        "stderr": "",
-    }
+    import uuid, time as _time
+    with _retag_lock:
+        for j in _retag_jobs.values():
+            if j.get("status") in ("starting", "running"):
+                return jsonify({"ok": False, "error": "A smart retag is already running"}), 409
+
+        # Prune finished jobs older than 10 minutes
+        now = _time.time()
+        stale = [jid for jid, j in _retag_jobs.items()
+                 if j["status"] in ("done", "error")
+                 and now - j.get("finished_at", 0) > 600]
+        for jid in stale:
+            del _retag_jobs[jid]
+
+        job_id = str(uuid.uuid4())[:8]
+        _retag_jobs[job_id] = {
+            "id": job_id,
+            "status": "starting",
+            "stdout": "",
+            "stderr": "",
+        }
 
     repo_dir = current_app.config["REPO_DIR"]
     settings = dict(current_app.config)

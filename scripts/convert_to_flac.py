@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 import time
-from jambox_config import LONG_HOLD_DIRNAME, load_settings_for_script
+from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -26,7 +26,7 @@ FFMPEG = SETTINGS["FFMPEG_BIN"]
 FFPROBE = SETTINGS["FFPROBE_BIN"]
 
 # Directories to skip (not samples)
-SKIP_DIRS = {'_RAW-DOWNLOADS', '_GOLD', '_DUPES', '_QUARANTINE', 'Stems', '.git', LONG_HOLD_DIRNAME}
+SKIP_DIRS = LIBRARY_SKIP_DIRS | {'.git'}
 
 
 def load_tags():

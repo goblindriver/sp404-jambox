@@ -10,6 +10,7 @@ import os
 import re
 import yaml
 from datetime import datetime
+from jambox_config import atomic_write_yaml
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRESETS_DIR = os.path.join(REPO_DIR, 'presets')
@@ -71,8 +72,7 @@ def save_preset(preset, category=None):
     real = os.path.realpath(path)
     if not real.startswith(os.path.realpath(PRESETS_DIR)):
         raise ValueError(f"Invalid preset slug: {slug}")
-    with open(path, 'w') as f:
-        yaml.safe_dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    atomic_write_yaml(path, save_data)
 
     ref = f"{cat}/{slug}"
     return ref
@@ -234,8 +234,7 @@ def save_set(set_data):
     real = os.path.realpath(path)
     if not real.startswith(os.path.realpath(SETS_DIR)):
         raise ValueError(f"Invalid set slug: {slug}")
-    with open(path, 'w') as f:
-        yaml.safe_dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    atomic_write_yaml(path, save_data)
     return slug
 
 
@@ -391,12 +390,4 @@ def _load_config():
 
 def _save_config(config):
     """Write bank_config.yaml atomically (temp+rename)."""
-    import tempfile
-    fd, tmp = tempfile.mkstemp(suffix=".yaml", dir=os.path.dirname(CONFIG_PATH) or ".")
-    try:
-        with os.fdopen(fd, "w") as f:
-            yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-        os.replace(tmp, CONFIG_PATH)
-    except BaseException:
-        os.unlink(tmp)
-        raise
+    atomic_write_yaml(CONFIG_PATH, config)

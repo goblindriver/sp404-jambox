@@ -32,7 +32,7 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from jambox_config import is_excluded_rel_path, load_settings_for_script, LONG_HOLD_DIRNAME
+from jambox_config import LIBRARY_SKIP_DIRS, is_excluded_rel_path, load_settings_for_script, LONG_HOLD_DIRNAME
 from audio_analysis import extract_features, is_available as librosa_available
 
 SETTINGS = load_settings_for_script(__file__)
@@ -51,7 +51,7 @@ REPO_DIR = os.path.dirname(SCRIPTS_DIR)
 CHECKPOINT_PATH = os.path.join(REPO_DIR, "data", "retag_checkpoint.json")
 QUARANTINE_DIR = os.path.join(LIBRARY, "_QUARANTINE")
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
-SKIP_DIRS = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE", "Stems", LONG_HOLD_DIRNAME}
+SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 BATCH_SIZE = 50
 
