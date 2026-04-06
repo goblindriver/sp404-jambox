@@ -40,7 +40,7 @@ pads:
   8: SYN arp dreamy Am loop
   9: PAD warm ambient Am loop
   10: SYN lead warm Am loop
-  11: SMP jam-stem full groovy Am loop
+  11: BRK jam-stem full groovy Am loop
   12: VOX atmospheric Am chop-ready
 patterns:
 - name: Wobbly Arp

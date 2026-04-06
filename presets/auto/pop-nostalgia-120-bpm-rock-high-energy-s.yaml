@@ -1,0 +1,31 @@
+name: 'Vibe: pop nostalgia 120 bpm rock high energy shout shout'
+slug: pop-nostalgia-120-bpm-rock-high-energy-s
+author: jambox-vibe
+bpm: 120
+key: Am
+vibe: pop nostalgia 120 bpm rock high energy shout shouting aggressive hardcore
+notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+source: vibe-generated
+tags:
+- aggressive
+- bpm
+- hardcore
+- hype
+- nostalgia
+- pop
+- rock
+- shout
+- shouting
+pads:
+  1: KIK pop rock one-shot
+  2: SNR rock aggressive one-shot
+  3: HAT aggressive hype one-shot
+  4: CLP hype bpm one-shot
+  5: BRK bpm hardcore loop
+  6: BAS hardcore pop loop
+  7: SYN synth pop rock loop
+  8: KEY piano rock aggressive loop
+  9: PAD aggressive hype loop
+  10: FX hype bpm one-shot
+  11: BRK bpm hardcore loop
+  12: VOX hardcore pop chop-ready

@@ -527,7 +527,7 @@ def _run_split(job_id, track_data):
                 stem_entry['tags'] = sorted(stem_entry['tags'])
 
             db[stem_rel] = stem_entry
-            tc = STEM_TYPE_MAP.get(stem_name, 'SMP')
+            tc = STEM_TYPE_MAP.get(stem_name, 'BRK')
             created_stems.append({
                 'stem': stem_name,
                 'type_code': tc,

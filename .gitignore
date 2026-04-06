@@ -32,6 +32,7 @@ artifacts/models/
 # Ad-hoc crunch logs
 data/crunch_*.log
 data/repair_*.log
+data/audit_reports/
 # Smart retag / taste (local machine state)
 data/retag_checkpoint.json
 data/taste_profile.json

@@ -2,5 +2,5 @@
 {"id":"draft-002","prompt":"dreamy ambient texture bank","bpm":95,"key":"C","expected":{"pads":{"7":"PAD","8":"SYN","9":"PAD","10":"FX"},"contains":["ambient","dreamy"]}}
 {"id":"draft-003","prompt":"disco loops and strings","bpm":120,"key":"F","expected":{"pads":{"5":"BRK","6":"BAS","7":"KEY","8":"STR"},"contains":["disco"]}}
 {"id":"draft-004","prompt":"aggressive industrial one-shots and transitions","bpm":130,"key":"Dm","expected":{"pads":{"1":"KIK","2":"SNR","10":"FX","12":"VOX"},"contains":["aggressive","industrial"]}}
-{"id":"draft-005","prompt":"lo-fi guitar chops and vinyl haze","bpm":88,"key":"Em","expected":{"pads":{"7":"KEY","8":"GTR","11":"SMP"},"contains":["lo-fi"]}}
+{"id":"draft-005","prompt":"lo-fi guitar chops and vinyl haze","bpm":88,"key":"Em","expected":{"pads":{"7":"KEY","8":"GTR","11":"BRK"},"contains":["lo-fi"]}}
 {"id":"draft-006","prompt":"house piano stabs and neon synths","bpm":124,"key":"Am","expected":{"pads":{"7":"SYN","8":"KEY","9":"PAD"},"contains":["house"]}}

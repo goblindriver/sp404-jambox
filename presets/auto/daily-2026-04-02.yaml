@@ -12,13 +12,13 @@ tags:
 pads:
   1: SFX transition
   2: SFX chromatic
-  3: SMP lo-fi-hiphop mellow lo-fi one-shot
-  4: SMP lo-fi-hiphop mellow lo-fi chop-ready
+  3: BRK lo-fi-hiphop mellow lo-fi one-shot
+  4: BRK lo-fi-hiphop mellow lo-fi chop-ready
   5: FX transition
-  6: SMP lo-fi-hiphop mellow lo-fi one-shot
+  6: BRK lo-fi-hiphop mellow lo-fi one-shot
   7: FX transition
   8: PRC one-shot
-  9: SMP lo-fi-hiphop mellow lo-fi chop-ready
+  9: BRK lo-fi-hiphop mellow lo-fi chop-ready
   10: SFX chromatic
-  11: SMP lo-fi-hiphop mellow lo-fi one-shot
+  11: BRK lo-fi-hiphop mellow lo-fi one-shot
   12: SFX transition

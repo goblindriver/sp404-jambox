@@ -285,7 +285,7 @@ _PAD_TEMPLATES = [
     (8,  None,  "melodic-b",  "loop"),      # SYN/KEY varies by genre
     (9,  "PAD", "pad/atmo",   "loop"),
     (10, "FX",  "effect",     "one-shot"),
-    (11, "SMP", "sample",     "loop"),
+    (11, "BRK", "sample",     "loop"),
     (12, "VOX", "vocal",      "chop-ready"),
 ]
 

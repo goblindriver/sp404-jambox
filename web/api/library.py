@@ -8,7 +8,7 @@ import threading
 
 from flask import Blueprint, jsonify, request, current_app
 
-from jambox_config import build_subprocess_env
+from jambox_config import build_subprocess_env, load_tag_db as _config_load_tag_db
 
 library_bp = Blueprint('library', __name__)
 AUDIO_EXTS = {'.wav', '.aif', '.aiff', '.mp3', '.flac'}
@@ -38,21 +38,24 @@ def _parse_limit_arg(name, default, maximum):
 
 
 def _load_tag_db():
-    """Load and cache the tag database from _tags.json."""
+    """Load and cache the tag database (SQLite primary, JSON fallback)."""
     global _tag_db_cache, _tag_db_mtime
     tags_file = _tags_file()
+    sqlite_file = os.path.splitext(tags_file)[0] + ".sqlite"
     try:
-        mtime = os.path.getmtime(tags_file)
+        mtime_json = os.path.getmtime(tags_file) if os.path.exists(tags_file) else 0
+        mtime_sqlite = os.path.getmtime(sqlite_file) if os.path.exists(sqlite_file) else 0
+        mtime = max(mtime_json, mtime_sqlite)
     except OSError:
         return {}
     if _tag_db_cache is not None and mtime <= _tag_db_mtime:
         return _tag_db_cache
     try:
-        with open(tags_file, 'r') as f:
-            _tag_db_cache = json.load(f)
-            _tag_db_mtime = mtime
-            return _tag_db_cache
-    except (json.JSONDecodeError, IOError):
+        payload = _config_load_tag_db(tags_file)
+        _tag_db_cache = payload if isinstance(payload, dict) else {}
+        _tag_db_mtime = mtime
+        return _tag_db_cache
+    except Exception:
         return {}
 
 

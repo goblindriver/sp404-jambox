@@ -1,0 +1,26 @@
+name: Baile Funk Bunker
+slug: baile-funk-bunker
+author: jambox
+bpm: 132
+key: Em
+vibe: Fast baile-funk motion with hard drum calls and chant pressure.
+notes: High-energy funk carioca style to probe sparse regional genre tags.
+source: curated
+tags:
+  - baile-funk
+  - brazil
+  - hype
+  - club
+pads:
+  1: KIK punchy baile hard one-shot
+  2: SNR tight funk-carioca one-shot
+  3: HAT bright rolling one-shot
+  4: PRC tamborim sharp one-shot
+  5: BRK baile-funk groove loop
+  6: BAS sub bouncy aggressive loop
+  7: KEY staccato minor riff loop
+  8: SYN lead percussive clipped loop
+  9: VOX chant callout chop-ready
+  10: HRN airhorn crowd one-shot
+  11: BRK vocal chop rhythmic loop
+  12: FX sweep drop transition

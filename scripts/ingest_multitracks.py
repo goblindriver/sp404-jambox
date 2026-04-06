@@ -93,7 +93,7 @@ TYPE_TO_CATEGORY = {
     'KEY': 'Melodic/Keys-Piano', 'SYN': 'Melodic/Synths-Pads', 'PAD': 'Melodic/Synths-Pads',
     'STR': 'Melodic/Keys-Piano', 'HRN': 'Melodic/Keys-Piano',
     'VOX': 'Vocals/Chops', 'FX': 'SFX/Stabs-Hits',
-    'SMP': 'Loops/Instrument-Loops',
+    'BRK': 'Loops/Instrument-Loops',
 }
 
 # Known artist BPMs (approximate, for tagging)
@@ -154,8 +154,8 @@ def classify_stem(filename):
         if key in name:
             return STEM_TYPE_MAP[key]
 
-    # Unknown stems default to SMP (sampled phrase)
-    return 'SMP'
+    # Unknown stems default to BRK (sampled phrase/loop)
+    return 'BRK'
 
 
 def is_stereo_pair(filename, all_files):

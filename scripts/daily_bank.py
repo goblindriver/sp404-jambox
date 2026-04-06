@@ -30,7 +30,7 @@ def _entry_query(entry):
                 parts.append(value)
     if entry.get("playability"):
         parts.append(entry["playability"])
-    return " ".join(parts[:5]).strip() or "SMP eclectic loop"
+    return " ".join(parts[:5]).strip() or "BRK eclectic loop"
 
 
 def _load_trending_terms():

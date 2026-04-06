@@ -1,0 +1,26 @@
+name: GQOM Battery
+slug: gqom-battery
+author: jambox
+bpm: 126
+key: Fm
+vibe: Dark percussive pressure with sparse melodic stabs.
+notes: Gqom-inspired drum architecture to stress low-coverage regional tags.
+source: curated
+tags:
+  - gqom
+  - dancehall
+  - dark
+  - percussive
+pads:
+  1: KIK dry heavy gqom one-shot
+  2: SNR rimshot clipped sparse one-shot
+  3: HAT short sharp ticking one-shot
+  4: PRC tom tribal raw one-shot
+  5: BRK gqom drum groove loop
+  6: BAS sub ominous pulse loop
+  7: SYN sparse dark stab loop
+  8: HRN brass hit tense one-shot
+  9: KEY minor chord stutter loop
+  10: RSR tension rise transition
+  11: BRK chopped vocal fragment loop
+  12: FX impact stop one-shot

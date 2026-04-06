@@ -8,7 +8,7 @@ Stem channels → type codes:
   drums  → BRK (drum break)
   bass   → BAS (bass)
   vocals → VOX (vocal)
-  other  → SMP (sampled phrase)
+  other  → BRK (sampled phrase/loop)
 
 Stems inherit parent tags (BPM, key, genre, source context) and get
 their own type_code based on which channel. Linked back to parent via
@@ -47,7 +47,7 @@ STEM_TYPE_MAP = {
     "drums": "BRK",
     "bass": "BAS",
     "vocals": "VOX",
-    "other": "SMP",
+    "other": "BRK",
     # 6-stem mode extras
     "guitar": "GTR",
     "piano": "KEY",
@@ -180,7 +180,7 @@ def copy_stem_to_library(stem_path, source_name, stem_name):
 
 def tag_stem(rel_path, stem_name, parent_tags, parent_src_id, duration):
     """Create a tag entry for a stem, inheriting parent context."""
-    type_code = STEM_TYPE_MAP.get(stem_name, "SMP")
+    type_code = STEM_TYPE_MAP.get(stem_name, "BRK")
 
     # Inherit parent's dimensional tags
     vibe = list(parent_tags.get("vibe", []))
@@ -298,7 +298,7 @@ def process_file(filepath, duration, src_id, model, db, tmp_dir):
         db[stem_rel] = entry
         created += 1
 
-        tc = STEM_TYPE_MAP.get(stem_name, "SMP")
+        tc = STEM_TYPE_MAP.get(stem_name, "BRK")
         print(f"    ✓ {stem_name} → {tc} ({stem_dur:.1f}s) → {stem_rel}")
 
     return created

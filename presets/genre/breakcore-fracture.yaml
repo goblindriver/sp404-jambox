@@ -1,0 +1,26 @@
+name: Breakcore Fracture
+slug: breakcore-fracture
+author: jambox
+bpm: 172
+key: Dm
+vibe: Hyper-fractured breaks, distorted bass, and chaotic glitch punctuation.
+notes: Breakcore stress preset for sparse high-BPM drum and transition tagging.
+source: curated
+tags:
+  - breakcore
+  - glitch
+  - aggressive
+  - high-bpm
+pads:
+  1: KIK crushed transient one-shot
+  2: SNR clipped breakcore one-shot
+  3: HAT micro-stutter one-shot
+  4: PRC metallic click burst one-shot
+  5: BRK breakcore amen chop loop
+  6: BAS distorted tearing loop
+  7: SYN glitch lead manic loop
+  8: BRK chopped-noise texture loop
+  9: PAD ominous digital wash loop
+  10: SFX synth byte glitch one-shot
+  11: FX downlifter hard transition
+  12: VOX pitched manic chop-ready

@@ -1,0 +1,38 @@
+name: 'Vibe: Bank C | name: Disco Voltage | notes: French-touch'
+slug: bank-c-name-disco-voltage-notes-french-t
+author: jambox-vibe
+bpm: 120
+key: Am
+vibe: 'Bank C | name: Disco Voltage | notes: French-touch disco heat with glitter
+  hats, rubber bass, string hooks, and glam vox. | bpm: 122 | key: Am | preset: auto/pop-nostalgia-120-bpm-rock-high-energy-s
+  | preset_vibe: pop nostalgia 120 bpm rock high energy shout shouting aggressive
+  hardcore | preset_tags: aggressive, bpm, hardcore, hype, nostalgia, pop, rock, shout,
+  shouting'
+notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+source: vibe-generated
+tags:
+- aggressive
+- aggressive,
+- auto/pop-nostalgia-120-bpm-rock-high-energy-s
+- bank
+- bass,
+- bpm
+- bpm,
+- 'bpm:'
+- disco
+- french-touch
+- glam
+- glitter
+pads:
+  1: KIK disco pop one-shot
+  2: SNR pop aggressive one-shot
+  3: HAT aggressive hype one-shot
+  4: CLP hype aggressive, one-shot
+  5: BRK aggressive, auto/pop-nostalgia-120-bpm-rock-high-energy-s loop
+  6: BAS auto/pop-nostalgia-120-bpm-rock-high-energy-s disco loop
+  7: KEY piano disco pop loop
+  8: STR strings pop aggressive loop
+  9: PAD aggressive hype loop
+  10: FX hype aggressive, one-shot
+  11: SMP aggressive, auto/pop-nostalgia-120-bpm-rock-high-energy-s loop
+  12: VOX auto/pop-nostalgia-120-bpm-rock-high-energy-s disco chop-ready

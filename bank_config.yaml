@@ -2,204 +2,180 @@ bank_a:
   name: Your Space
   notes: Bank A is yours — resample and chop on-device
 bank_b:
-  preset: genre/big-beat-blowout
-  name: Big Beat Blowout
-  bpm: 130
-  key: Em
-  notes: Big beat revival kit. Fat compressed breaks, squelchy 303 bass, rave stabs,
-    and vocal shouts. Built for driving, hypnotic grooves that hit hard. Think Block
-    Rockin' Beats meets Firestarter.
+  preset: auto/block-rock-riot-aggressive-rock-break-be
+  name: 'Vibe: block rock riot aggressive rock break beat lofi'
+  bpm: 120
+  key: Am
+  notes: Keyword fallback parser used because the configured LLM integration was unavailable.
   pads:
-    1: KIK punchy distorted fat one-shot
-    2: SNR cracking loud compressed one-shot
-    3: HAT crisp open metallic one-shot
-    4: CLP big layered room one-shot
-    5: BRK funk breakbeat compressed loop
-    6: BAS acid 303 squelchy loop
-    7: SYN rave stab hoover loop
-    8: SYN acid lead distorted loop
-    9: SYN filtered sweep build loop
-    10: PRC shaker tambourine uptempo loop
-    11: BRK amen chopped dirty loop
-    12: VOX shout chant crowd chop-ready
+    1: KIK lo-fi rock one-shot
+    2: SNR rock aggressive one-shot
+    3: HAT aggressive beat one-shot
+    4: CLP beat block one-shot
+    5: BRK block lo-fi loop
+    6: BAS lo-fi rock loop
+    7: KEY piano rock aggressive loop
+    8: GTR guitar aggressive beat loop
+    9: PAD beat block loop
+    10: FX block lo-fi one-shot
+    11: SMP lo-fi rock loop
+    12: VOX rock aggressive chop-ready
 bank_c:
-  preset: genre/azealia-mode
-  name: Azealia Mode
-  bpm: 130
-  key: Bbm
-  notes: 'Built from recent Azealia Banks binge (Spotify recently played — 3 albums)
-    plus 212 ft. Lazy Jay in Tiger Dust. House beats meets aggressive rap delivery.
-    Art-pop deconstruction. Pairs with brat-mode as the hip-hop-inflected counterpart.
-
-    '
+  preset: auto/bank-c-name-disco-voltage-notes-french-t
+  name: 'Vibe: Bank C | name: Disco Voltage | notes: French-touch'
+  bpm: 120
+  key: Am
+  notes: Keyword fallback parser used because the configured LLM integration was unavailable.
   pads:
-    1: KIK house deep thumping four-floor one-shot
-    2: SNR sharp snappy tight crack one-shot
-    3: HAT rapid rolling programmed trap one-shot
-    4: CLP house clap reverb layered one-shot
-    5: BAS house bouncing rolling sub bass loop
-    6: VOX rapid-fire aggressive attitude rap loop
-    7: SYN house stab bright filtered chord loop
-    8: DRM house groove four-floor driving beat loop
-    9: BAS acid squelch resonant 303 bass loop
-    10: VOX chopped pitched processed diva vocal loop
-    11: SYN dark arp menacing minor synth loop
-    12: FX crowd hype energy attitude shout loop
+    1: KIK disco pop one-shot
+    2: SNR pop aggressive one-shot
+    3: HAT aggressive hype one-shot
+    4: CLP hype aggressive, one-shot
+    5: BRK aggressive, auto/pop-nostalgia-120-bpm-rock-high-energy-s loop
+    6: BAS auto/pop-nostalgia-120-bpm-rock-high-energy-s disco loop
+    7: KEY piano disco pop loop
+    8: STR strings pop aggressive loop
+    9: PAD aggressive hype loop
+    10: FX hype aggressive, one-shot
+    11: SMP aggressive, auto/pop-nostalgia-120-bpm-rock-high-energy-s loop
+    12: VOX auto/pop-nostalgia-120-bpm-rock-high-energy-s disco chop-ready
 bank_d:
-  preset: genre/pop-punk-nostalgia
-  name: Pop Punk Nostalgia
-  bpm: 170
-  key: C
-  notes: 'Your followed artists (blink-182, New Found Glory, Fall Out Boy, Sublime),
-    saved albums (Enema of the State, 40oz to Freedom), and playlist habits (Pop Punk''s
-    Not Dead, 2000s Pop Punk Hits, SO FUCKIN'' 90s) all point here. Fast tempos, melodic
-    vocals, teenage energy. Also pulls from the adjacent Paramore/Killers/Wheatus
-    cluster. Reference tracks: Misery Business, Mr. Brightside, Teenage Dirtbag, What''s
-    My Age Again.
-
-    '
+  preset: auto/pop-nostalgia-120-bpm-rock-high-energy-s
+  name: Cipher Pressure
+  bpm: 92
+  key: Dm
+  notes: Boom-bap spine with grimy drums, vinyl dust, low-end weight, and noir chops.
   pads:
-    1: KIK punchy fast tight attack one-shot
-    2: SNR cracking loud ringy pop one-shot
-    3: HAT fast tight bright driving one-shot
-    4: CYM ride bell energetic steady one-shot
-    5: GTR power-chord crunchy palm-mute rhythm loop
-    6: GTR octave riff clean melodic hook loop
-    7: GTR lead distorted singable catchy loop
-    8: BAS driving fast punk root-note loop
-    9: VOX gang shout layered anthem one-shot
-    10: VOX ooh-ahh melodic harmony stacked one-shot
-    11: FX feedback squeal guitar noise one-shot
-    12: PRC tom fill fast rolling descending one-shot
+    1: KIK thumpy dusty boombap one-shot
+    2: SNR gritty papery snare hit one-shot
+    3: HAT short crunchy boombap one-shot
+    4: PRC short rim wood dusty one-shot
+    5: BRK boombap swung dusty loop
+    6: BAS sub heavy dark loop
+    7: KEY jazzy noir chords loop
+    8: SYN eerie tape-wobble loop
+    9: KEY melancholic soul chords loop
+    10: RSR cinematic synth riser transition
+    11: BRK drum-break raw chop-ready
+    12: VOX spoken texture chop-ready
 bank_e:
   preset: auto/lofi-hiphop-electro-funk
-  name: 'Vibe: lofi hiphop electro funk'
-  bpm: 120
-  key: e
-  notes: combines lofi's atmospheric textures with hiphop's rhythmic foundations,
-    electro's synth elements, and funk's groove-driven patterns, all layered for a
-    smooth, chopped loop vibe.
+  name: Caribbean Heatwave
+  bpm: 108
+  key: Cm
+  notes: Dancehall + tropical percussion with rolling basslines, bright keys, and
+    party vox.
   pads:
-    1: KIK lofi hiphop electro funk chill one-shot
-    2: SNR chill sampled one-shot
-    3: HAT sampled analog one-shot
-    4: CLP analog lofi one-shot
-    5: BRK lofi hiphop loop
-    6: BAS hiphop electro loop
-    7: SYN synth electro lofi hiphop electro funk loop
-    8: KEY keys lofi hiphop electro funk chill loop
-    9: PAD chill sampled loop
-    10: FX sampled analog one-shot
-    11: SMP analog lofi loop
-    12: VOX lofi hiphop chop-ready
+    1: KIK punchy dancehall one-shot
+    2: SNR tight dancehall snare hit one-shot
+    3: HAT shaker tropical one-shot
+    4: PRC conga bongo island one-shot
+    5: BRK dancehall dembow drum loop
+    6: BAS sub reggae wobble loop
+    7: KEY bell-chime tropical bright loop
+    8: SYN steelpan-like airy tropical loop
+    9: GTR dancehall skank tropical warm loop
+    10: HRN crowd horn dancehall hype one-shot
+    11: BRK percussion-party chopped loop
+    12: VOX toast chant chop-ready
 bank_f:
   preset: auto/nurave-elctrobass-house-kit
-  name: 'Vibe: nurave elctrobass house kit'
+  name: Electro Sweat
   bpm: 120
-  key: e
-  notes: The prompt combines 'electrobass' (BAS type_code) with house music genre.
-    'Kit' suggests loop-based playability. Texture is electronic due to bass focus,
-    and energy is medium typical for house.
+  key: Dm
+  notes: 'Dance-punk pressure: gritty synth bass, dry drums, tense leads, warehouse
+    transitions.'
   pads:
-    1: KIK house electronic one-shot
-    2: SNR electronic electrobass one-shot
-    3: HAT electrobass kit one-shot
-    4: CLP kit house one-shot
-    5: BRK house electronic loop
-    6: BAS electronic electrobass loop
-    7: SYN synth electrobass kit loop
-    8: KEY piano kit house loop
-    9: PAD house electronic loop
-    10: FX electronic electrobass one-shot
-    11: SMP electrobass kit loop
-    12: VOX kit house chop-ready
+    1: KIK hard clipped electro one-shot
+    2: SNR dry smack electro one-shot
+    3: HAT short sharp ticking electro one-shot
+    4: CLP gated crunchy electro one-shot
+    5: BRK electro-punk driving loop
+    6: BAS distorted synthline loop
+    7: SYN arpeggio tense neon loop
+    8: HRN synth brass funk stab loop
+    9: PAD dark mechanical layer
+    10: RSR synth riser tension transition
+    11: BRK glitch cut-up loop
+    12: VOX robotic shout chop-ready
 bank_g:
   preset: genre/crystal-chaos
   name: Crystal Chaos
   bpm: 135
   key: Fm
-  notes: 'Crystal Castles appeared 3 times in Tiger Dust (Vietnam, BAPTISM, AFFECTION).
-    The dark wing of the Brat Mode aesthetic. Bitcrushed everything, distorted synths,
-    aggressive lo-fi textures. Pairs with brat-mode preset as the aggressive counterpart.
-
-    '
+  notes: 'Bitcrushed rave panic: blown-out drums, broken synths, digital artifacts,
+    scream energy.'
   pads:
-    1: KIK distorted crushed clipping hard one-shot
-    2: SNR bitcrushed harsh noisy crunch one-shot
-    3: HAT glitchy stuttered digital artifact one-shot
-    4: PRC noise burst static crackle one-shot
-    5: SYN bitcrushed lead screaming distorted loop
-    6: VOX crushed processed dark distant vocal loop
-    7: BAS distorted sub growling resonant bass loop
-    8: SYN noise wash harsh digital texture loop
-    9: DRM glitch stutter broken beat chopped loop
-    10: PAD dark drone ominous swelling menace loop
-    11: FX digital artifact error crash glitch loop
-    12: SYN chaotic layered clashing tonal noise loop
+    1: KIK blown bitcrushed hard one-shot
+    2: SNR noisy distorted snare one-shot
+    3: HAT glitch stutter digital one-shot
+    4: PRC static crackle burst one-shot
+    5: BRK broken-rave chaotic loop
+    6: BAS distorted tearing sub loop
+    7: SYN detuned screaming lead loop
+    8: SYN aliasing arpeggio loop
+    9: PAD ominous digital wash loop
+    10: SFX synth byte glitch one-shot
+    11: BRK chopped-noise texture loop
+    12: VOX pitched manic chop-ready
 bank_h:
   preset: genre/outlaw-country-kitchen
   name: Outlaw Country Kitchen
   bpm: 95
   key: G
-  notes: 'Built from Spotify country cluster — 3 dedicated playlists (44 tracks),
-    Chris Stapleton as gravitational center. Pedal steel, fiddle, honky-tonk piano,
-    Americana textures. Blues-influenced country, raw vocals, roots.
-
-    '
+  notes: 'Americana roots palette: pedal steel, fiddle, dusty drums, barroom keys,
+    harmonica fire.'
   pads:
-    1: KIK deep warm acoustic one-shot
-    2: SNR brushed snare rimshot warm one-shot
-    3: HAT soft sizzle cymbal ride one-shot
+    1: KIK warm acoustic thump one-shot
+    2: SNR brushed rim woody one-shot
+    3: HAT soft ride airy one-shot
     4: PRC tambourine shaker organic one-shot
-    5: GTR pedal steel slide bend loop
-    6: GTR acoustic fingerpick open chord loop
-    7: KEY honky-tonk piano barroom bright loop
-    8: STR fiddle melody country sweet loop
-    9: BAS upright thumpy walking root loop
-    10: VOX country harmony two-part vocal loop
-    11: GTR blues slide electric gritty loop
-    12: WND harmonica wailing blues lonesome loop
+    5: GTR pedal-steel country slide twang loop
+    6: GTR acoustic fingerpick americana warm loop
+    7: KEY honky-tonk bright loop
+    8: STR fiddle country roots melodic loop
+    9: BAS upright woody loop
+    10: PAD warm country harmony layer
+    11: GTR blues-slide overdriven southern loop
+    12: WND harmonica blues lonesome dusty loop
 bank_i:
   preset: genre/purity-ring-dreams
   name: Purity Ring Dreams
   bpm: 108
   key: Ab
-  notes: 'Purity Ring appeared 7 times in Tiger Dust — more than any other artist.
-    This preset channels their specific production: granular vocal processing, layered
-    ambient pads, delicate synth leads, sparse but textured drums. Complements the
-    broader synth-pop-dreams preset with a more focused aesthetic.
-
-    '
+  notes: 'Ethereal future-pop: granular vox, glassy percussion, huge pads, soft sub
+    pulses.'
   pads:
-    1: KIK soft deep sub thump one-shot
-    2: SNR processed snap glassy reverb one-shot
-    3: HAT delicate tiny sparkle click one-shot
-    4: PRC metallic bell granular shimmer one-shot
-    5: PAD lush warm evolving ambient pad loop
-    6: VOX granular chopped pitched ethereal loop
-    7: SYN delicate arp ascending crystalline loop
-    8: PAD dark deep underwater swelling pad loop
-    9: BAS soft sub pulse gentle throb loop
-    10: SYN lead thin melody distant bright loop
-    11: FX granular scatter vocal texture dust loop
-    12: PAD reversed swell ambient breathe pad loop
+    1: KIK soft sub pillow one-shot
+    2: SNR glassy reverb snap one-shot
+    3: HAT short tiny sparkling one-shot
+    4: PRC bell chime granular one-shot
+    5: PAD lush evolving dreamy loop
+    6: PAD dreamy glassy vocal wash layer
+    7: SYN crystalline arp loop
+    8: PAD dark underwater swell loop
+    9: BAS soft pulsing sub loop
+    10: SYN distant lead wistful loop
+    11: KEY glassy bell chime ethereal loop
+    12: PAD reverse-bloom transition
 bank_j:
   preset: genre/weapons-cache
-  name: weapons-cache
+  name: Weapons Cache
   bpm: 120
   key: XX
-  notes: ''
+  notes: 'DJ utility ammo: horns, drops, sweeps, impacts, scratches, and stage-hype
+    moments.'
   pads:
-    1: FX hype airhorn one-shot
-    2: FX hype siren one-shot
-    3: FX hype crowd one-shot
-    4: FX hype scratch one-shot
-    5: VOX hype drop one-shot
-    6: VOX hype shout one-shot
-    7: FX transition riser transition
-    8: FX transition sweep transition
-    9: FX impact drop one-shot
-    10: FX transition reverse transition
-    11: FX ambient noise layer
-    12: FX hype cash-register one-shot
+    1: HRN airhorn dancehall hype one-shot
+    2: SFX siren panic one-shot
+    3: HRN trumpet fanfare crowd stinger one-shot
+    4: SFX scratch stab turntable one-shot
+    5: VOX drop-callout one-shot
+    6: VOX shout-command one-shot
+    7: RSR white-noise riser transition
+    8: RSR downlifter sweep transition
+    9: SFX impact slam one-shot
+    10: RSR reverse downlifter transition
+    11: KEY low bell chime eerie ambient layer
+    12: SFX cash-register coin one-shot
 active_set: tiger-dust-store

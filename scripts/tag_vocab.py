@@ -7,7 +7,7 @@ vibe_generate, etc.) should import from here rather than maintaining parallel li
 # ── Type codes ──
 TYPE_CODES = {
     "KIK", "SNR", "HAT", "CLP", "CYM", "RIM", "PRC", "BRK", "DRM",
-    "BAS", "GTR", "KEY", "SYN", "PAD", "STR", "BRS", "PLK", "WND", "VOX", "SMP",
+    "BAS", "GTR", "KEY", "SYN", "PAD", "STR", "BRS", "PLK", "WND", "VOX",
     "FX", "SFX", "AMB", "FLY", "TPE", "RSR", "HRN",
 }
 
@@ -32,6 +32,7 @@ GENRES = {
     "industrial", "boom-bap", "lo-fi", "tropical", "afrobeat",
     "lo-fi-hiphop", "trap", "drill", "gospel", "uk-garage", "footwork",
     "city-pop", "psychedelic", "reggae", "classical", "world",
+    "breakcore", "shoegaze", "gqom", "baile-funk", "industrial-techno",
 }
 
 # ── Energy levels ──
@@ -47,11 +48,17 @@ GENRE_ALIASES = {
     "r&b": "rnb",
     "edm": "electronic", "dance": "house",
     "dancehall": "dancehall", "punk": "punk",
+    "riddim": "dancehall",
+    "baile funk": "baile-funk", "favela funk": "baile-funk",
+    "industrial techno": "industrial-techno",
+    "industrial-techno": "industrial-techno",
 }
 
 TEXTURE_ALIASES = {
     "lofi": "lo-fi", "crisp": "crispy", "wide": "airy",
     "tape-saturated": "tape", "metallic": "crispy",
+    "metallic-hit": "crispy", "metal-hit": "crispy",
+    "ringy": "glassy",
 }
 
 VIBE_ALIASES = {

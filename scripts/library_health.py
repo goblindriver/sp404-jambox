@@ -232,7 +232,7 @@ def main():
         # Missing BPM check (only for loops/breaks)
         tc = entry.get('type_code', '')
         play = entry.get('playability', '')
-        if not entry.get('bpm') and (tc in ('BRK', 'SMP') or play == 'loop'):
+        if not entry.get('bpm') and (tc == 'BRK' or play == 'loop'):
             if args.fix_bpm:
                 detected = detect_bpm_from_onset(samples)
                 if detected:

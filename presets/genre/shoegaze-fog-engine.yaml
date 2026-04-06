@@ -1,0 +1,26 @@
+name: Shoegaze Fog Engine
+slug: shoegaze-fog-engine
+author: jambox
+bpm: 102
+key: C
+vibe: Washed guitars, blurred harmonies, and dreamy low-energy lift.
+notes: Shoegaze-texture preset to strengthen weak guitar and clouded pad labeling.
+source: curated
+tags:
+  - shoegaze
+  - dreamy
+  - guitar
+  - texture
+pads:
+  1: KIK soft muffled one-shot
+  2: SNR roomy washed one-shot
+  3: HAT gentle airy one-shot
+  4: PRC shaker soft organic one-shot
+  5: BRK slow haze groove loop
+  6: BAS warm sustaining loop
+  7: GTR reverb-soaked wall loop
+  8: STR dreamy sustained layer
+  9: PAD foggy chorus wash loop
+  10: KEY melancholic chord swell loop
+  11: FX reverse smear transition
+  12: VOX breathy texture chop-ready

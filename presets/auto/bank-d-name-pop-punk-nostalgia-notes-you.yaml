@@ -1,0 +1,42 @@
+name: 'Vibe: Bank D | name: Pop Punk Nostalgia | notes: Your fo'
+slug: bank-d-name-pop-punk-nostalgia-notes-you
+author: jambox-vibe
+bpm: 120
+key: Am
+vibe: "Bank D | name: Pop Punk Nostalgia | notes: Your followed artists (blink-182,\
+  \ New Found Glory, Fall Out Boy, Sublime), saved albums (Enema of the State, 40oz\
+  \ to Freedom), and playlist habits (Pop Punk's Not Dead, 2000s Pop Punk Hits, SO\
+  \ FUCKIN' 90s) all point here. Fast tempos, melodic vocals, teenage energy. Also\
+  \ pulls from the adjacent Paramore/Killers/Wheatus cluster. Reference tracks: Misery\
+  \ Business, Mr. Brightside, Teenage Dirtbag, What's My Age Again.\n | bpm: 170 |\
+  \ key: C | preset: genre/pop-punk-nostalgia | preset_vibe: Summer 2003 forever —\
+  \ fast drums, crunchy power chords, gang vocals, Warped Tour parking lot energy\
+  \ | preset_tags: pop-punk, 2000s, nostalgia, fast, melodic, warped-tour"
+notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+source: vibe-generated
+tags:
+- (blink-182,
+- (enema
+- (pop
+- 2000s
+- 2000s,
+- '2003'
+- 40oz
+- 90s)
+- adjacent
+- again.
+- age
+- albums
+pads:
+  1: KIK pop hype one-shot
+  2: SNR hype crunchy one-shot
+  3: HAT crunchy (blink-182, one-shot
+  4: CLP (blink-182, (enema one-shot
+  5: BRK (enema (pop loop
+  6: BAS (pop pop loop
+  7: SYN synth pop hype loop
+  8: KEY piano hype crunchy loop
+  9: PAD crunchy (blink-182, loop
+  10: FX (blink-182, (enema one-shot
+  11: BRK (enema (pop loop
+  12: VOX (pop pop chop-ready

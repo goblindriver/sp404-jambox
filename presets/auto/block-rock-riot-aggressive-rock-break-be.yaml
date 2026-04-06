@@ -1,0 +1,29 @@
+name: 'Vibe: block rock riot aggressive rock break beat lofi'
+slug: block-rock-riot-aggressive-rock-break-be
+author: jambox-vibe
+bpm: 120
+key: Am
+vibe: block rock riot aggressive rock break beat lofi
+notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+source: vibe-generated
+tags:
+- aggressive
+- beat
+- block
+- break
+- lo-fi
+- riot
+- rock
+pads:
+  1: KIK lo-fi rock one-shot
+  2: SNR rock aggressive one-shot
+  3: HAT aggressive beat one-shot
+  4: CLP beat block one-shot
+  5: BRK block lo-fi loop
+  6: BAS lo-fi rock loop
+  7: KEY piano rock aggressive loop
+  8: GTR guitar aggressive beat loop
+  9: PAD beat block loop
+  10: FX block lo-fi one-shot
+  11: SMP lo-fi rock loop
+  12: VOX rock aggressive chop-ready

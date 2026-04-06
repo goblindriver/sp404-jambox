@@ -62,11 +62,10 @@ class UtilityScriptsTests(unittest.TestCase):
     def test_migrate_presets_skips_invalid_bank_config_entries(self):
         config = {"bank_b": "broken"}
 
-        with patch.object(migrate_presets, "_load_config", return_value=config), patch.object(migrate_presets, "save_preset") as save_preset, patch.object(migrate_presets, "save_set") as save_set, patch.object(migrate_presets, "_save_config") as save_config, patch.object(sys, "argv", ["migrate_presets.py", "--dry-run"]):
+        with patch.object(migrate_presets, "_load_config", return_value=config), patch.object(migrate_presets, "save_preset") as save_preset, patch.object(migrate_presets, "_save_config") as save_config, patch.object(sys, "argv", ["migrate_presets.py", "--dry-run"]):
             migrate_presets.main()
 
         save_preset.assert_not_called()
-        save_set.assert_not_called()
         save_config.assert_not_called()
 
     def test_spedit404_write_binary_handles_sparse_note_gaps(self):

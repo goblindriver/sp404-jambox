@@ -1,0 +1,38 @@
+name: 'Vibe: Bank B | name: Block Rock Riot | notes: Big-beat w'
+slug: bank-b-name-block-rock-riot-notes-big-be
+author: jambox-vibe
+bpm: 120
+key: Am
+vibe: 'Bank B | name: Block Rock Riot | notes: Big-beat warehouse pressure: distorted
+  drums, acid bass, rave stabs, chopped chants. | bpm: 130 | key: Em | preset: genre/big-beat-blowout
+  | preset_vibe: Heavy breaks and acid bass — Chemical Brothers warehouse energy |
+  preset_tags: big-beat, breakbeat, acid, rave, high-energy, 90s, chemical-brothers,
+  prodigy, fatboy-slim'
+notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+source: vibe-generated
+tags:
+- 90s,
+- acid
+- acid,
+- bank
+- bass
+- bass,
+- big-beat
+- big-beat,
+- block
+- 'bpm:'
+- breakbeat,
+- breaks
+pads:
+  1: KIK rock hype one-shot
+  2: SNR hype 90s, one-shot
+  3: HAT 90s, acid one-shot
+  4: CLP acid acid, one-shot
+  5: BRK acid, rock loop
+  6: BAS rock hype loop
+  7: GTR guitar hype 90s, loop
+  8: GTR guitar 90s, acid loop
+  9: PAD acid acid, loop
+  10: FX acid, rock one-shot
+  11: SMP rock hype loop
+  12: VOX hype 90s, chop-ready

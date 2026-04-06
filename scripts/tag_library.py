@@ -76,7 +76,7 @@ DIR_TYPE_MAP = {
     "foley": "FLY",
     "risers": "RSR", "sweeps": "RSR",
     "tape": "TPE", "vinyl": "TPE",
-    "instrument-loops": "SMP",
+    "instrument-loops": "BRK",
 }
 
 # Filename patterns → type code (pre-compiled for hot-path performance)
@@ -103,7 +103,7 @@ FILENAME_TYPE_PATTERNS = [
     (re.compile(r"\btape\b|\bvinyl\b|\bcrackle\b|\bhiss\b"), "TPE"),
     (re.compile(r"\bstab\b|\bhit\b|\bimpact\b|\bboom\b"), "SFX"),
     (re.compile(r"\bfx\b|\bsfx\b|\btransition\b"), "FX"),
-    (re.compile(r"\bsampl\b|\bphrase\b|\bchop\b"), "SMP"),
+    (re.compile(r"\bsampl\b|\bphrase\b|\bchop\b"), "BRK"),
 ]
 
 # Top-level dir → broad category (for fallback)
@@ -579,7 +579,7 @@ def classify_playability(duration, type_code, filename, bpm):
         return "loop"
     if bpm and duration >= 4 and type_code not in PERCUSSIVE_CODES:
         return "loop"
-    if type_code in ("VOX", "SMP") and duration < 10:
+    if type_code in ("VOX", "BRK") and duration < 10:
         return "chop-ready"
     if type_code in ("PAD", "AMB", "STR", "TPE"):
         return "layer"

@@ -1181,7 +1181,7 @@ const TYPE_CODE_NAMES = {
     CYM:'Cymbal', RIM:'Rimshot', BRK:'Break/Loop', DRM:'Drum',
     BAS:'Bass', GTR:'Guitar', KEY:'Keys/Piano', SYN:'Synth', PAD:'Pad',
     STR:'Strings', BRS:'Brass', PLK:'Pluck', WND:'Woodwind', VOX:'Vocal',
-    SMP:'Sample', FX:'FX', AMB:'Ambient', FLY:'Foley', TPE:'Tape/Vinyl',
+    FX:'FX', AMB:'Ambient', FLY:'Foley', TPE:'Tape/Vinyl',
     RSR:'Riser', SFX:'Stinger',
 };
 

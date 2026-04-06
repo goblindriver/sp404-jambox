@@ -58,7 +58,7 @@ BATCH_SIZE = 50
 # Type code processing order — preset-demand-first
 TYPE_CODE_ORDER = [
     "KIK", "SNR", "HAT", "CLP", "CYM", "RIM", "PRC",
-    "BRK", "SMP",
+    "BRK",
     "BAS",
     "SYN", "PAD", "KEY",
     "VOX",
@@ -98,7 +98,7 @@ You will receive:
 Respond with ONLY a JSON object. No explanation, no markdown, no preamble. Do not wrap in code fences.
 
 {
-  "type_code": "<one of: KIK, SNR, HAT, CLP, CYM, RIM, PRC, BRK, DRM, BAS, GTR, KEY, SYN, PAD, STR, BRS, PLK, WND, VOX, SMP, FX, SFX, AMB, FLY, TPE, RSR, HRN>",
+  "type_code": "<one of: KIK, SNR, HAT, CLP, CYM, RIM, PRC, BRK, DRM, BAS, GTR, KEY, SYN, PAD, STR, BRS, PLK, WND, VOX, FX, SFX, AMB, FLY, TPE, RSR, HRN>",
   "playability": "<one of: one-shot, loop, chop-ready, chromatic, layer, transition>",
   "vibe": ["<1-3 tags from: dark, warm, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty, ethereal, triumphant, melancholic, tense, chill, uplifting>"],
   "texture": ["<1-2 tags from: dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crispy, glassy, muddy, vinyl, tape, digital, organic, crunchy, warbly, bright, thick, thin, filtered>"],
@@ -135,7 +135,7 @@ RULES:
   - BRS: mid-high centroid, brass ensemble, sustained (prefer HRN for solo brass)
   - PLK: mid centroid, plucked single onset, quick decay
   - WND: mid centroid, breathy formant, sustained
-  - SMP: multi-layered, mixed elements, or full production sample
+  - BRK: multi-layered, mixed elements, loops, or sampled phrases
   - SFX: stabs, hits, impacts, risers that are clearly designed sound effects
   - AMB: very low onset_count, evolving texture, no clear transients
   - FLY: vinyl/tape artifacts, transitional noise, foley

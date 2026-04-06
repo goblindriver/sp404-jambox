@@ -17,6 +17,9 @@ if SCRIPTS_DIR not in sys.path:
 import fetch_samples
 import ingest_downloads
 import jambox_tuning
+import low_rank_audit
+import tag_hygiene
+import tag_vocab
 
 
 class FetchSamplesScriptTests(unittest.TestCase):
@@ -128,6 +131,89 @@ class FetchSamplesScriptTests(unittest.TestCase):
             picked = fetch_samples.choose_diverse_match(matches, deterministic=False)
 
         self.assertEqual(picked["path"], "/tmp/older.wav")
+
+
+class LowRankAuditTests(unittest.TestCase):
+    def test_score_severity_red_yellow_green(self):
+        self.assertEqual(
+            low_rank_audit._score_severity(10, 0.5, 0.3, 0.3, mission_critical=True, top1_type_match=False),
+            "red",
+        )
+        self.assertEqual(
+            low_rank_audit._score_severity(18, 1.5, 0.6, 0.6, mission_critical=True, top1_type_match=False),
+            "yellow",
+        )
+        self.assertEqual(
+            low_rank_audit._score_severity(25, 3.0, 1.0, 1.0, mission_critical=False, top1_type_match=True),
+            "green",
+        )
+
+    def test_audit_pad_includes_confidence_fields(self):
+        fake_ranked = [
+            {
+                "path": __file__,
+                "rel_path": "x.wav",
+                "score": 24,
+                "type_code": "BRK",
+                "playability": "loop",
+                "duration": 2.0,
+            },
+            {
+                "path": __file__,
+                "rel_path": "y.wav",
+                "score": 20,
+                "type_code": "BRK",
+                "playability": "loop",
+                "duration": 1.5,
+            },
+        ]
+        with patch("low_rank_audit.fetch_samples.rank_library_matches", return_value=fake_ranked), patch("low_rank_audit.fetch_samples.choose_diverse_match", return_value=fake_ranked[0]):
+            row = low_rank_audit._audit_pad(
+                bank_letter="b",
+                pad_num=5,
+                description="BRK dusty loop",
+                bank_cfg={"bpm": 120, "key": "Am"},
+                tag_db={},
+                top_n=2,
+                min_score=0,
+                deterministic=True,
+            )
+        self.assertIn("top_score", row)
+        self.assertIn("top2_gap", row)
+        self.assertIn("type_match_ratio", row)
+        self.assertIn("conversion_success_rate", row)
+        self.assertIn(row["severity"], {"red", "yellow", "green"})
+
+
+class TagHygieneTests(unittest.TestCase):
+    def test_scan_finds_folder_type_mismatch(self):
+        db = {
+            "Melodic/Bass/foo.flac": {"type_code": "BRK", "playability": "loop", "tags": ["brk", "loop"]}
+        }
+        findings = tag_hygiene._scan(db)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["expected_type"], "BAS")
+
+    def test_apply_rewrites_type_and_tags(self):
+        db = {
+            "Melodic/Bass/foo.flac": {"type_code": "BRK", "playability": "loop", "tags": ["brk", "loop"]}
+        }
+        findings = [{"path": "Melodic/Bass/foo.flac", "expected_type": "BAS", "actual_type": "BRK", "reason": "melodic_bass_folder", "current_playability": "loop"}]
+        updated, changed = tag_hygiene._apply(db, findings)
+        self.assertEqual(changed, 1)
+        self.assertEqual(updated["Melodic/Bass/foo.flac"]["type_code"], "BAS")
+        self.assertIn("bas", updated["Melodic/Bass/foo.flac"]["tags"])
+
+
+class TagVocabExpansionTests(unittest.TestCase):
+    def test_new_genre_aliases_normalize(self):
+        self.assertEqual(tag_vocab.normalize_genre("riddim"), "dancehall")
+        self.assertEqual(tag_vocab.normalize_genre("baile funk"), "baile-funk")
+        self.assertEqual(tag_vocab.normalize_genre("industrial techno"), "industrial-techno")
+
+    def test_new_texture_aliases_normalize(self):
+        self.assertEqual(tag_vocab.normalize_texture("metallic-hit"), "crispy")
+        self.assertEqual(tag_vocab.normalize_texture("ringy"), "glassy")
 
 
 class IngestDownloadsScriptTests(unittest.TestCase):

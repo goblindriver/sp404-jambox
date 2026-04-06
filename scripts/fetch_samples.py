@@ -54,7 +54,7 @@ _WEIGHTS_HASH = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()
 _RELATED_TYPE_CODES_RAW = {
     "KIK": {"DRM"}, "SNR": {"DRM"}, "HAT": {"DRM"}, "CLP": {"DRM", "SNR"},
     "CYM": {"HAT"}, "RIM": {"PRC", "SNR"}, "PRC": {"DRM"},
-    "BRK": {"DRM", "SMP"}, "SMP": {"BRK"},
+    "BRK": {"DRM"},
     "SYN": {"PAD", "KEY"}, "PAD": {"SYN", "AMB"}, "KEY": {"SYN"},
     "FX": {"SFX", "RSR"}, "SFX": {"FX"}, "RSR": {"FX"},
     "AMB": {"PAD", "TPE"}, "TPE": {"AMB"},
@@ -94,6 +94,8 @@ def parse_pad_query(query):
         lower = word.lower()
 
         # Type code (always uppercase in pad descriptions)
+        if upper == "SMP":
+            upper = "BRK"
         if upper in TYPE_CODES and not result["type_code"]:
             result["type_code"] = upper
             continue

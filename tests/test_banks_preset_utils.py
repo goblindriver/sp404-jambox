@@ -135,6 +135,18 @@ class PresetUtilsTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "preset must define pads 1-12"):
                     preset_utils.load_preset("community/broken-shape")
 
+    def test_new_stress_presets_have_valid_shape(self):
+        refs = [
+            "genre/gqom-battery",
+            "genre/baile-funk-bunker",
+            "genre/shoegaze-fog-engine",
+            "genre/breakcore-fracture",
+        ]
+        for ref in refs:
+            preset = preset_utils.load_preset(ref, require_full_pads=True)
+            self.assertIsNotNone(preset, msg=ref)
+            self.assertEqual(len(preset["pads"]), 12, msg=ref)
+
 
 if __name__ == "__main__":
     unittest.main()

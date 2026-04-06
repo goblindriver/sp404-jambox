@@ -306,7 +306,7 @@ def tag_extracted_clips(clips):
                 'dialog': 'VOX',
                 'effect': 'FX',
                 'ambient': 'PAD',
-                'score': 'SMP',
+                'score': 'PAD',
             }
 
             # Map movie genres to vibes

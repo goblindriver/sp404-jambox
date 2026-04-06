@@ -13,18 +13,18 @@ TEMPO CLUSTER: 112 / 120 / 128 / 130 BPM
 
 === BANK B: SESSIONS (120 BPM, Am) ===
   Long-form breaks and full tracks for live sampling and chopping
-   1: SMP funk soul chop-ready
-   2: SMP disco bright chop-ready
-   3: SMP electronic raw chop-ready
-   4: SMP electronic hype chop-ready
+   1: BRK funk soul chop-ready
+   2: BRK disco bright chop-ready
+   3: BRK electronic raw chop-ready
+   4: BRK electronic hype chop-ready
    5: BRK funk warm loop
    6: BRK disco bright loop
    7: BRK electronic raw loop
    8: BRK electronic hype loop
-   9: SMP funk nostalgic chop-ready
-  10: SMP disco soulful chop-ready
-  11: SMP electronic dark chop-ready
-  12: SMP electronic aggressive chop-ready
+   9: BRK funk nostalgic chop-ready
+  10: BRK disco soulful chop-ready
+  11: BRK electronic dark chop-ready
+  12: BRK electronic aggressive chop-ready
 
 === BANK C: DRUM LOOPS (120 BPM, XX) ===
   Pure rhythm — no melody, all genres, mix and match
@@ -54,7 +54,7 @@ TEMPO CLUSTER: 112 / 120 / 128 / 130 BPM
    9: KEY organ funk soulful loop
   10: BRS funk bright one-shot
   11: GTR funk raw loop
-  12: SMP funk soulful chop-ready
+  12: BRK funk soulful chop-ready
 
 === BANK E: DISCO (120 BPM, Am) ===
   Four-on-the-floor, warm, danceable — classic disco energy
