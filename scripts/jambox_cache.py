@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 
 
 SCORE_CACHE_NAME = "_score_cache.json"
@@ -24,11 +25,30 @@ def _load_json(path):
 
 
 def _save_json(path, payload):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    temp_path = f"{path}.tmp"
-    with open(temp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-    os.replace(temp_path, path)
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+
+    fd, temp_path = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+
+        try:
+            os.replace(temp_path, path)
+        except FileNotFoundError:
+            # Rare race on external volumes: retry with a fresh temp file.
+            os.makedirs(parent, exist_ok=True)
+            fd2, temp_path2 = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=parent)
+            try:
+                with os.fdopen(fd2, "w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, indent=2, sort_keys=True)
+                os.replace(temp_path2, path)
+            finally:
+                if os.path.exists(temp_path2):
+                    os.unlink(temp_path2)
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 
 def file_marker(path):
