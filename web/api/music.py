@@ -21,6 +21,7 @@ if os.path.isdir(_scripts_dir):
 
 _plex = None
 _plex_last_check = 0
+_plex_last_error = None
 _PLEX_RETRY_SECONDS = 60
 
 
@@ -48,7 +49,7 @@ def _parse_track_id(value):
 
 def _get_plex():
     """Lazy-init Plex client, returns None if unavailable. Retries every 60s."""
-    global _plex, _plex_last_check
+    global _plex, _plex_last_check, _plex_last_error
     import time
     now = time.time()
     if _plex is not None:
@@ -61,8 +62,10 @@ def _get_plex():
         p = PlexMusicDB()
         if p.is_available():
             _plex = p
-    except Exception:
-        pass
+            _plex_last_error = None
+    except Exception as exc:
+        _plex_last_error = str(exc)
+        current_app.logger.warning('Plex music init failed: %s', exc)
     return _plex
 
 
@@ -94,7 +97,7 @@ def music_status():
                 'library_path': s['root_path'],
             })
         except Exception as e:
-            pass
+            current_app.logger.warning('Plex music status failed: %s', e)
 
     # Fallback to old index
     try:
@@ -201,7 +204,7 @@ def search():
                 r['thumb_url'] = _plex_thumb_to_url(r.get('thumb'))
             return jsonify({'results': results, 'total': len(results), 'query': q})
         except Exception as e:
-            return jsonify({'results': [], 'error': str(e)})
+            return jsonify({'ok': False, 'results': [], 'error': str(e)}), 500
 
     return jsonify({'results': []})
 
@@ -397,6 +400,20 @@ _split_lock = threading.Lock()
 _SPLIT_JOB_MAX_AGE = 600  # 10 minutes
 
 
+def _update_split_job(job_id, **fields):
+    with _split_lock:
+        job = _split_jobs.get(job_id)
+        if not job:
+            return
+        job.update(fields)
+
+
+def _get_split_job(job_id):
+    with _split_lock:
+        job = _split_jobs.get(job_id)
+        return dict(job) if isinstance(job, dict) else None
+
+
 def _prune_finished_splits():
     """Remove completed/errored split jobs older than _SPLIT_JOB_MAX_AGE seconds."""
     import time
@@ -412,7 +429,7 @@ def _prune_finished_splits():
 def _run_split(job_id, track_data):
     """Background thread: run demucs and tag stems with Plex metadata."""
     try:
-        _split_jobs[job_id]['status'] = 'splitting'
+        _update_split_job(job_id, status='splitting')
 
         scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                    '..', 'scripts')
@@ -437,8 +454,7 @@ def _run_split(job_id, track_data):
         # Run demucs
         stems = run_demucs(track_path, tmp_dir, model="htdemucs")
         if not stems:
-            _split_jobs[job_id]['status'] = 'error'
-            _split_jobs[job_id]['result'] = 'Demucs produced no output'
+            _update_split_job(job_id, status='error', result='Demucs produced no output')
             return
 
         # Build parent tags from Plex metadata
@@ -525,19 +541,20 @@ def _run_split(job_id, track_data):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
         import time as _time
-        _split_jobs[job_id]['status'] = 'done'
-        _split_jobs[job_id]['finished_at'] = _time.time()
-        _split_jobs[job_id]['result'] = {
-            'stems': created_stems,
-            'source': source_name,
-            'source_id': src_id,
-        }
+        _update_split_job(
+            job_id,
+            status='done',
+            finished_at=_time.time(),
+            result={
+                'stems': created_stems,
+                'source': source_name,
+                'source_id': src_id,
+            },
+        )
 
     except Exception as e:
         import time as _time
-        _split_jobs[job_id]['status'] = 'error'
-        _split_jobs[job_id]['finished_at'] = _time.time()
-        _split_jobs[job_id]['result'] = str(e)
+        _update_split_job(job_id, status='error', finished_at=_time.time(), result=str(e))
 
 
 @music_bp.route('/music/split', methods=['POST'])
@@ -547,30 +564,30 @@ def split_track():
         data = _json_object_body()
         raw_track_id = data.get('track_id') or data.get('id')
         if raw_track_id in (None, ''):
-            return jsonify({'error': 'No track ID provided'}), 400
+            return jsonify({'ok': False, 'error': 'No track ID provided'}), 400
         track_id = _parse_track_id(raw_track_id)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'ok': False, 'error': str(e)}), 400
 
     plex = _get_plex()
     if not plex:
-        return jsonify({'error': 'Plex not available'}), 500
+        return jsonify({'ok': False, 'error': 'Plex not available'}), 503
 
     try:
         track_data = plex.track(track_id)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'ok': False, 'error': str(e)}), 500
     if not track_data:
-        return jsonify({'error': 'Track not found'}), 404
+        return jsonify({'ok': False, 'error': 'Track not found'}), 404
 
     if not track_data.get('file_path') or not os.path.isfile(track_data['file_path']):
-        return jsonify({'error': 'Track file not accessible'}), 404
+        return jsonify({'ok': False, 'error': 'Track file not accessible'}), 404
 
     _prune_finished_splits()
     with _split_lock:
         for j in _split_jobs.values():
             if j['status'] in {'starting', 'splitting'} and j.get('track_id') == track_id:
-                return jsonify({'error': 'Already splitting', 'job_id': j['id']}), 409
+                return jsonify({'ok': False, 'error': 'Already splitting', 'job_id': j['id']}), 409
 
         job_id = str(uuid.uuid4())[:8]
         _split_jobs[job_id] = {
@@ -585,13 +602,14 @@ def split_track():
     t.daemon = True
     t.start()
 
-    return jsonify({'job_id': job_id, 'track': _split_jobs[job_id]['track']})
+    job = _get_split_job(job_id) or {}
+    return jsonify({'ok': True, 'job_id': job_id, 'track': job.get('track')})
 
 
 @music_bp.route('/music/split/status/<job_id>')
 def split_status(job_id):
     """Check status of a stem split job."""
-    job = _split_jobs.get(job_id)
+    job = _get_split_job(job_id)
     if not job:
-        return jsonify({'error': 'Job not found'}), 404
+        return jsonify({'ok': False, 'error': 'Job not found'}), 404
     return jsonify(job)

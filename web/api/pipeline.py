@@ -29,6 +29,20 @@ def _settings():
     return current_app.config
 
 
+def _update_job(job_id, **fields):
+    with _job_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        job.update(fields)
+
+
+def _get_job(job_id):
+    with _job_lock:
+        job = _jobs.get(job_id)
+        return dict(job) if isinstance(job, dict) else None
+
+
 def _clear_staging_wavs(staging_dir):
     """Remove only generated pad WAVs so a run starts cleanly."""
     if not os.path.isdir(staging_dir):
@@ -90,7 +104,7 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
         sys.path.insert(0, os.path.join(repo_dir, 'scripts'))
         import fetch_samples as fs
 
-        _jobs[job_id]['status'] = 'running'
+        _update_job(job_id, status='running')
         config = fs.load_config()
         os.makedirs(fs.STAGING, exist_ok=True)
         _clear_staging_wavs(fs.STAGING)
@@ -137,8 +151,7 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
                 if pad_query:
                     pad_count_done += 1
                     pct = int(pad_count_done * 100 / max(pad_count_total, 1))
-                    _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad}"
-                    _jobs[job_id]['percent'] = pct
+                    _update_job(job_id, progress=f"Bank {letter.upper()} Pad {pad}", percent=pct)
                     result = fs.fetch_pad(letter, pad, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                     if result:
                         total_fetched += 1
@@ -149,8 +162,7 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
                     pad_num = int(pad_num)
                     pad_count_done += 1
                     pct = int(pad_count_done * 100 / max(pad_count_total, 1))
-                    _jobs[job_id]['progress'] = f"Bank {letter.upper()} Pad {pad_num}: {pad_query[:40]}"
-                    _jobs[job_id]['percent'] = pct
+                    _update_job(job_id, progress=f"Bank {letter.upper()} Pad {pad_num}: {pad_query[:40]}", percent=pct)
                     result = fs.fetch_pad(letter, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                     if result:
                         total_fetched += 1
@@ -167,14 +179,15 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
             for f in generated_files:
                 shutil.copy2(f, smpl_dir)
 
-        _jobs[job_id]['status'] = 'done'
-        _jobs[job_id]['result'] = f"{total_fetched}/{total_pads} pads filled"
-        _jobs[job_id]['finished_at'] = _time.time()
+        _update_job(
+            job_id,
+            status='done',
+            result=f"{total_fetched}/{total_pads} pads filled",
+            finished_at=_time.time(),
+        )
 
     except Exception as e:
-        _jobs[job_id]['status'] = 'error'
-        _jobs[job_id]['result'] = str(e)
-        _jobs[job_id]['finished_at'] = _time.time()
+        _update_job(job_id, status='error', result=str(e), finished_at=_time.time())
 
 
 @pipeline_bp.route('/pipeline/fetch', methods=['POST'])
@@ -184,13 +197,13 @@ def fetch():
     try:
         pad = _normalize_pad_value(data.get('pad'))
     except ValueError as exc:
-        return jsonify({'error': str(exc)}), 400
+        return jsonify({'ok': False, 'error': str(exc)}), 400
 
     _prune_finished_jobs()
     with _job_lock:
         for j in _jobs.values():
             if j['type'] == 'fetch' and j['status'] in {'starting', 'running'}:
-                return jsonify({'error': 'Fetch already running'}), 409
+                return jsonify({'ok': False, 'error': 'Fetch already running'}), 409
 
         job_id = str(uuid.uuid4())[:8]
         _jobs[job_id] = {
@@ -212,9 +225,9 @@ def fetch():
 
 @pipeline_bp.route('/pipeline/status/<job_id>')
 def job_status(job_id):
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job:
-        return jsonify({'error': 'Job not found'}), 404
+        return jsonify({'ok': False, 'error': 'Job not found'}), 404
     return jsonify(job)
 
 
@@ -350,7 +363,7 @@ def disk_report():
         import ingest_downloads as ingest
         return jsonify(ingest.disk_usage_report())
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @pipeline_bp.route('/pipeline/cleanup', methods=['POST'])
@@ -393,12 +406,12 @@ def downloads_path():
     import ingest_downloads as ingest
 
     if request.method == 'GET':
-        return jsonify({'path': ingest.DOWNLOADS})
+        return jsonify({'ok': True, 'path': ingest.DOWNLOADS})
 
     data = request.get_json(silent=True) or {}
     new_path = data.get('path', '')
     if not new_path:
-        return jsonify({'error': 'path required'}), 400
+        return jsonify({'ok': False, 'error': 'path required'}), 400
     try:
         result = ingest.set_downloads_path(new_path)
         return jsonify({'ok': True, 'path': result})
@@ -429,7 +442,7 @@ def server_status():
         except Exception:
             features['watcher'] = False
 
-        llm_endpoint = os.environ.get('SP404_LLM_ENDPOINT', '')
+        llm_endpoint = current_app.config.get('LLM_ENDPOINT', '')
         features['llm'] = bool(llm_endpoint)
 
         try:

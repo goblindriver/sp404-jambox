@@ -337,10 +337,24 @@ _retag_jobs = {}
 _retag_lock = threading.Lock()
 
 
+def _update_retag_job(job_id, **fields):
+    with _retag_lock:
+        job = _retag_jobs.get(job_id)
+        if not job:
+            return
+        job.update(fields)
+
+
+def _get_retag_job(job_id):
+    with _retag_lock:
+        job = _retag_jobs.get(job_id)
+        return dict(job) if isinstance(job, dict) else None
+
+
 def _run_smart_retag(job_id, repo_dir, settings, args_list):
     """Background worker for smart retagging."""
     try:
-        _retag_jobs[job_id]["status"] = "running"
+        _update_retag_job(job_id, status="running")
         script = os.path.join(repo_dir, "scripts", "smart_retag.py")
         cmd = [sys.executable, script] + args_list
 
@@ -353,10 +367,13 @@ def _run_smart_retag(job_id, repo_dir, settings, args_list):
             timeout=600,
         )
         import time as _time
-        _retag_jobs[job_id]["stdout"] = result.stdout
-        _retag_jobs[job_id]["stderr"] = result.stderr
-        _retag_jobs[job_id]["status"] = "done" if result.returncode == 0 else "error"
-        _retag_jobs[job_id]["finished_at"] = _time.time()
+        _update_retag_job(
+            job_id,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            status="done" if result.returncode == 0 else "error",
+            finished_at=_time.time(),
+        )
 
         global _tag_db_cache, _tag_db_mtime
         _tag_db_cache = None
@@ -364,14 +381,15 @@ def _run_smart_retag(job_id, repo_dir, settings, args_list):
 
     except subprocess.TimeoutExpired:
         import time as _time
-        _retag_jobs[job_id]["status"] = "error"
-        _retag_jobs[job_id]["stderr"] = "Smart retag timed out after 10 minutes"
-        _retag_jobs[job_id]["finished_at"] = _time.time()
+        _update_retag_job(
+            job_id,
+            status="error",
+            stderr="Smart retag timed out after 10 minutes",
+            finished_at=_time.time(),
+        )
     except Exception as e:
         import time as _time
-        _retag_jobs[job_id]["status"] = "error"
-        _retag_jobs[job_id]["stderr"] = str(e)
-        _retag_jobs[job_id]["finished_at"] = _time.time()
+        _update_retag_job(job_id, status="error", stderr=str(e), finished_at=_time.time())
 
 
 @library_bp.route('/library/smart-retag', methods=['POST'])
@@ -436,7 +454,7 @@ def smart_retag():
 @library_bp.route('/library/smart-retag/<job_id>')
 def smart_retag_status(job_id):
     """Poll smart retag job progress."""
-    job = _retag_jobs.get(job_id)
+    job = _get_retag_job(job_id)
     if not job:
-        return jsonify({"error": "Job not found"}), 404
+        return jsonify({"ok": False, "error": "Job not found"}), 404
     return jsonify(job)

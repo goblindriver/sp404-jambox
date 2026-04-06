@@ -253,8 +253,10 @@ def _route_and_process(library_path, rel_path):
         try:
             dupe_dest = os.path.join(dupes_dir, os.path.basename(library_path))
             shutil.move(library_path, dupe_dest)
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"  [ROUTE] Failed to move duplicate to _DUPES: {exc}")
+            # Keep the file in place so ingest can proceed without losing traceability.
+            return 'keep'
         return 'duplicate'
 
     # Step 3: Duration-based routing

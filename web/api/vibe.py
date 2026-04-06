@@ -20,6 +20,20 @@ _vibe_jobs = {}
 _vibe_lock = threading.Lock()
 
 
+def _update_vibe_job(job_id, **fields):
+    with _vibe_lock:
+        job = _vibe_jobs.get(job_id)
+        if not job:
+            return
+        job.update(fields)
+
+
+def _get_vibe_job(job_id):
+    with _vibe_lock:
+        job = _vibe_jobs.get(job_id)
+        return dict(job) if isinstance(job, dict) else None
+
+
 def _json_object_body():
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
@@ -168,7 +182,7 @@ def generate_vibe():
         return jsonify({"ok": False, "error": f"Vibe generation failed to start: {exc}"}), 500
 
 
-def _run_populate_bank(job_id, repo_dir, prompt_data, preset_override=None, session_id=None):
+def _run_populate_bank(job_id, repo_dir, prompt_data, settings, preset_override=None, session_id=None):
     """Background worker: generate preset from vibe, load into bank, fetch samples."""
     try:
         scripts_dir = os.path.join(repo_dir, "scripts")
@@ -179,33 +193,46 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, preset_override=None, sess
         import fetch_samples as fs
 
         if preset_override is None:
-            _vibe_jobs[job_id]["status"] = "generating"
-            _vibe_jobs[job_id]["progress"] = "Asking LLM to parse your vibe..."
+            _update_vibe_job(job_id, status="generating", progress="Asking LLM to parse your vibe...")
             result = vibe_generate.build_bank_from_vibe(prompt_data)
             preset = result["preset"]
-            _vibe_jobs[job_id]["fallback_used"] = result.get("fallback_used", False)
-            _vibe_jobs[job_id]["fallback_reason"] = result.get("fallback_reason")
-            _vibe_jobs[job_id]["progress"] = f"Generated {len(preset['pads'])} pad descriptions"
+            if session_id:
+                vts.update_generated(session_id, result, settings)
+            else:
+                # Capture generated parse/draft even if initial session creation failed.
+                try:
+                    session_id = vts.create_session(prompt_data, result, settings)
+                    _update_vibe_job(job_id, session_id=session_id)
+                except Exception as exc:
+                    print(f"[VIBE] Failed to backfill session for job {job_id}: {exc}")
+            _update_vibe_job(
+                job_id,
+                fallback_used=result.get("fallback_used", False),
+                fallback_reason=result.get("fallback_reason"),
+                progress=f"Generated {len(preset['pads'])} pad descriptions",
+            )
         else:
             preset = preset_override
-            _vibe_jobs[job_id]["status"] = "reviewed"
-            _vibe_jobs[job_id]["progress"] = f"Applying reviewed draft with {len(preset['pads'])} pads"
+            _update_vibe_job(
+                job_id,
+                status="reviewed",
+                progress=f"Applying reviewed draft with {len(preset['pads'])} pads",
+            )
 
         # Step 2: Save as preset
-        _vibe_jobs[job_id]["status"] = "saving"
+        _update_vibe_job(job_id, status="saving")
         ref = pu.save_preset(preset, category="auto")
-        _vibe_jobs[job_id]["preset_ref"] = ref
-        _vibe_jobs[job_id]["progress"] = f"Saved preset: {ref}"
+        _update_vibe_job(job_id, preset_ref=ref, progress=f"Saved preset: {ref}")
 
         # Step 3: Load into bank
         bank = prompt_data.get("bank", "a").lower()
-        _vibe_jobs[job_id]["status"] = "loading"
+        _update_vibe_job(job_id, status="loading")
         pu.load_preset_to_bank(ref, bank)
-        _vibe_jobs[job_id]["progress"] = f"Loaded into Bank {bank.upper()}"
+        _update_vibe_job(job_id, progress=f"Loaded into Bank {bank.upper()}")
 
         # Step 4: Fetch samples
         if prompt_data.get("fetch", True):
-            _vibe_jobs[job_id]["status"] = "fetching"
+            _update_vibe_job(job_id, status="fetching")
             config = fs.load_config()
             bank_key = f"bank_{bank}"
             bank_config = config.get(bank_key, {})
@@ -221,29 +248,27 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, preset_override=None, sess
                 total = len(bank_config["pads"])
                 for pad_num, pad_query in bank_config["pads"].items():
                     pad_num = int(pad_num)
-                    _vibe_jobs[job_id]["progress"] = f"Fetching Pad {pad_num}/{total}: {pad_query[:30]}"
+                    _update_vibe_job(job_id, progress=f"Fetching Pad {pad_num}/{total}: {pad_query[:30]}")
                     result_path = fs.fetch_pad(bank, pad_num, pad_query, bank_config, tag_db, used_files, cache_entries=score_cache)
                     if result_path:
                         fetched += 1
                 save_score_cache(fs.LIBRARY, score_cache)
 
-                _vibe_jobs[job_id]["fetched"] = f"{fetched}/{total}"
-                _vibe_jobs[job_id]["progress"] = f"Fetched {fetched}/{total} samples"
+                _update_vibe_job(job_id, fetched=f"{fetched}/{total}", progress=f"Fetched {fetched}/{total} samples")
 
-        _vibe_jobs[job_id]["status"] = "done"
-        _vibe_jobs[job_id]["progress"] = "Bank populated!"
+        _update_vibe_job(job_id, status="done", progress="Bank populated!")
         if session_id:
+            final_job = _get_vibe_job(job_id) or {}
             vts.complete_apply(
                 session_id,
                 preset,
                 ref,
-                {"fetched": _vibe_jobs[job_id].get("fetched")},
-                _vibe_jobs[job_id]["progress"],
+                {"fetched": final_job.get("fetched")},
+                final_job.get("progress", "Bank populated!"),
             )
 
     except Exception as e:
-        _vibe_jobs[job_id]["status"] = "error"
-        _vibe_jobs[job_id]["progress"] = str(e)
+        _update_vibe_job(job_id, status="error", progress=str(e))
         if session_id:
             vts.fail_apply(session_id, str(e))
 
@@ -268,6 +293,7 @@ def _create_vibe_job(bank, prompt):
         "progress": "",
         "prompt": prompt,
         "bank": bank,
+        "session_id": None,
         "preset_ref": None,
         "fetched": None,
         "fallback_used": False,
@@ -310,17 +336,24 @@ def populate_bank():
     }
 
     session_id = None
+    session_error = None
     try:
         session_id = vts.create_session(prompt_data, {}, current_app.config)
-    except Exception:
-        pass
+    except Exception as exc:
+        session_error = str(exc)
+        current_app.logger.warning("Failed to create vibe populate session: %s", exc)
 
     repo_dir = current_app.config["REPO_DIR"]
-    t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, None, session_id))
+    settings = dict(current_app.config)
+    _update_vibe_job(job_id, session_id=session_id)
+    t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, settings, None, session_id))
     t.daemon = True
     t.start()
 
-    return jsonify({"ok": True, "job_id": job_id, "session_id": session_id})
+    response = {"ok": True, "job_id": job_id, "session_id": session_id}
+    if session_error:
+        response["session_warning"] = "Session logging unavailable for this job"
+    return jsonify(response)
 
 
 @vibe_bp.route("/vibe/apply-bank", methods=["POST"])
@@ -350,7 +383,9 @@ def apply_bank():
     session_id = payload.get("session_id")
     if session_id:
         vts.update_review(session_id, preset, reviewed_parsed, payload.get("fetch", True), bank)
-    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, preset, session_id))
+    settings = dict(current_app.config)
+    _update_vibe_job(job_id, session_id=session_id)
+    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, settings, preset, session_id))
     thread.daemon = True
     thread.start()
 
@@ -360,7 +395,7 @@ def apply_bank():
 @vibe_bp.route("/vibe/populate-status/<job_id>")
 def populate_status(job_id):
     """Poll populate-bank job progress."""
-    job = _vibe_jobs.get(job_id)
+    job = _get_vibe_job(job_id)
     if not job:
-        return jsonify({"error": "Job not found"}), 404
+        return jsonify({"ok": False, "error": "Job not found"}), 404
     return jsonify(job)
