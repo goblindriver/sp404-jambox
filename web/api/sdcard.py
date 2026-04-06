@@ -365,3 +365,24 @@ def gold_sessions():
             continue
         sessions.append({'name': d, 'count': len(files)})
     return jsonify({'sessions': sessions})
+
+
+@sdcard_bp.route('/sdcard/eject', methods=['POST'])
+def eject():
+    """Safely eject the SD card volume."""
+    import subprocess
+    sd_card = _sd_card()
+    if not os.path.isdir(sd_card):
+        return jsonify({'ok': False, 'error': 'SD card not mounted'}), 400
+    try:
+        result = subprocess.run(
+            ['diskutil', 'eject', sd_card],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return jsonify({'ok': False, 'error': result.stderr.strip() or 'Eject failed'}), 500
+        return jsonify({'ok': True, 'message': f'Ejected {sd_card}'})
+    except FileNotFoundError:
+        return jsonify({'ok': False, 'error': 'diskutil not available (macOS only)'}), 501
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'error': 'Eject timed out'}), 500

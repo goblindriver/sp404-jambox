@@ -442,6 +442,82 @@ def generate_vibe_suggestions(prompt_data):
     }
 
 
+def inspire_bank(seed=None, bank_letter="c"):
+    """Generate bank-level metadata (name, notes, bpm, key) from an optional seed genre.
+
+    Calls the LLM for creative inspiration.  Falls back to random preset
+    metadata when the LLM is unavailable.
+    """
+    import random
+
+    seed_text = (seed or "").strip() or "surprise me — pick any genre or vibe"
+    runtime = _parser_runtime()
+    endpoint = runtime["endpoint"]
+
+    if endpoint:
+        system_prompt = get_system_prompt(
+            "You generate creative SP-404 sampler bank metadata. "
+            "Return ONLY strict JSON with keys: name (string, short creative bank name), "
+            "notes (string, 1-2 sentence vibe description), bpm (integer 60-200), "
+            "key (string like Am, Dm, F, Gm, etc). No markdown, no explanation."
+        )
+        user_prompt = json.dumps({
+            "seed": seed_text,
+            "bank": bank_letter.upper(),
+            "instruction": "Generate a creative bank name, vibe notes, BPM, and musical key for this SP-404 bank.",
+        })
+        try:
+            payload = call_json_endpoint(
+                endpoint,
+                {
+                    "model": runtime["model"],
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.7,
+                },
+                timeout=SETTINGS.get("LLM_TIMEOUT", 30),
+            )
+            content = _strip_code_fences(_extract_content(payload))
+            if content:
+                parsed = json.loads(content)
+                return {
+                    "name": str(parsed.get("name", "Inspired Bank")).strip()[:60],
+                    "notes": str(parsed.get("notes", "")).strip()[:200],
+                    "bpm": _coerce_int(parsed.get("bpm"), 120, minimum=40),
+                    "key": str(parsed.get("key", "Am")).strip() or "Am",
+                }
+        except (IntegrationFailure, json.JSONDecodeError, Exception):
+            pass  # fall through to preset fallback
+
+    # Fallback: pick from existing presets
+    presets_dir = os.path.join(SETTINGS.get("REPO_DIR", "."), "presets", "genre")
+    candidates = []
+    if os.path.isdir(presets_dir):
+        for fname in os.listdir(presets_dir):
+            if not fname.endswith(".yaml"):
+                continue
+            try:
+                with open(os.path.join(presets_dir, fname)) as fh:
+                    data = yaml.safe_load(fh)
+                if isinstance(data, dict) and data.get("name"):
+                    candidates.append(data)
+            except (OSError, yaml.YAMLError):
+                continue
+
+    if not candidates:
+        return {"name": "Fresh Bank", "notes": "Ready to fill", "bpm": 120, "key": "Am"}
+
+    pick = random.choice(candidates)
+    return {
+        "name": str(pick.get("display_name") or pick.get("name", "Inspired Bank")).strip()[:60],
+        "notes": str(pick.get("description") or pick.get("notes", "")).strip()[:200],
+        "bpm": _coerce_int(pick.get("bpm"), 120, minimum=40),
+        "key": str(pick.get("key", "Am")).strip() or "Am",
+    }
+
+
 def main():
     try:
         prompt_data = _read_input()

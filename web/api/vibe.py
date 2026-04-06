@@ -262,7 +262,7 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, settings, preset_override=
         # Step 3: Load into bank
         bank = prompt_data.get("bank", "a").lower()
         _update_vibe_job(job_id, status="loading")
-        pu.load_preset_to_bank(ref, bank)
+        pu.load_preset_to_bank(ref, bank, preserve_notes=True)
         _update_vibe_job(job_id, progress=f"Loaded into Bank {bank.upper()}")
 
         # Step 4: Fetch samples
@@ -408,6 +408,20 @@ def generate_fetch_bank():
         "fetch": payload.get("fetch", True),
     }
 
+    # Merge bpm/key from bank_config when not provided in the request
+    if not prompt_data["bpm"] or not prompt_data["key"]:
+        scripts_dir = os.path.join(repo_dir, "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import preset_utils as pu
+        config = pu._load_config()
+        bank_data = config.get(f"bank_{bank}", {})
+        if isinstance(bank_data, dict):
+            if not prompt_data["bpm"]:
+                prompt_data["bpm"] = bank_data.get("bpm")
+            if not prompt_data["key"]:
+                prompt_data["key"] = bank_data.get("key")
+
     session_id = None
     session_error = None
     try:
@@ -426,6 +440,46 @@ def generate_fetch_bank():
     if session_error:
         response["session_warning"] = "Session logging unavailable for this job"
     return jsonify(response)
+
+
+@vibe_bp.route("/vibe/inspire-bank", methods=["POST"])
+def inspire_bank_route():
+    """Generate bank-level metadata (name, notes, bpm, key) from an optional seed."""
+    try:
+        payload = _json_object_body()
+        bank = _normalize_bank(payload.get("bank", "c"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    seed = str(payload.get("seed") or "").strip()
+    repo_dir = current_app.config["REPO_DIR"]
+    scripts_dir = os.path.join(repo_dir, "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import vibe_generate
+    import preset_utils as pu
+    from jambox_config import atomic_write_yaml
+
+    try:
+        result = vibe_generate.inspire_bank(seed=seed or None, bank_letter=bank)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Inspire failed: {exc}"}), 500
+
+    # Apply to bank via same logic as PUT /api/banks/<letter>
+    try:
+        config = pu._load_config()
+        bank_key = f"bank_{bank}"
+        if bank_key not in config or not isinstance(config[bank_key], dict):
+            config[bank_key] = {}
+        config[bank_key]["name"] = result["name"]
+        config[bank_key]["notes"] = result["notes"]
+        config[bank_key]["bpm"] = int(result["bpm"])
+        config[bank_key]["key"] = result["key"]
+        pu._save_config(config)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Failed to update bank config: {exc}"}), 500
+
+    return jsonify({"ok": True, "bank": result})
 
 
 @vibe_bp.route("/vibe/apply-bank", methods=["POST"])

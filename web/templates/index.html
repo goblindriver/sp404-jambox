@@ -29,6 +29,7 @@
                 <span class="sd-dot"></span>
                 <span class="sd-text">Checking...</span>
             </div>
+            <button id="btn-sd-eject" class="header-icon-btn" title="Safely eject SD card">⏏</button>
         </div>
     </header>
 
@@ -40,26 +41,9 @@
         <span id="bank-name" class="bank-name"></span>
         <span id="bank-meta" class="bank-meta"></span>
         <button id="btn-edit-bank" class="btn-edit-bank" title="Edit bank settings">&#9998;</button>
-    </div>
-
-    <div class="vibe-panel" id="vibe-panel">
-        <div class="vibe-input-row">
-            <input type="text" id="vibe-prompt" class="vibe-prompt" placeholder="Describe a vibe..." />
-            <button id="btn-vibe-populate" class="btn btn-sm btn-primary" style="display:none">Apply Draft</button>
-            <select id="vibe-bank-select" class="vibe-field" style="display:none">
-                <option value="a">A</option><option value="b">B</option><option value="c">C</option>
-                <option value="d">D</option><option value="e">E</option><option value="f">F</option>
-                <option value="g">G</option><option value="h">H</option><option value="i">I</option>
-                <option value="j">J</option>
-            </select>
-            <label id="vibe-auto-fetch-wrap" class="vibe-toggle hidden">
-                <input type="checkbox" id="vibe-auto-fetch" checked />
-                Auto-fetch
-            </label>
-        </div>
-        <input type="hidden" id="vibe-bpm" />
-        <input type="hidden" id="vibe-key" />
-        <div id="vibe-results" class="vibe-results"></div>
+        <button id="btn-inspire" class="bank-toolbar-btn" title="Inspire — generate bank name, notes, BPM, key">💡</button>
+        <button id="btn-draft" class="bank-toolbar-btn" title="Draft pads — generate 12 pad descriptions">📝</button>
+        <button id="btn-fetch-bank-only" class="bank-toolbar-btn" title="Fetch — find samples for current pads">🔍</button>
     </div>
 
     <div id="bank-edit-modal" class="bank-edit-modal hidden">
@@ -250,14 +234,13 @@
             <div class="progress-text" id="progress-text"></div>
             <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
         </div>
-        <button id="btn-fetch-bank" class="btn btn-accent">Generate/Fetch Bank</button>
-        <button id="btn-fetch-all" class="btn btn-accent-dim">Fetch All Banks</button>
         <button id="btn-export" class="btn btn-deploy">Export to SD</button>
-        <button id="btn-card-intel" class="btn btn-intel" title="Pull card intelligence: read performance data, patterns, user adjustments">📊 Card Intel</button>
     </footer>
 
     <!-- Settings dropdown (gear menu) -->
     <div id="settings-menu" class="settings-menu hidden">
+        <button id="btn-fetch-all" onclick="fetchAllBanks()">Fetch All Banks</button>
+        <button id="btn-card-intel" onclick="pullCardIntelligence()" title="Pull card intelligence: read performance data, patterns, user adjustments">📊 Card Intelligence</button>
         <button onclick="ingestDownloads()">Ingest Downloads</button>
         <button onclick="toggleDiskPanel()">Disk &amp; Cleanup</button>
         <button onclick="generatePattern()">Generate Pattern</button>
@@ -297,7 +280,7 @@
                     <div class="step-num">2</div>
                     <div class="step-content">
                         <h4>Fetch samples</h4>
-                        <p>Hit <strong>Fetch All</strong> to search your local library for matches. Or click a pad and hit <strong>Fetch</strong> for just that one.</p>
+                        <p>Use the toolbar icons: 💡 Inspire for creative direction, 📝 Draft to generate pad descriptions, 🔍 Fetch to find samples.</p>
                     </div>
                 </div>
                 <div class="tutorial-step">

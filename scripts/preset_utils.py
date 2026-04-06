@@ -276,8 +276,12 @@ def bank_to_preset(letter, config=None):
     }, require_full_pads=True)
 
 
-def load_preset_to_bank(ref, bank_letter):
-    """Load a preset into a specific bank slot in bank_config.yaml."""
+def load_preset_to_bank(ref, bank_letter, preserve_notes=False):
+    """Load a preset into a specific bank slot in bank_config.yaml.
+
+    When *preserve_notes* is True the bank's existing ``name`` and
+    ``notes`` are kept instead of being overwritten by the preset's values.
+    """
     preset = load_preset(ref, require_full_pads=True)
     if not preset:
         raise ValueError(f"Preset not found: {ref}")
@@ -285,7 +289,9 @@ def load_preset_to_bank(ref, bank_letter):
     config = _load_config()
     bank_key = f'bank_{bank_letter.lower()}'
 
-    config[bank_key] = {
+    existing = config.get(bank_key, {}) if isinstance(config, dict) else {}
+
+    new_entry = {
         'preset': ref,
         'name': preset.get('name', ref),
         'bpm': preset.get('bpm'),
@@ -294,6 +300,13 @@ def load_preset_to_bank(ref, bank_letter):
         'pads': dict(preset.get('pads', {})),
     }
 
+    if preserve_notes and isinstance(existing, dict):
+        if existing.get('name'):
+            new_entry['name'] = existing['name']
+        if existing.get('notes'):
+            new_entry['notes'] = existing['notes']
+
+    config[bank_key] = new_entry
     _save_config(config)
     return config[bank_key]
 
