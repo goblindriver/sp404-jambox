@@ -34,13 +34,17 @@ def _expect_type(rel_path: str) -> Tuple[Optional[str], str]:
     if rel_path.startswith("Drums/Kicks/"):
         return "KIK", "drums_kicks_folder"
     if rel_path.startswith("Drums/Snares-Claps/"):
-        tokens = _safe_split_tokens(rel_path)
-        # Prefer explicit snare naming over folder-level clap token.
-        if "snare" in tokens or "snr" in tokens:
-            return "SNR", "drums_snares_snare_exception"
-        if "clap" in tokens or "claps" in tokens:
-            return "CLP", "drums_snares_claps_folder"
-        return "SNR", "drums_snares_claps_folder"
+        # Basename substring checks: tokenization misses Clap01, Snr02, etc.
+        base = os.path.basename(rel_path)
+        bl = base.lower()
+        # Full breaks sometimes land in Snares-Claps by pack layout.
+        if "drum loop" in bl or (" bpm " in bl and "loop" in bl):
+            return "BRK", "drums_snares_misfiled_loop"
+        if "clap" in bl:
+            return "CLP", "drums_snares_clap_filename"
+        if "snare" in bl or "snr" in bl or "rimshot" in bl:
+            return "SNR", "drums_snares_snare_filename"
+        return "SNR", "drums_snares_default"
     if rel_path.startswith("Drums/Hi-Hats/"):
         tokens = _safe_split_tokens(rel_path)
         # Do not force hi-hat class for clearly vocal one-shots.
@@ -49,8 +53,17 @@ def _expect_type(rel_path: str) -> Tuple[Optional[str], str]:
         return "HAT", "drums_hihats_folder"
     if rel_path.startswith("Drums/Drum-Loops/"):
         tokens = _safe_split_tokens(rel_path)
+        bl = os.path.basename(rel_path).lower()
         if "vocal" in tokens or "vocals" in tokens or "vox" in tokens:
             return "VOX", "drums_loops_vocal_exception"
+        if any(
+            x in bl
+            for x in ("vocal", "vocals", "vox", "choir", "chant", "acapella", "vocoder")
+        ):
+            return "VOX", "drums_loops_vocal_filename"
+        # Word "sing", not substring inside "rising", "processing", etc.
+        if re.search(r"(?<![a-z])sing(ing)?(?![a-z])", bl):
+            return "VOX", "drums_loops_vocal_filename"
         return "BRK", "drums_drumloops_folder"
     if rel_path.startswith("Melodic/Bass/"):
         return "BAS", "melodic_bass_folder"
