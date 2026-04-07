@@ -106,11 +106,11 @@ bank_f:
     12: VOX robotic shout chop-ready
 bank_g:
   preset: genre/crystal-chaos
-  name: Crystal Chaos
-  bpm: 135
-  key: Fm
-  notes: 'Bitcrushed rave panic: blown-out drums, broken synths, digital artifacts,
-    scream energy.'
+  name: Granular Grind
+  bpm: 132
+  key: Em
+  notes: Purity Ring's granular shimmer clashes with Crystal Castles' bitcrushed darkness,
+    driven by P.O.S-style odd-meter drums and a raw, unapologetic energy.
   pads:
     1: KIK blown bitcrushed hard one-shot
     2: SNR noisy distorted snare one-shot
