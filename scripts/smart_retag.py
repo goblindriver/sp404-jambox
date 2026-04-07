@@ -881,20 +881,22 @@ def run(args):
     print("Tag DB: %d entries" % len(tag_db))
 
     # Determine files to process
+    processed_files = []
     if args.resume:
         cp = _load_checkpoint()
         if not cp:
             print("No checkpoint found. Use --all to start fresh.")
             sys.exit(1)
-        done = set(cp.get('processed_files', []))
+        done_from_cp = set(cp.get("processed_files", []))
         # Old checkpoints marked thin LLM rows "done" — put them back in the queue.
-        requeue = {r for r in done if _entry_needs_smart_retag(tag_db.get(r, {}))}
+        requeue = {r for r in done_from_cp if _entry_needs_smart_retag(tag_db.get(r, {}))}
         if requeue:
             print("Re-queuing %d checkpointed rows missing full enrichment" % len(requeue))
-            done -= requeue
+        done = done_from_cp - requeue
         all_files = _walk_library()
         files = [(r, f) for r, f in all_files if r not in done]
         print("Resuming: %d remaining of %d" % (len(files), len(all_files)))
+        processed_files = list(done)
     elif args.path:
         path = os.path.expanduser(args.path)
         if not os.path.isabs(path):
@@ -954,7 +956,6 @@ def run(args):
         print("  DELETE mode: quality_score <= 2 files will be permanently deleted")
 
     total_tagged = total_quarantined = total_errors = total_incomplete = 0
-    processed_files = []
     t0 = time.time()
     run_started_at = datetime.now().isoformat()
 

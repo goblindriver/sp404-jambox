@@ -39,6 +39,7 @@ data/audit_reports/
 data/card_sessions/
 
 # Smart retag / taste (local machine state)
+data/smart_retag.log
 data/retag_checkpoint.json
 data/taste_profile.json
 data/taste_profile_consumption.json

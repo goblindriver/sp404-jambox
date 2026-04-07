@@ -27,12 +27,13 @@ TEXTURES = {
 
 # ── Genres ──
 GENRES = {
-    "funk", "soul", "disco", "house", "electronic", "hiphop", "dub",
-    "ambient", "jazz", "rock", "punk", "dancehall", "latin", "pop", "rnb",
-    "industrial", "boom-bap", "lo-fi", "tropical", "afrobeat",
-    "lo-fi-hiphop", "trap", "drill", "gospel", "uk-garage", "footwork",
-    "city-pop", "psychedelic", "reggae", "classical", "world",
-    "breakcore", "shoegaze", "gqom", "baile-funk", "industrial-techno",
+    "afrobeat", "ambient", "baile-funk", "boom-bap", "breakbeat", "breakcore",
+    "city-pop", "classical", "dancehall", "disco", "drill", "drum-and-bass",
+    "dub", "dubstep", "electronic", "experimental", "footwork", "funk",
+    "gqom", "gospel", "hiphop", "house", "industrial", "industrial-techno",
+    "jazz", "jungle", "latin", "lo-fi", "lo-fi-hiphop", "pop", "psychedelic",
+    "punk", "reggae", "rnb", "rock", "shoegaze", "soul", "techno", "trap",
+    "trance", "tropical", "uk-garage", "world",
 }
 
 # ── Energy levels ──
@@ -52,6 +53,15 @@ GENRE_ALIASES = {
     "baile funk": "baile-funk", "favela funk": "baile-funk",
     "industrial techno": "industrial-techno",
     "industrial-techno": "industrial-techno",
+    "drum n bass": "drum-and-bass",
+    "drum and bass": "drum-and-bass",
+    "drum & bass": "drum-and-bass",
+    "dnb": "drum-and-bass",
+    "d&b": "drum-and-bass",
+    "jungle dnb": "jungle",
+    "juke": "footwork",
+    "tech house": "house",
+    "tech-house": "house",
 }
 
 TEXTURE_ALIASES = {

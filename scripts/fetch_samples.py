@@ -29,6 +29,7 @@ from tag_vocab import (
     GENRE_ALIASES, TEXTURE_ALIASES, VIBE_ALIASES,
 )
 from clap_engine import EmbeddingStore, embed_text, cosine_similarity
+from discogs_fetch_bridge import discogs_keyword_tokens
 
 SETTINGS = load_settings_for_script(__file__)
 SCORING_CONFIG = load_scoring_config()
@@ -388,12 +389,16 @@ def score_from_tags(entry, parsed_query, bank_config):
     entry_textures = set(t.lower() for t in entry.get("texture", []))
     entry_genres = set(g.lower() for g in entry.get("genre", []))
     fname_lower = os.path.basename(entry.get("path", "")).lower()
+    discogs_toks = discogs_keyword_tokens(entry)
+    disc_w = weights.get("discogs_keyword_match", 0)
 
     for kw in q["keywords"]:
         if kw in entry_vibes or kw in entry_textures or kw in entry_genres:
             score += weights["keyword_dimension"]
         elif kw in entry_tags:
             score += weights["keyword_tag"]
+        elif kw in discogs_toks:
+            score += disc_w
         elif kw in fname_lower:
             score += weights["keyword_filename"]
 
@@ -565,8 +570,11 @@ def rank_library_clap(query, bank_config=None, tag_db=None, used_files=None, lim
     _DANCE_KEYWORDS = {"dance", "groove", "party", "hype", "danceable", "funky",
                        "disco", "house", "bounce", "club", "rave", "energy"}
     wants_danceable = bool(parsed["keywords"] & _DANCE_KEYWORDS)
-    dance_bonus_val = SCORING_CONFIG.get("clap", {}).get("danceability_bonus", 0.03)
-    dance_threshold = SCORING_CONFIG.get("clap", {}).get("danceability_threshold", 0.6)
+    _clap = SCORING_CONFIG.get("clap") or {}
+    dance_bonus_val = _clap.get("danceability_bonus", 0.03)
+    dance_threshold = _clap.get("danceability_threshold", 0.6)
+    disc_bonus_each = _clap.get("discogs_keyword_bonus", 0.018)
+    disc_bonus_cap = _clap.get("discogs_keyword_bonus_cap", 0.045)
 
     results = []
     for i, rel_path in enumerate(paths):
@@ -635,7 +643,25 @@ def rank_library_clap(query, bank_config=None, tag_db=None, used_files=None, lim
             if file_dance >= dance_threshold:
                 dance_bonus = dance_bonus_val
 
-        final_score = float(scores[i]) + bpm_bonus + key_bonus + play_penalty + dur_penalty + dance_bonus
+        discogs_bonus = 0.0
+        if parsed["keywords"]:
+            dtoks = discogs_keyword_tokens(entry)
+            entry_genres_clap = {g.lower() for g in (entry.get("genre") or []) if isinstance(g, str)}
+            for kw in parsed["keywords"]:
+                if kw in dtoks and kw not in entry_genres_clap:
+                    discogs_bonus += disc_bonus_each
+            if discogs_bonus > disc_bonus_cap:
+                discogs_bonus = disc_bonus_cap
+
+        final_score = (
+            float(scores[i])
+            + bpm_bonus
+            + key_bonus
+            + play_penalty
+            + dur_penalty
+            + dance_bonus
+            + discogs_bonus
+        )
 
         if final_score >= min_score:
             results.append({

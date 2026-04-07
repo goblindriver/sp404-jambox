@@ -59,7 +59,7 @@ class FetchSamplesScriptTests(unittest.TestCase):
 
             config = jambox_tuning.load_scoring_config(scoring_path)
 
-        self.assertEqual(config["score_version"], 3)
+        self.assertEqual(config["score_version"], jambox_tuning.DEFAULT_SCORING["score_version"])
         self.assertEqual(config["weights"]["type_exact"], 10)
 
     def test_score_from_tags_uses_configurable_weights(self):

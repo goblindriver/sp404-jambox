@@ -500,7 +500,10 @@ def classify_source(rel_path, filename, type_code):
 # ═══════════════════════════════════════════════════════════
 
 PERCUSSIVE_CODES = {"KIK", "SNR", "CLP", "HAT", "PRC", "CYM", "RIM", "BRK", "DRM"}
-HIGH_ENERGY_GENRES = {"trap", "drill", "house", "electronic", "footwork", "rock"}
+HIGH_ENERGY_GENRES = {
+    "trap", "drill", "house", "electronic", "footwork", "rock",
+    "techno", "trance", "dubstep", "drum-and-bass", "breakbeat", "jungle",
+}
 LOW_ENERGY_GENRES = {"ambient", "lo-fi-hiphop", "classical", "dub"}
 
 

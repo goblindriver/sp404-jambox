@@ -1,4 +1,4 @@
-score_version: 5
+score_version: 6
 
 # CLAP-powered scoring (primary — cosine similarity drives ranking)
 # The CLAP similarity score (0.0-1.0) is the dominant signal.
@@ -15,6 +15,8 @@ clap:
   min_similarity: 0.05
   danceability_bonus: 0.03
   danceability_threshold: 0.6
+  discogs_keyword_bonus: 0.018
+  discogs_keyword_bonus_cap: 0.045
 
 # Legacy tag-based scoring (fallback when CLAP embeddings unavailable)
 weights:
@@ -32,6 +34,7 @@ weights:
   keyword_dimension: 3
   keyword_tag: 2
   keyword_filename: 1
+  discogs_keyword_match: 2
   oneshot_long_penalty: -3
   loop_short_penalty: -3
   plex_moods_bonus: 1

@@ -21,6 +21,12 @@ DEFAULT_VIBE_MAPPINGS = {
         "ambient": [("PAD", "pad"), ("SYN", "synth")],
         "house": [("SYN", "synth"), ("KEY", "piano")],
         "techno": [("SYN", "synth"), ("SYN", "lead")],
+        "trance": [("SYN", "synth"), ("SYN", "lead")],
+        "dubstep": [("SYN", "synth"), ("BAS", "bass")],
+        "drum-and-bass": [("SYN", "synth"), ("BAS", "bass")],
+        "breakbeat": [("SYN", "synth"), ("BRK", "break")],
+        "jungle": [("SYN", "synth"), ("BAS", "bass")],
+        "experimental": [("SYN", "synth"), ("PAD", "pad")],
         "hip-hop": [("KEY", "piano"), ("SYN", "synth")],
         "lo-fi": [("KEY", "piano"), ("GTR", "guitar")],
         "industrial": [("SYN", "synth"), ("SYN", "lead")],
@@ -28,7 +34,12 @@ DEFAULT_VIBE_MAPPINGS = {
     },
     "default_instruments": [("SYN", "synth"), ("KEY", "keys")],
     "fallback_dimensions": {
-        "genre": {"funk", "disco", "soul", "rock", "electronic", "ambient", "house", "techno", "hiphop", "lo-fi", "industrial", "pop", "rnb", "dub", "dancehall", "latin", "boom-bap", "tropical", "afrobeat"},
+        "genre": {
+            "afrobeat", "ambient", "boom-bap", "breakbeat", "dancehall", "disco", "drum-and-bass",
+            "dub", "dubstep", "electronic", "experimental", "funk", "hiphop", "house", "industrial",
+            "jungle", "latin", "lo-fi", "pop", "rnb", "rock", "soul", "techno", "trance",
+            "tropical",
+        },
         "vibe": {"dark", "mellow", "hype", "dreamy", "nostalgic", "aggressive", "soulful", "warm", "tense", "chill", "playful", "eerie", "gritty", "ethereal", "triumphant", "melancholic", "uplifting"},
         "texture": {"dusty", "lo-fi", "raw", "clean", "warm", "bitcrushed", "airy", "crunchy", "crispy", "glassy", "saturated", "vinyl", "tape", "digital", "organic", "bright", "thick", "thin", "filtered", "muddy", "warbly"},
         "energy": {"low", "mid", "high"},
@@ -53,6 +64,20 @@ DEFAULT_VIBE_MAPPINGS = {
     },
 }
 
+DEFAULT_CLAP_SCORING = {
+    "bpm_close_bonus": 0.05,
+    "bpm_near_bonus": 0.02,
+    "key_exact_bonus": 0.03,
+    "key_compatible_bonus": 0.01,
+    "playability_mismatch_penalty": -0.15,
+    "duration_mismatch_penalty": -0.10,
+    "min_similarity": 0.05,
+    "danceability_bonus": 0.03,
+    "danceability_threshold": 0.6,
+    "discogs_keyword_bonus": 0.018,
+    "discogs_keyword_bonus_cap": 0.045,
+}
+
 DEFAULT_SCORING = {
     "score_version": 4,
     "weights": {
@@ -70,6 +95,7 @@ DEFAULT_SCORING = {
         "keyword_dimension": 3,
         "keyword_tag": 2,
         "keyword_filename": 1,
+        "discogs_keyword_match": 2,
         "oneshot_long_penalty": -3,
         "loop_short_penalty": -3,
         "plex_moods_bonus": 1,
@@ -160,6 +186,7 @@ def load_scoring_config(path=None):
     result = {
         "score_version": DEFAULT_SCORING["score_version"],
         "weights": dict(DEFAULT_SCORING["weights"]),
+        "clap": dict(DEFAULT_CLAP_SCORING),
     }
 
     try:
@@ -176,6 +203,14 @@ def load_scoring_config(path=None):
                 result["weights"][key] = float(weights.get(key, default_value))
             except (TypeError, ValueError):
                 result["weights"][key] = default_value
+
+    clap = payload.get("clap")
+    if isinstance(clap, dict):
+        for key, default_value in result["clap"].items():
+            try:
+                result["clap"][key] = float(clap.get(key, default_value))
+            except (TypeError, ValueError):
+                result["clap"][key] = default_value
 
     return result
 
