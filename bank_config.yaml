@@ -10,10 +10,10 @@ bank_b:
     and vocal shouts. Built for driving, hypnotic grooves that hit hard. Think Block
     Rockin' Beats meets Firestarter.
   pads:
-    1: KIK punchy distorted fat groove loop
-    2: SNR cracking loud compressed backbeat loop
-    3: HAT crisp open metallic pattern loop
-    4: CLP big layered room clap loop
+    1: BRK big-beat fat kick-driven stomp loop
+    2: BRK loud compressed break backbeat loop
+    3: BRK open-hat metallic groove loop
+    4: BRK room clap stack loop
     5: BRK funk breakbeat compressed loop
     6: BAS acid 303 squelchy loop
     7: SYN rave stab hoover loop
@@ -33,10 +33,10 @@ bank_c:
 
     '
   pads:
-    1: KIK house deep thumping four-floor loop
-    2: SNR sharp snappy tight backbeat loop
-    3: HAT rapid rolling programmed trap loop
-    4: CLP house clap reverb layered loop
+    1: BRK house four-floor kick-heavy loop
+    2: BRK trap-leaning snare-roll break loop
+    3: BRK rapid programmed hat groove loop
+    4: BRK house clap layer stack loop
     5: BAS house bouncing rolling sub bass loop
     6: VOX rapid-fire aggressive attitude rap loop
     7: SYN house stab bright filtered chord loop
@@ -46,24 +46,28 @@ bank_c:
     11: SYN dark arp menacing minor synth loop
     12: FX crowd hype energy attitude shout loop
 bank_d:
-  preset: auto/pop-nostalgia-120-bpm-rock-high-energy-s
-  name: Cipher Pressure
+  preset: genre/breakbeat-bunker
+  name: Breakbeat Bunker
   bpm: 92
-  key: Dm
-  notes: Boom-bap spine with grimy drums, vinyl dust, low-end weight, and noir chops.
+  key: XX
+  notes: 'Twelve different break personalities — nothing but BRK. Amen to disco, jungle
+    to halftime, dusty vinyl to rave; built for chopping, layering, and live resequencing
+    on the 404. Tempo is a loose center; match or warp on-device.
+
+    '
   pads:
-    1: KIK thumpy dusty boombap groove loop
-    2: SNR gritty papery snare pattern loop
-    3: HAT short crunchy boombap pattern loop
-    4: PRC short rim wood dusty groove loop
-    5: BRK boombap swung dusty loop
-    6: BAS sub heavy dark loop
-    7: KEY jazzy noir chords loop
-    8: SYN eerie tape-wobble loop
-    9: KEY melancholic soul chords loop
-    10: RSR cinematic synth riser transition
-    11: BRK drum-break raw chop-ready
-    12: VOX spoken texture chop-ready
+    1: BRK amen chopped dirty jungle loop
+    2: BRK funk live drummer warm pocket loop
+    3: BRK boom bap dusty vinyl crackle loop
+    4: BRK soul swing neck-snap groove loop
+    5: BRK jungle rolling fast ride loop
+    6: BRK halftime heavy weighted downtempo loop
+    7: BRK disco four-on-floor punchy loop
+    8: BRK breakbeat syncopated skip ghost loop
+    9: BRK latin percussion cowbell groove loop
+    10: BRK industrial metallic machine loop
+    11: BRK lofi warped tape wobble loop
+    12: BRK rave big-beat hoover-era loop
 bank_e:
   preset: auto/lofi-hiphop-electro-funk
   name: Caribbean Heatwave
@@ -72,10 +76,10 @@ bank_e:
   notes: Dancehall + tropical percussion with rolling basslines, bright keys, and
     party vox.
   pads:
-    1: KIK punchy dancehall kick loop
-    2: SNR tight dancehall snare pattern loop
-    3: HAT shaker tropical groove loop
-    4: PRC conga bongo island percussion loop
+    1: BRK dancehall dembow kick-heavy loop
+    2: BRK dancehall snare bounce loop
+    3: BRK tropical shaker perc loop
+    4: BRK conga bongo island loop
     5: BRK dancehall dembow drum loop
     6: BAS sub reggae wobble loop
     7: KEY bell-chime tropical bright loop
@@ -92,10 +96,10 @@ bank_f:
   notes: 'Dance-punk pressure: gritty synth bass, dry drums, tense leads, warehouse
     transitions.'
   pads:
-    1: KIK hard clipped electro kick loop
-    2: SNR dry smack electro backbeat loop
-    3: HAT short sharp ticking electro loop
-    4: CLP gated crunchy electro clap loop
+    1: BRK electro punk kick loop
+    2: BRK dry electro backbeat loop
+    3: BRK sharp 16th electro hat loop
+    4: BRK gated clap electro loop
     5: BRK electro-punk driving loop
     6: BAS distorted synthline loop
     7: SYN arpeggio tense neon loop
@@ -112,10 +116,10 @@ bank_g:
   notes: Purity Ring's granular shimmer clashes with Crystal Castles' bitcrushed darkness,
     driven by P.O.S-style odd-meter drums and a raw, unapologetic energy.
   pads:
-    1: KIK blown bitcrushed hard groove loop
-    2: SNR noisy distorted snare loop
-    3: HAT glitch stutter digital loop
-    4: PRC static crackle burst loop
+    1: BRK bitcrushed blown kick loop
+    2: BRK noisy glitch snare loop
+    3: BRK digital stutter hat loop
+    4: BRK static burst perc loop
     5: BRK broken-rave chaotic loop
     6: BAS distorted tearing sub loop
     7: SYN detuned screaming lead loop
@@ -132,10 +136,10 @@ bank_h:
   notes: 'Americana roots palette: pedal steel, fiddle, dusty drums, barroom keys,
     harmonica fire.'
   pads:
-    1: KIK warm acoustic thump groove loop
-    2: SNR brushed rim woody pattern loop
-    3: HAT soft ride airy swing loop
-    4: PRC tambourine shaker organic loop
+    1: BRK brushed kick roots room loop
+    2: BRK woody rim brush pattern loop
+    3: BRK soft ride swing airy loop
+    4: BRK tambourine organic folk loop
     5: GTR pedal-steel country slide twang loop
     6: GTR acoustic fingerpick americana warm loop
     7: KEY honky-tonk bright loop
@@ -152,10 +156,10 @@ bank_i:
   notes: 'Ethereal future-pop: granular vox, glassy percussion, huge pads, soft sub
     pulses.'
   pads:
-    1: KIK soft sub pillow groove loop
-    2: SNR glassy reverb snap pattern loop
-    3: HAT short tiny sparkling loop
-    4: PRC bell chime granular loop
+    1: BRK soft pillow kick loop
+    2: BRK glassy minimal snare loop
+    3: BRK tiny sparkle hat loop
+    4: BRK bell granular perc loop
     5: PAD lush evolving dreamy loop
     6: PAD dreamy glassy vocal wash layer
     7: SYN crystalline arp loop
