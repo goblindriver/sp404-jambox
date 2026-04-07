@@ -10,10 +10,10 @@ bank_b:
     and vocal shouts. Built for driving, hypnotic grooves that hit hard. Think Block
     Rockin' Beats meets Firestarter.
   pads:
-    1: KIK punchy distorted fat one-shot
-    2: SNR cracking loud compressed one-shot
-    3: HAT crisp open metallic one-shot
-    4: CLP big layered room one-shot
+    1: KIK punchy distorted fat groove loop
+    2: SNR cracking loud compressed backbeat loop
+    3: HAT crisp open metallic pattern loop
+    4: CLP big layered room clap loop
     5: BRK funk breakbeat compressed loop
     6: BAS acid 303 squelchy loop
     7: SYN rave stab hoover loop
@@ -33,10 +33,10 @@ bank_c:
 
     '
   pads:
-    1: KIK house deep thumping four-floor one-shot
-    2: SNR sharp snappy tight crack one-shot
-    3: HHT rapid rolling programmed trap one-shot
-    4: CLP house clap reverb layered one-shot
+    1: KIK house deep thumping four-floor loop
+    2: SNR sharp snappy tight backbeat loop
+    3: HAT rapid rolling programmed trap loop
+    4: CLP house clap reverb layered loop
     5: BAS house bouncing rolling sub bass loop
     6: VOX rapid-fire aggressive attitude rap loop
     7: SYN house stab bright filtered chord loop
@@ -52,10 +52,10 @@ bank_d:
   key: Dm
   notes: Boom-bap spine with grimy drums, vinyl dust, low-end weight, and noir chops.
   pads:
-    1: KIK thumpy dusty boombap one-shot
-    2: SNR gritty papery snare hit one-shot
-    3: HAT short crunchy boombap one-shot
-    4: PRC short rim wood dusty one-shot
+    1: KIK thumpy dusty boombap groove loop
+    2: SNR gritty papery snare pattern loop
+    3: HAT short crunchy boombap pattern loop
+    4: PRC short rim wood dusty groove loop
     5: BRK boombap swung dusty loop
     6: BAS sub heavy dark loop
     7: KEY jazzy noir chords loop
@@ -72,10 +72,10 @@ bank_e:
   notes: Dancehall + tropical percussion with rolling basslines, bright keys, and
     party vox.
   pads:
-    1: KIK punchy dancehall one-shot
-    2: SNR tight dancehall snare hit one-shot
-    3: HAT shaker tropical one-shot
-    4: PRC conga bongo island one-shot
+    1: KIK punchy dancehall kick loop
+    2: SNR tight dancehall snare pattern loop
+    3: HAT shaker tropical groove loop
+    4: PRC conga bongo island percussion loop
     5: BRK dancehall dembow drum loop
     6: BAS sub reggae wobble loop
     7: KEY bell-chime tropical bright loop
@@ -92,10 +92,10 @@ bank_f:
   notes: 'Dance-punk pressure: gritty synth bass, dry drums, tense leads, warehouse
     transitions.'
   pads:
-    1: KIK hard clipped electro one-shot
-    2: SNR dry smack electro one-shot
-    3: HAT short sharp ticking electro one-shot
-    4: CLP gated crunchy electro one-shot
+    1: KIK hard clipped electro kick loop
+    2: SNR dry smack electro backbeat loop
+    3: HAT short sharp ticking electro loop
+    4: CLP gated crunchy electro clap loop
     5: BRK electro-punk driving loop
     6: BAS distorted synthline loop
     7: SYN arpeggio tense neon loop
@@ -112,10 +112,10 @@ bank_g:
   notes: Purity Ring's granular shimmer clashes with Crystal Castles' bitcrushed darkness,
     driven by P.O.S-style odd-meter drums and a raw, unapologetic energy.
   pads:
-    1: KIK blown bitcrushed hard one-shot
-    2: SNR noisy distorted snare one-shot
-    3: HAT glitch stutter digital one-shot
-    4: PRC static crackle burst one-shot
+    1: KIK blown bitcrushed hard groove loop
+    2: SNR noisy distorted snare loop
+    3: HAT glitch stutter digital loop
+    4: PRC static crackle burst loop
     5: BRK broken-rave chaotic loop
     6: BAS distorted tearing sub loop
     7: SYN detuned screaming lead loop
@@ -132,10 +132,10 @@ bank_h:
   notes: 'Americana roots palette: pedal steel, fiddle, dusty drums, barroom keys,
     harmonica fire.'
   pads:
-    1: KIK warm acoustic thump one-shot
-    2: SNR brushed rim woody one-shot
-    3: HAT soft ride airy one-shot
-    4: PRC tambourine shaker organic one-shot
+    1: KIK warm acoustic thump groove loop
+    2: SNR brushed rim woody pattern loop
+    3: HAT soft ride airy swing loop
+    4: PRC tambourine shaker organic loop
     5: GTR pedal-steel country slide twang loop
     6: GTR acoustic fingerpick americana warm loop
     7: KEY honky-tonk bright loop
@@ -152,10 +152,10 @@ bank_i:
   notes: 'Ethereal future-pop: granular vox, glassy percussion, huge pads, soft sub
     pulses.'
   pads:
-    1: KIK soft sub pillow one-shot
-    2: SNR glassy reverb snap one-shot
-    3: HAT short tiny sparkling one-shot
-    4: PRC bell chime granular one-shot
+    1: KIK soft sub pillow groove loop
+    2: SNR glassy reverb snap pattern loop
+    3: HAT short tiny sparkling loop
+    4: PRC bell chime granular loop
     5: PAD lush evolving dreamy loop
     6: PAD dreamy glassy vocal wash layer
     7: SYN crystalline arp loop
