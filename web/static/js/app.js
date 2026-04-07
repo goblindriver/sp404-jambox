@@ -1191,14 +1191,14 @@ function toggleSettingsMenu() {
     }
 
     if (wasHidden) {
+        closePowerMenu();
         reconcileActionState();
         setTimeout(() => {
             _settingsMenuHandler = (e) => {
-                if (!menu.contains(e.target) && e.target.id !== 'btn-settings') {
-                    menu.classList.add('hidden');
-                    document.removeEventListener('click', _settingsMenuHandler);
-                    _settingsMenuHandler = null;
-                }
+                if (menu.contains(e.target) || e.target.closest('#btn-settings')) return;
+                menu.classList.add('hidden');
+                document.removeEventListener('click', _settingsMenuHandler);
+                _settingsMenuHandler = null;
             };
             document.addEventListener('click', _settingsMenuHandler);
         }, 0);
@@ -1694,6 +1694,7 @@ function hideTutorial() {
 async function ingestDownloads() {
     toast('Ingesting sample packs from Downloads...');
     document.getElementById('settings-menu').classList.add('hidden');
+    closePowerMenu();
 
     try {
         const result = await api('/api/pipeline/ingest', { method: 'POST' });
@@ -2668,33 +2669,53 @@ function startBlackoutLivePoll() {
 }
 
 let _powerMenuHandler = null;
-function togglePowerMenu() {
-    const menu = document.getElementById('power-menu');
-    const wasHidden = menu.classList.contains('hidden');
-    menu.classList.toggle('hidden');
+let _powerMenuKeyHandler = null;
 
+function closePowerMenu() {
+    const menu = document.getElementById('power-menu');
+    if (menu) menu.classList.add('hidden');
+    stopBlackoutLivePoll();
     if (_powerMenuHandler) {
         document.removeEventListener('click', _powerMenuHandler);
         _powerMenuHandler = null;
     }
-
-    if (wasHidden) {
-        fetchServerStatus();
-        startBlackoutLivePoll();
-        setTimeout(() => {
-            _powerMenuHandler = (e) => {
-                if (!menu.contains(e.target) && e.target.id !== 'btn-power') {
-                    menu.classList.add('hidden');
-                    stopBlackoutLivePoll();
-                    document.removeEventListener('click', _powerMenuHandler);
-                    _powerMenuHandler = null;
-                }
-            };
-            document.addEventListener('click', _powerMenuHandler);
-        }, 0);
-    } else {
-        stopBlackoutLivePoll();
+    if (_powerMenuKeyHandler) {
+        document.removeEventListener('keydown', _powerMenuKeyHandler);
+        _powerMenuKeyHandler = null;
     }
+}
+
+function togglePowerMenu() {
+    const menu = document.getElementById('power-menu');
+    if (!menu) return;
+    if (!menu.classList.contains('hidden')) {
+        closePowerMenu();
+        return;
+    }
+    closePowerMenu();
+    const settingsMenu = document.getElementById('settings-menu');
+    if (settingsMenu) settingsMenu.classList.add('hidden');
+    if (_settingsMenuHandler) {
+        document.removeEventListener('click', _settingsMenuHandler);
+        _settingsMenuHandler = null;
+    }
+    menu.classList.remove('hidden');
+    fetchServerStatus();
+    startBlackoutLivePoll();
+    setTimeout(() => {
+        _powerMenuHandler = (e) => {
+            if (menu.contains(e.target) || e.target.closest('#btn-power')) return;
+            closePowerMenu();
+        };
+        document.addEventListener('click', _powerMenuHandler);
+        _powerMenuKeyHandler = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closePowerMenu();
+            }
+        };
+        document.addEventListener('keydown', _powerMenuKeyHandler);
+    }, 0);
 }
 
 function renderBlackoutPanel(b) {
@@ -2829,6 +2850,7 @@ async function fetchServerStatus() {
     const dot = document.querySelector('#power-status .power-status-dot');
     const btn = document.getElementById('btn-power');
     const container = document.getElementById('power-features');
+    if (!dot || !btn || !container) return;
     const [sRes, bRes] = await Promise.allSettled([
         api('/api/pipeline/server/status'),
         api('/api/blackout/status'),
@@ -2838,16 +2860,31 @@ async function fetchServerStatus() {
         dot.classList.add('active');
         btn.classList.remove('offline');
         const features = sRes.value.features || {};
+        const clap = sRes.value.clap || {};
+        const discogs = sRes.value.discogs || {};
         const feats = [
             ['LLM', features.llm],
+            ['CLAP', features.clap],
+            ['Discogs', features.discogs],
             ['librosa', features.librosa],
             ['fpcalc', features.fpcalc],
             ['demucs', features.demucs],
             ['watcher', features.watcher],
         ];
-        container.innerHTML = feats.map(([name, on]) =>
+        const lines = feats.map(([name, on]) =>
             `<div class="feat ${on ? 'feat-on' : 'feat-off'}">${on ? '\u2713' : '\u2717'} ${name}</div>`
-        ).join('');
+        );
+        if (clap.available) {
+            lines.push(
+                `<div class="power-meta-line" title="Text+audio embeddings for fetch + search">CLAP ${clap.embedded} emb · ${clap.coverage}%</div>`
+            );
+        }
+        if (discogs.available) {
+            lines.push(
+                `<div class="power-meta-line" title="Genre + danceability from Discogs-EffNet">Discogs ${discogs.classified} · ${discogs.coverage}% · dance ${discogs.danceable}</div>`
+            );
+        }
+        container.innerHTML = lines.join('');
     } else {
         dot.classList.remove('active');
         btn.classList.add('offline');
@@ -2865,8 +2902,7 @@ async function fetchServerStatus() {
 
 async function restartServer() {
     if (!confirm('Restart the Jambox server? The page will reload.')) return;
-    stopBlackoutLivePoll();
-    document.getElementById('power-menu').classList.add('hidden');
+    closePowerMenu();
     toast('Restarting server...');
     try {
         await api('/api/pipeline/server/restart', { method: 'POST' });

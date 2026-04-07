@@ -1856,6 +1856,13 @@ main {
 }
 .power-features .feat-on { color: #4caf50; }
 .power-features .feat-off { color: var(--text-muted); }
+.power-meta-line {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 4px 16px 8px;
+    font-family: 'Space Mono', monospace;
+    line-height: 1.35;
+}
 
 .blackout-panel {
     padding: 6px 16px 8px;
