@@ -23,6 +23,7 @@ from tag_vocab import (
     PLAYABILITIES as _VOCAB_PLAYABILITIES,
     GENRE_ALIASES, TEXTURE_ALIASES, VIBE_ALIASES,
 )
+from clap_engine import EmbeddingStore, embed_text, cosine_similarity
 
 SETTINGS = load_settings_for_script(__file__)
 SCORING_CONFIG = load_scoring_config()
@@ -365,28 +366,193 @@ def load_tag_db():
     return db
 
 
-def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entries=None):
-    """Search the local library using the tag database.
+# ---------------------------------------------------------------------------
+# CLAP embedding store (lazy singleton)
+# ---------------------------------------------------------------------------
 
-    Args:
-        query: pad description string
-        bank_config: bank-level config (bpm, key, etc.)
-        tag_db: the loaded _tags.json database
-        used_files: set of file paths already assigned (for deduplication)
-        min_score: minimum score to accept a match
-        cache_entries: optional in-memory score cache (avoids disk I/O per pad)
+_embed_store = None
+
+def _get_embed_store():
+    global _embed_store
+    if _embed_store is None:
+        _embed_store = EmbeddingStore(LIBRARY)
+    return _embed_store
+
+
+def _clap_available():
+    """Check if CLAP embeddings exist for this library."""
+    store = _get_embed_store()
+    return store.count > 0
+
+
+# ---------------------------------------------------------------------------
+# CLAP-powered search and ranking
+# ---------------------------------------------------------------------------
+
+import numpy as np
+
+
+def _build_clap_query_text(parsed, bank_config):
+    """Build the text string for CLAP embedding from a parsed pad query.
+
+    Strips out structural tokens (type_code, BPM number, key) and keeps
+    the descriptive keywords that carry subjective meaning.
+    """
+    parts = []
+    if parsed["keywords"]:
+        parts.extend(sorted(parsed["keywords"]))
+    if parsed.get("playability"):
+        parts.append(parsed["playability"])
+    return " ".join(parts) if parts else "general audio sample"
+
+
+def rank_library_clap(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0.0):
+    """Rank library matches using CLAP embedding similarity.
+
+    Scoring: CLAP cosine similarity (dominant) + BPM/key structural bonuses.
+    Type_code and playability act as hard filters when specified in the query.
+    Falls back to tag-based scoring if CLAP store is empty.
+    """
+    parsed = parse_pad_query(query)
+    bank_config = bank_config or {}
+    tag_db = tag_db if tag_db is not None else load_tag_db()
+    tag_db = tag_db if isinstance(tag_db, dict) else {}
+    used_files = used_files or set()
+
+    store = _get_embed_store()
+    if store.count == 0:
+        return rank_library_matches_legacy(
+            query, bank_config=bank_config, tag_db=tag_db,
+            used_files=used_files, limit=limit, min_score=int(min_score * 30),
+        )
+
+    query_text = _build_clap_query_text(parsed, bank_config)
+    text_emb = embed_text(query_text)[0]
+
+    matrix = store.load_matrix()
+    paths = store.paths_array()
+    scores = cosine_similarity(text_emb, matrix)
+
+    target_bpm = parsed["bpm"] or bank_config.get("bpm")
+    target_key = parsed["key"] or bank_config.get("key")
+    weights = SCORING_WEIGHTS
+
+    _DANCE_KEYWORDS = {"dance", "groove", "party", "hype", "danceable", "funky",
+                       "disco", "house", "bounce", "club", "rave", "energy"}
+    wants_danceable = bool(parsed["keywords"] & _DANCE_KEYWORDS)
+    dance_bonus_val = SCORING_CONFIG.get("clap", {}).get("danceability_bonus", 0.03)
+    dance_threshold = SCORING_CONFIG.get("clap", {}).get("danceability_threshold", 0.6)
+
+    results = []
+    for i, rel_path in enumerate(paths):
+        if not rel_path:
+            continue
+        entry = tag_db.get(rel_path, {})
+        if is_excluded_rel_path(rel_path):
+            continue
+
+        full_path = os.path.join(LIBRARY, rel_path)
+        if full_path in used_files:
+            continue
+
+        # Hard filter: type_code
+        if parsed["type_code"]:
+            entry_tc = entry.get("type_code", "")
+            if entry_tc != parsed["type_code"]:
+                related = _RELATED_TYPE_CODES.get(parsed["type_code"], set())
+                if entry_tc not in related:
+                    continue
+
+        # Hard filter: playability (soft — penalize rather than exclude)
+        entry_play = entry.get("playability", "")
+        play_penalty = 0.0
+        if parsed["playability"]:
+            if parsed["playability"] == "one-shot" and entry_play == "loop":
+                play_penalty = -0.15
+            elif parsed["playability"] == "loop" and entry_play == "one-shot":
+                play_penalty = -0.15
+
+        # Duration sanity
+        duration = entry.get("duration", 0) or 0
+        dur_penalty = 0.0
+        if parsed["playability"] == "one-shot" and duration > 10:
+            dur_penalty = -0.10
+        elif parsed["playability"] == "loop" and 0 < duration < 1:
+            dur_penalty = -0.10
+
+        # BPM bonus (normalized to 0-0.05 range)
+        bpm_bonus = 0.0
+        if target_bpm and entry.get("bpm"):
+            try:
+                diff = abs(float(entry["bpm"]) - float(target_bpm))
+            except (TypeError, ValueError):
+                diff = 999
+            if diff <= 5:
+                bpm_bonus = 0.05
+            elif diff <= 15:
+                bpm_bonus = 0.02
+
+        # Key bonus (normalized to 0-0.03 range)
+        key_bonus = 0.0
+        if target_key and target_key.upper() != "XX" and entry.get("key"):
+            norm_entry = _normalize_key(entry["key"])
+            norm_target = _normalize_key(target_key)
+            if norm_entry and norm_target:
+                if norm_entry.lower() == norm_target.lower():
+                    key_bonus = 0.03
+                elif _keys_compatible(target_key, entry["key"]):
+                    key_bonus = 0.01
+
+        # Danceability bonus for dance-related queries
+        dance_bonus = 0.0
+        if wants_danceable:
+            file_dance = entry.get("danceability") or 0.0
+            if file_dance >= dance_threshold:
+                dance_bonus = dance_bonus_val
+
+        final_score = float(scores[i]) + bpm_bonus + key_bonus + play_penalty + dur_penalty + dance_bonus
+
+        if final_score >= min_score:
+            results.append({
+                "path": full_path,
+                "rel_path": rel_path,
+                "score": round(final_score, 4),
+                "clap_sim": round(float(scores[i]), 4),
+                "type_code": entry.get("type_code"),
+                "playability": entry_play,
+                "bpm": entry.get("bpm"),
+                "key": entry.get("key"),
+                "duration": duration,
+            })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:limit]
+
+
+def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entries=None):
+    """Search the local library using CLAP embeddings (primary) or tag DB (fallback).
 
     Returns (filepath, score) or (None, 0).
     """
-    matches = rank_library_matches(
-        query,
-        bank_config=bank_config,
-        tag_db=tag_db,
-        used_files=used_files,
-        limit=max(2, FETCH_TOP_N),
-        min_score=min_score,
-        cache_entries=cache_entries,
-    )
+    if _clap_available():
+        matches = rank_library_clap(
+            query,
+            bank_config=bank_config,
+            tag_db=tag_db,
+            used_files=used_files,
+            limit=max(2, FETCH_TOP_N),
+            min_score=0.05,
+        )
+    else:
+        matches = rank_library_matches_legacy(
+            query,
+            bank_config=bank_config,
+            tag_db=tag_db,
+            used_files=used_files,
+            limit=max(2, FETCH_TOP_N),
+            min_score=min_score,
+            cache_entries=cache_entries,
+        )
     if matches:
         picked = choose_diverse_match(matches, deterministic=FETCH_DETERMINISTIC)
         return picked["path"], picked["score"]
@@ -394,12 +560,22 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entr
 
 
 def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0, cache_entries=None):
-    """Return ranked library matches for a natural-language-derived query.
+    """Public interface — routes to CLAP or legacy scoring."""
+    if _clap_available():
+        clap_min = min_score / 30.0 if min_score > 1 else min_score
+        return rank_library_clap(
+            query, bank_config=bank_config, tag_db=tag_db,
+            used_files=used_files, limit=limit, min_score=clap_min,
+        )
+    return rank_library_matches_legacy(
+        query, bank_config=bank_config, tag_db=tag_db,
+        used_files=used_files, limit=limit, min_score=min_score,
+        cache_entries=cache_entries,
+    )
 
-    When cache_entries is provided, uses it as the in-memory cache and skips
-    disk I/O. The caller is responsible for calling save_score_cache once at
-    session end. When None, loads/saves per call (backward compatible).
-    """
+
+def rank_library_matches_legacy(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0, cache_entries=None):
+    """Legacy tag-based ranking (fallback when no CLAP embeddings exist)."""
     parsed = parse_pad_query(query)
     bank_config = bank_config or {}
     tag_db = tag_db if tag_db is not None else load_tag_db()

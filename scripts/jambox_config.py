@@ -429,6 +429,32 @@ def load_tag_db(tags_file):
     return payload if isinstance(payload, dict) else {}
 
 
+_TAG_DB_UPSERT_CHUNK = 400
+
+
+def upsert_tag_entries(tags_file, entries):
+    """Insert or replace only the given paths (no stale cleanup, no full JSON write).
+
+    Use for batch workers that checkpoint progress without re-serializing the whole DB.
+    """
+    import sqlite3
+    if not entries:
+        return
+    db_path = _tags_sqlite_path(tags_file)
+    conn = _ensure_tags_sqlite(db_path)
+    try:
+        items = list(entries.items())
+        for i in range(0, len(items), _TAG_DB_UPSERT_CHUNK):
+            chunk = items[i : i + _TAG_DB_UPSERT_CHUNK]
+            conn.executemany(
+                "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
+                [(k, json.dumps(v)) for k, v in chunk],
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def save_tag_db(tags_file, db, *, allow_shrink=False):
     """Save the tag database to SQLite. Also writes JSON for compatibility.
 
@@ -445,10 +471,13 @@ def save_tag_db(tags_file, db, *, allow_shrink=False):
     try:
         existing_count = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
 
-        conn.executemany(
-            "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
-            [(k, json.dumps(v)) for k, v in db.items()]
-        )
+        items = list(db.items())
+        for i in range(0, len(items), _TAG_DB_UPSERT_CHUNK):
+            chunk = items[i : i + _TAG_DB_UPSERT_CHUNK]
+            conn.executemany(
+                "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
+                [(k, json.dumps(v)) for k, v in chunk],
+            )
 
         existing = {r[0] for r in conn.execute("SELECT rel_path FROM tags").fetchall()}
         stale = existing - set(db.keys())

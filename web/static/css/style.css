@@ -858,11 +858,14 @@ main {
 }
 
 .search-box {
-    margin-bottom: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
 }
 
 .search-box input {
-    width: 100%;
+    flex: 1;
     padding: 8px 12px;
     background: var(--bg-surface);
     border: 1px solid var(--border);
@@ -872,7 +875,91 @@ main {
     outline: none;
 }
 
+.search-box select {
+    padding: 7px 6px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: 11px;
+    outline: none;
+    max-width: 90px;
+}
+.search-box select:focus { border-color: var(--accent); }
+
 .search-box input:focus { border-color: var(--accent); }
+
+.search-filters-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.search-filters-row select {
+    flex: 1;
+    padding: 5px 6px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px;
+}
+.search-filters-row select:focus { border-color: var(--accent); }
+.danceable-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-surface);
+    transition: border-color 0.15s, color 0.15s;
+}
+.danceable-toggle:hover { border-color: var(--accent); }
+.danceable-toggle input:checked + .danceable-label { color: var(--accent); font-weight: 600; }
+
+.search-mode-badge {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 0 2px 6px;
+    min-height: 14px;
+}
+.search-mode-badge.clap-active {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.search-type-badge {
+    font-size: 9px;
+    font-weight: 700;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.search-genre-badge {
+    font-size: 8px;
+    background: rgba(var(--accent-rgb, 100, 200, 255), 0.15);
+    border-radius: 3px;
+    padding: 1px 3px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    max-width: 50px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.search-dance-badge {
+    font-size: 10px;
+    flex-shrink: 0;
+    line-height: 1;
+}
 
 /* Library browser items */
 .lib-item {

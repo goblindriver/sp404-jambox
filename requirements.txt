@@ -8,3 +8,6 @@ psutil
 librosa
 soundfile
 demucs
+laion-clap
+torchvision
+onnxruntime

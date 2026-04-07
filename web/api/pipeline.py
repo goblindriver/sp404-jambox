@@ -1,7 +1,18 @@
 """Pipeline control API — fetch, build, deploy, watcher."""
 import os, sys, time as _time, threading, subprocess, uuid, json
 from flask import Blueprint, jsonify, request, current_app
-from jambox_config import build_subprocess_env
+from jambox_config import build_subprocess_env, load_tag_db as _config_load_tag_db
+
+
+def _load_tag_db_for_status():
+    """Load tag DB for status reporting (quick, no caching)."""
+    try:
+        tags_file = current_app.config.get('TAGS_FILE', '')
+        if tags_file:
+            return _config_load_tag_db(tags_file)
+    except Exception:
+        pass
+    return {}
 
 pipeline_bp = Blueprint('pipeline', __name__)
 
@@ -480,10 +491,43 @@ def server_status():
         except Exception:
             features['fpcalc'] = False
 
+        clap_info = {'available': False, 'embedded': 0, 'coverage': 0}
+        try:
+            from clap_engine import EmbeddingStore
+            library = current_app.config.get('SAMPLE_LIBRARY', '')
+            store = EmbeddingStore(library)
+            clap_info = {
+                'available': True,
+                'embedded': store.count,
+                'coverage': round(store.count / max(1, 26000) * 100, 1),
+            }
+            features['clap'] = store.count > 0
+        except ImportError:
+            features['clap'] = False
+
+        discogs_info = {'available': False, 'classified': 0, 'coverage': 0, 'danceable': 0}
+        try:
+            from discogs_engine import _get_model
+            _get_model()
+            discogs_info['available'] = True
+            features['discogs'] = True
+            db = _load_tag_db_for_status()
+            if db:
+                classified = sum(1 for e in db.values() if e.get('discogs_styles'))
+                danceable = sum(1 for e in db.values() if (e.get('danceability') or 0) > 0.6)
+                total = len(db)
+                discogs_info['classified'] = classified
+                discogs_info['coverage'] = round(classified / max(1, total) * 100, 1)
+                discogs_info['danceable'] = danceable
+        except Exception:
+            features['discogs'] = False
+
         return jsonify({
             'ok': True,
             'pid': os.getpid(),
             'features': features,
+            'clap': clap_info,
+            'discogs': discogs_info,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500

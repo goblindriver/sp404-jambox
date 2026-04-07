@@ -634,24 +634,21 @@ def tag_file(rel_path, full_path, get_dur=True, use_librosa=True):
                 if duration <= 0 and analysis.get('duration'):
                     duration = analysis['duration']
 
+    source = classify_source(rel_path, filename, type_code)
+    playability = classify_playability(duration, type_code, filename, bpm)
+
+    # Subjective tags (vibe, texture, genre, energy) are retired.
+    # CLAP embeddings now handle subjective audio understanding.
+    # Kept for backward compatibility during migration — populated as empty.
     vibe = extract_vibe(rel_path, filename, type_code)
     texture = extract_texture(rel_path, filename, type_code)
     genres = extract_genres(rel_path)
-    source = classify_source(rel_path, filename, type_code)
     energy = classify_energy(bpm, type_code, genres, vibe)
-    playability = classify_playability(duration, type_code, filename, bpm)
 
-    # Build flat tag set (union of all dimensions for search)
+    # Build flat tag set (structural only)
     tags = set()
     tags.add(type_code)
-    for v in vibe:
-        tags.add(v)
-    for t in texture:
-        tags.add(t)
-    for g in genres:
-        tags.add(g)
     tags.add(source)
-    tags.add(energy)
     tags.add(playability)
     if bpm:
         tags.add(f"{int(bpm)}bpm")

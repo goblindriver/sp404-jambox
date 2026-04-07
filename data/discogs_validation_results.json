@@ -1,0 +1,1799 @@
+[
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1284
+      },
+      {
+        "label": "Hip Hop---Cloud Rap",
+        "probability": 0.0857
+      },
+      {
+        "label": "Hip Hop---Trap",
+        "probability": 0.0733
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.055
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1373,
+    "path": "Melodic/Guitar/Touch-Vintage-Guitars_80_E_Vintage_Guitars_FX_5_TL.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0725
+      },
+      {
+        "label": "Children's---Educational",
+        "probability": 0.0368
+      },
+      {
+        "label": "Electronic---Synth-pop",
+        "probability": 0.0338
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0507,
+    "path": "Melodic/Bass/Color-Bass-Starter-Pack_RPS - Burger Color Bass One Shot D#min.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.3985
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1532
+      },
+      {
+        "label": "Electronic---Musique Concr\u00e8te",
+        "probability": 0.1164
+      },
+      {
+        "label": "Electronic---Drone",
+        "probability": 0.101
+      },
+      {
+        "label": "Electronic---Industrial",
+        "probability": 0.0993
+      },
+      {
+        "label": "Electronic---Noise",
+        "probability": 0.0855
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.0853
+      },
+      {
+        "label": "Rock---Experimental",
+        "probability": 0.0682
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0767,
+    "path": "Ambient-Textural/Atmospheres/musicradar-ambient_AM_AmbiArpF120-05.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Hardstyle",
+        "probability": 0.1447
+      },
+      {
+        "label": "Electronic---Hardcore",
+        "probability": 0.1226
+      },
+      {
+        "label": "Electronic---Jumpstyle",
+        "probability": 0.0815
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.0757
+      },
+      {
+        "label": "Electronic---Gabber",
+        "probability": 0.0609
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0606
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.7015,
+    "path": "SFX/Stabs-Hits/legowelt-legowelt-jupiter-8_FX WinterSploix3.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Dungeon Synth",
+        "probability": 0.3735
+      },
+      {
+        "label": "Electronic---Dark Ambient",
+        "probability": 0.1861
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1844
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1646
+      },
+      {
+        "label": "Electronic---Synthwave",
+        "probability": 0.1138
+      },
+      {
+        "label": "Electronic---Deep House",
+        "probability": 0.0658
+      },
+      {
+        "label": "Electronic---Synth-pop",
+        "probability": 0.0632
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.0604
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.4239,
+    "path": "Melodic/Synths-Pads/Soundtrack-Hybrid-Cinematics_SL Synth Arp 120bpm Am Arpeggiated Analog 02.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1501
+      },
+      {
+        "label": "Hip Hop---Trap",
+        "probability": 0.138
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.1243
+      },
+      {
+        "label": "Electronic---Ghetto",
+        "probability": 0.1223
+      },
+      {
+        "label": "Hip Hop---Bass Music",
+        "probability": 0.1191
+      },
+      {
+        "label": "Hip Hop---Miami Bass",
+        "probability": 0.0921
+      },
+      {
+        "label": "Hip Hop---Cloud Rap",
+        "probability": 0.0769
+      },
+      {
+        "label": "Electronic---Ghetto House",
+        "probability": 0.0735
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.8232,
+    "path": "Drums/Hi-Hats/Cymatics-IMMORTAL-BetaPack_Cymatics - Gap Hihat Loop - 151 BPM.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Hardcore",
+        "probability": 0.6254
+      },
+      {
+        "label": "Electronic---Gabber",
+        "probability": 0.4359
+      },
+      {
+        "label": "Electronic---Speedcore",
+        "probability": 0.2142
+      },
+      {
+        "label": "Electronic---Happy Hardcore",
+        "probability": 0.146
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.1223
+      },
+      {
+        "label": "Electronic---Breakbeat",
+        "probability": 0.0889
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.0649
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.055
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 1.0,
+    "path": "SFX/Stabs-Hits/musicradar-rave_Hoover05(140BPM).flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.3902
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.2142
+      },
+      {
+        "label": "Electronic---Musique Concr\u00e8te",
+        "probability": 0.1529
+      },
+      {
+        "label": "Electronic---Noise",
+        "probability": 0.1255
+      },
+      {
+        "label": "Electronic---Sound Collage",
+        "probability": 0.1053
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.0863
+      },
+      {
+        "label": "Electronic---Industrial",
+        "probability": 0.086
+      },
+      {
+        "label": "Electronic---Glitch",
+        "probability": 0.0646
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0561,
+    "path": "SFX/Stabs-Hits/mixkit-intro-text-glitch-2950.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Rhythmic Noise",
+        "probability": 0.2206
+      },
+      {
+        "label": "Electronic---Industrial",
+        "probability": 0.2011
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1733
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.1269
+      },
+      {
+        "label": "Electronic---Tribal",
+        "probability": 0.094
+      },
+      {
+        "label": "Electronic---Breakcore",
+        "probability": 0.0813
+      },
+      {
+        "label": "Electronic---IDM",
+        "probability": 0.0796
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.0784
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.348,
+    "path": "Drums/Drum-Loops/IDM-Kit-05-100bpm_K05AltBeat100-10.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.3371
+      },
+      {
+        "label": "Electronic---Minimal",
+        "probability": 0.1864
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.176
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1564
+      },
+      {
+        "label": "Electronic---Glitch",
+        "probability": 0.1123
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.0791
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1671,
+    "path": "Melodic/Synths-Pads/Stickz-Animal-BYVF0_Stickz - Animal Synth Shot 015 - C.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0889
+      },
+      {
+        "label": "Rock---Noisecore",
+        "probability": 0.0564
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.0545
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1545,
+    "path": "Melodic/Synths-Pads/Freaky-Synthwave_SW_Snare_15_FRK.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0723
+      },
+      {
+        "label": "Stage & Screen---Soundtrack",
+        "probability": 0.0609
+      },
+      {
+        "label": "Rock---Noisecore",
+        "probability": 0.0584
+      },
+      {
+        "label": "Rock---Punk",
+        "probability": 0.057
+      },
+      {
+        "label": "Rock---Grindcore",
+        "probability": 0.0515
+      }
+    ],
+    "parent_genre": "Rock",
+    "danceability": 0.0391,
+    "path": "Drums/Percussion/Cymatics-PHARAOH-BetaPack_Cymatics - Eight Ride.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---IDM",
+        "probability": 0.205
+      },
+      {
+        "label": "Electronic---Glitch",
+        "probability": 0.2025
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1981
+      },
+      {
+        "label": "Electronic---Breakcore",
+        "probability": 0.1952
+      },
+      {
+        "label": "Electronic---Bassline",
+        "probability": 0.106
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.0985
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.0944
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.0914
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.4681,
+    "path": "Drums/Drum-Loops/synthperc_Synth_Perc_loop_03(100BPM).flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Classical---Modern",
+        "probability": 0.1334
+      },
+      {
+        "label": "Classical---Classical",
+        "probability": 0.1179
+      },
+      {
+        "label": "Classical---Contemporary",
+        "probability": 0.079
+      },
+      {
+        "label": "Jazz---Ragtime",
+        "probability": 0.0775
+      },
+      {
+        "label": "Electronic---New Age",
+        "probability": 0.054
+      }
+    ],
+    "parent_genre": "Classical",
+    "danceability": 0.0237,
+    "path": "Drums/Percussion/Prime-NYC-Piano-Sessions_Ballad_UpTempo_100_Em_PL_1.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Funk / Soul---Funk",
+        "probability": 0.1313
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.1012
+      },
+      {
+        "label": "Hip Hop---RnB/Swing",
+        "probability": 0.0686
+      },
+      {
+        "label": "Funk / Soul---P.Funk",
+        "probability": 0.0651
+      },
+      {
+        "label": "Hip Hop---Gangsta",
+        "probability": 0.0645
+      },
+      {
+        "label": "Electronic---Big Beat",
+        "probability": 0.0519
+      },
+      {
+        "label": "Funk / Soul---New Jack Swing",
+        "probability": 0.0503
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.6647,
+    "path": "SFX/Stabs-Hits/musicradar-soul-funk_SF_BeatCfx110-02.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Funk / Soul---Funk",
+        "probability": 0.2542
+      },
+      {
+        "label": "Funk / Soul---Soul",
+        "probability": 0.13
+      },
+      {
+        "label": "Funk / Soul---Free Funk",
+        "probability": 0.1074
+      },
+      {
+        "label": "Rock---Punk",
+        "probability": 0.0966
+      },
+      {
+        "label": "Rock---Alternative Rock",
+        "probability": 0.0691
+      },
+      {
+        "label": "Funk / Soul---P.Funk",
+        "probability": 0.0593
+      },
+      {
+        "label": "Rock---No Wave",
+        "probability": 0.055
+      },
+      {
+        "label": "Rock---Funk Metal",
+        "probability": 0.0544
+      }
+    ],
+    "parent_genre": "Funk / Soul",
+    "danceability": 0.5115,
+    "path": "Melodic/Bass/funk-80bpm_BassB_80E-04.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Classical---Post-Modern",
+        "probability": 0.1967
+      },
+      {
+        "label": "Classical---Modern",
+        "probability": 0.1335
+      },
+      {
+        "label": "Classical---Neo-Romantic",
+        "probability": 0.1331
+      },
+      {
+        "label": "Classical---Contemporary",
+        "probability": 0.1174
+      },
+      {
+        "label": "Jazz---Free Improvisation",
+        "probability": 0.0779
+      },
+      {
+        "label": "Classical---Neo-Classical",
+        "probability": 0.0703
+      },
+      {
+        "label": "Jazz---Contemporary Jazz",
+        "probability": 0.0555
+      }
+    ],
+    "parent_genre": "Classical",
+    "danceability": 0.015,
+    "path": "Melodic/Guitar/Touch-Vintage-Guitars_120_C_Vintage_Guitars_Clean_27_TL.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1412
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0855
+      },
+      {
+        "label": "Rock---Punk",
+        "probability": 0.0684
+      },
+      {
+        "label": "Rock---Black Metal",
+        "probability": 0.0588
+      },
+      {
+        "label": "Rock---Alternative Rock",
+        "probability": 0.0519
+      }
+    ],
+    "parent_genre": "Rock",
+    "danceability": 0.0951,
+    "path": "Melodic/Bass/sampleradar-80s-synths-free_80s_CZbassA-A2.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.6744
+      },
+      {
+        "label": "Hip Hop---DJ Battle Tool",
+        "probability": 0.3595
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1993
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1854
+      },
+      {
+        "label": "Electronic---Power Electronics",
+        "probability": 0.1323
+      },
+      {
+        "label": "Electronic---Noise",
+        "probability": 0.1142
+      },
+      {
+        "label": "Electronic---Industrial",
+        "probability": 0.077
+      },
+      {
+        "label": "Electronic---Berlin-School",
+        "probability": 0.054
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0444,
+    "path": "Melodic/Synths-Pads/Stickz-Smile-BETA-SM1X0_Stickz - Smile Synth Shot 134 - C.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.3418
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1702
+      },
+      {
+        "label": "Electronic---Dungeon Synth",
+        "probability": 0.1113
+      },
+      {
+        "label": "Electronic---Drone",
+        "probability": 0.0675
+      },
+      {
+        "label": "Electronic---New Age",
+        "probability": 0.0618
+      },
+      {
+        "label": "Electronic---Downtempo",
+        "probability": 0.0572
+      },
+      {
+        "label": "Electronic---Dark Ambient",
+        "probability": 0.0552
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0969,
+    "path": "Melodic/Synths-Pads/Stickz-Bloom-CO2DW_Stickz - Bloom Synth Shot 002 - C.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.2655
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1172
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.0912
+      },
+      {
+        "label": "Electronic---Musique Concr\u00e8te",
+        "probability": 0.0842
+      },
+      {
+        "label": "Electronic---Industrial",
+        "probability": 0.0798
+      },
+      {
+        "label": "Non-Music---Field Recording",
+        "probability": 0.0682
+      },
+      {
+        "label": "Electronic---Power Electronics",
+        "probability": 0.0592
+      },
+      {
+        "label": "Electronic---Noise",
+        "probability": 0.0581
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.094,
+    "path": "Ambient-Textural/Atmospheres/musicradar-sampleradar-EBM_EBM_SawNoiser_84_B.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1108
+      },
+      {
+        "label": "Electronic---Hardstyle",
+        "probability": 0.0547
+      },
+      {
+        "label": "Electronic---Jumpstyle",
+        "probability": 0.0512
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.2669,
+    "path": "Melodic/Keys-Piano/Future-Trapstep-Evolution_FL_TE_Pour_150bpm_Gm_Lead_3.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1104
+      },
+      {
+        "label": "Non-Music---Field Recording",
+        "probability": 0.0656
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.0405
+      }
+    ],
+    "parent_genre": "Non-Music",
+    "danceability": 0.0199,
+    "path": "Jam-Sessions/2026-04-03/JAM-BAS-peak-120bpm-Am-loop.wav"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1884
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1851
+      },
+      {
+        "label": "Electronic---Industrial",
+        "probability": 0.1222
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.1044
+      },
+      {
+        "label": "Non-Music---Field Recording",
+        "probability": 0.0807
+      },
+      {
+        "label": "Electronic---Dub Techno",
+        "probability": 0.0763
+      },
+      {
+        "label": "Electronic---Drum n Bass",
+        "probability": 0.0708
+      },
+      {
+        "label": "Electronic---Halftime",
+        "probability": 0.0698
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1755,
+    "path": "Drums/Drum-Loops/Stickz-Ashes-BETA-9T0ND_Stickz - Ashes Filtered Texture Loop 016 - 150BPM.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Goa Trance",
+        "probability": 0.3034
+      },
+      {
+        "label": "Electronic---Psy-Trance",
+        "probability": 0.237
+      },
+      {
+        "label": "Electronic---Trance",
+        "probability": 0.1848
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.1626
+      },
+      {
+        "label": "Electronic---Hard Trance",
+        "probability": 0.1343
+      },
+      {
+        "label": "Electronic---Tech Trance",
+        "probability": 0.1288
+      },
+      {
+        "label": "Electronic---Acid",
+        "probability": 0.0879
+      },
+      {
+        "label": "Electronic---Progressive Trance",
+        "probability": 0.0817
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.7841,
+    "path": "Melodic/Synths-Pads/Wicked-Psytrance-Synths_WL_140BPM_Arp_Reality_C#.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Non-Music---Audiobook",
+        "probability": 0.5305
+      },
+      {
+        "label": "Children's---Story",
+        "probability": 0.1612
+      },
+      {
+        "label": "Non-Music---Poetry",
+        "probability": 0.0488
+      }
+    ],
+    "parent_genre": "Non-Music",
+    "danceability": 0.0,
+    "path": "Vocals/Chops/Sample-Magic-Dance-Vocals_dv4_kit1_diamond_vocal_double_verse_1_loop_122_Fm.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Hip Hop---Jazzy Hip-Hop",
+        "probability": 0.1264
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.1202
+      },
+      {
+        "label": "Hip Hop---Instrumental",
+        "probability": 0.0995
+      },
+      {
+        "label": "Hip Hop---Hardcore Hip-Hop",
+        "probability": 0.0913
+      },
+      {
+        "label": "Hip Hop---Trap",
+        "probability": 0.0826
+      },
+      {
+        "label": "Hip Hop---Boom Bap",
+        "probability": 0.0761
+      },
+      {
+        "label": "Electronic---Hip Hop",
+        "probability": 0.0736
+      },
+      {
+        "label": "Hip Hop---G-Funk",
+        "probability": 0.0731
+      }
+    ],
+    "parent_genre": "Hip Hop",
+    "danceability": 0.6558,
+    "path": "Drums/Kicks/Clark-Audio-Boom-Bap_Clark Audio - Kick - Dark Grit.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---House",
+        "probability": 0.1249
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0952
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.0938
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.0929
+      },
+      {
+        "label": "Electronic---Downtempo",
+        "probability": 0.0795
+      },
+      {
+        "label": "Electronic---Dub",
+        "probability": 0.0686
+      },
+      {
+        "label": "Electronic---Bassline",
+        "probability": 0.0636
+      },
+      {
+        "label": "Electronic---Broken Beat",
+        "probability": 0.0626
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.6647,
+    "path": "Drums/Percussion/musicradar-synth-percussion_Wave_Drum_Loop_076(100BPM).flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Dubstep",
+        "probability": 0.3647
+      },
+      {
+        "label": "Electronic---Bassline",
+        "probability": 0.1662
+      },
+      {
+        "label": "Electronic---Juke",
+        "probability": 0.1656
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.1571
+      },
+      {
+        "label": "Electronic---Glitch",
+        "probability": 0.146
+      },
+      {
+        "label": "Electronic---Halftime",
+        "probability": 0.1108
+      },
+      {
+        "label": "Electronic---Hip Hop",
+        "probability": 0.1039
+      },
+      {
+        "label": "Electronic---Broken Beat",
+        "probability": 0.0973
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 1.0,
+    "path": "SFX/Stabs-Hits/musicradar-rave_51(120BPM).flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.3006
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.1969
+      },
+      {
+        "label": "Electronic---Electroclash",
+        "probability": 0.1461
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.1429
+      },
+      {
+        "label": "Electronic---Synth-pop",
+        "probability": 0.1375
+      },
+      {
+        "label": "Electronic---Progressive House",
+        "probability": 0.1032
+      },
+      {
+        "label": "Electronic---Trance",
+        "probability": 0.0971
+      },
+      {
+        "label": "Electronic---Breaks",
+        "probability": 0.0823
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 1.0,
+    "path": "SFX/Stabs-Hits/musicradar-hi-nrg_NRGK4Arp130D-02.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.7477
+      },
+      {
+        "label": "Electronic---Musique Concr\u00e8te",
+        "probability": 0.4381
+      },
+      {
+        "label": "Non-Music---Education",
+        "probability": 0.3402
+      },
+      {
+        "label": "Non-Music---Radioplay",
+        "probability": 0.2561
+      },
+      {
+        "label": "Electronic---Sound Collage",
+        "probability": 0.1706
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.1343
+      },
+      {
+        "label": "Non-Music---Spoken Word",
+        "probability": 0.1042
+      },
+      {
+        "label": "Non-Music---Field Recording",
+        "probability": 0.0915
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0139,
+    "path": "SFX/Stabs-Hits/musicradar-lofi-(3)_55.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1562
+      },
+      {
+        "label": "Non-Music---Audiobook",
+        "probability": 0.1087
+      },
+      {
+        "label": "Stage & Screen---Soundtrack",
+        "probability": 0.0637
+      },
+      {
+        "label": "Non-Music---Education",
+        "probability": 0.0529
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0923,
+    "path": "Drums/Hi-Hats/Stickz-Censored-BETA-U0W7F_Stickz - Censored Closed Hi-Hat 044.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Chiptune",
+        "probability": 0.3787
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.2407
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.1451
+      },
+      {
+        "label": "Electronic---Electroclash",
+        "probability": 0.1284
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.1262
+      },
+      {
+        "label": "Electronic---Synth-pop",
+        "probability": 0.1133
+      },
+      {
+        "label": "Electronic---Electro House",
+        "probability": 0.0682
+      },
+      {
+        "label": "Electronic---Bassline",
+        "probability": 0.052
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.7789,
+    "path": "Melodic/Synths-Pads/Nine_Inch_Nails_The_Hand_That_Feeds_THTF_synth_riff_1.1.L.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.2254
+      },
+      {
+        "label": "Electronic---Industrial",
+        "probability": 0.2236
+      },
+      {
+        "label": "Electronic---Power Electronics",
+        "probability": 0.1557
+      },
+      {
+        "label": "Electronic---Noise",
+        "probability": 0.1473
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.109
+      },
+      {
+        "label": "Non-Music---Field Recording",
+        "probability": 0.0748
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.0592
+      },
+      {
+        "label": "Electronic---Musique Concr\u00e8te",
+        "probability": 0.0568
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0854,
+    "path": "SFX/Stabs-Hits/LegoweltEMUvintageProSamplePack_FX-LovecraftianConstruction.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Rock---Alternative Rock",
+        "probability": 0.0936
+      },
+      {
+        "label": "Hip Hop---Gangsta",
+        "probability": 0.0639
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0554
+      },
+      {
+        "label": "Rock---Punk",
+        "probability": 0.055
+      }
+    ],
+    "parent_genre": "Rock",
+    "danceability": 0.1848,
+    "path": "Melodic/Keys-Piano/musicradar-funk_ClavB_80E-01.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---House",
+        "probability": 0.4619
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.3106
+      },
+      {
+        "label": "Electronic---Deep House",
+        "probability": 0.3073
+      },
+      {
+        "label": "Electronic---Tech House",
+        "probability": 0.172
+      },
+      {
+        "label": "Electronic---Acid House",
+        "probability": 0.1554
+      },
+      {
+        "label": "Electronic---Minimal Techno",
+        "probability": 0.121
+      },
+      {
+        "label": "Electronic---Ghetto House",
+        "probability": 0.0995
+      },
+      {
+        "label": "Electronic---Minimal",
+        "probability": 0.0994
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 1.0,
+    "path": "Drums/Drum-Loops/Raw-Funk-Tech_RAW_FT_TOP_39.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.2789
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1817
+      },
+      {
+        "label": "Electronic---Dub Techno",
+        "probability": 0.1002
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.0984
+      },
+      {
+        "label": "Electronic---Berlin-School",
+        "probability": 0.072
+      },
+      {
+        "label": "Electronic---Deep House",
+        "probability": 0.0602
+      },
+      {
+        "label": "Electronic---Downtempo",
+        "probability": 0.0595
+      },
+      {
+        "label": "Electronic---New Age",
+        "probability": 0.0503
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.3389,
+    "path": "Jam-Sessions/2026-04-03/JAM-SMP-full-verse-120bpm-Am-loop.wav"
+  },
+  {
+    "styles": [
+      {
+        "label": "Folk, World, & Country---Celtic",
+        "probability": 0.9442
+      },
+      {
+        "label": "Folk, World, & Country---Folk",
+        "probability": 0.2319
+      },
+      {
+        "label": "Rock---Pub Rock",
+        "probability": 0.0377
+      }
+    ],
+    "parent_genre": "Folk, World, & Country",
+    "danceability": 0.0,
+    "path": "Melodic/Keys-Piano/Supreme-Organic-Violin_9dminor120bpm.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Grime",
+        "probability": 0.4454
+      },
+      {
+        "label": "Electronic---UK Garage",
+        "probability": 0.4239
+      },
+      {
+        "label": "Electronic---Bassline",
+        "probability": 0.3514
+      },
+      {
+        "label": "Electronic---Juke",
+        "probability": 0.3213
+      },
+      {
+        "label": "Hip Hop---Grime",
+        "probability": 0.234
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.1819
+      },
+      {
+        "label": "Electronic---Dubstep",
+        "probability": 0.1504
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.093
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 1.0,
+    "path": "Drums/Kicks/Stickz-Animal-BYVF0_Stickz - Animal Top Loop 004 - 128BPM.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Folk, World, & Country---Folk",
+        "probability": 0.3183
+      },
+      {
+        "label": "Folk, World, & Country---Fado",
+        "probability": 0.1667
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.062
+      },
+      {
+        "label": "Folk, World, & Country---Gospel",
+        "probability": 0.0579
+      },
+      {
+        "label": "Folk, World, & Country---Celtic",
+        "probability": 0.0501
+      }
+    ],
+    "parent_genre": "Folk, World, & Country",
+    "danceability": 0.0111,
+    "path": "Vocals/Chops/Sample-Magic-Dance-Vocals_dv4_vocal_adlibs_loop_huu_123_Gm.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.2021
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1808
+      },
+      {
+        "label": "Electronic---Drone",
+        "probability": 0.1285
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.054
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0179,
+    "path": "Melodic/Synths-Pads/Legowelt-MINIMOOG-sample-pack_SYNTH-PindaCheese3.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Rock---Grindcore",
+        "probability": 0.1077
+      },
+      {
+        "label": "Rock---Noisecore",
+        "probability": 0.1049
+      },
+      {
+        "label": "Rock---Punk",
+        "probability": 0.0897
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.0825
+      },
+      {
+        "label": "Rock---Power Violence",
+        "probability": 0.055
+      }
+    ],
+    "parent_genre": "Rock",
+    "danceability": 0.0549,
+    "path": "Drums/Percussion/Prime-Drum_Ride_12_PL.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.3129
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1842
+      },
+      {
+        "label": "Electronic---Musique Concr\u00e8te",
+        "probability": 0.1092
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.0966
+      },
+      {
+        "label": "Electronic---Downtempo",
+        "probability": 0.0946
+      },
+      {
+        "label": "Electronic---Sound Collage",
+        "probability": 0.0922
+      },
+      {
+        "label": "Electronic---Glitch",
+        "probability": 0.0894
+      },
+      {
+        "label": "Electronic---IDM",
+        "probability": 0.0696
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1313,
+    "path": "Loops/Instrument-Loops/IDM-Kit-01-160bpm_K01Wibiano160G-05.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1939
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.0896
+      },
+      {
+        "label": "Rock---Goregrind",
+        "probability": 0.0646
+      },
+      {
+        "label": "Rock---Noisecore",
+        "probability": 0.0608
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.058
+      },
+      {
+        "label": "Electronic---Minimal",
+        "probability": 0.0566
+      },
+      {
+        "label": "Rock---Pornogrind",
+        "probability": 0.052
+      },
+      {
+        "label": "Electronic---Synth-pop",
+        "probability": 0.0516
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1999,
+    "path": "Drums/Snares-Claps/Legowelt-KORG-ER1-Drumsynth_SD-ER-MetallicSnarezzz.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.2236
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.1244
+      },
+      {
+        "label": "Electronic---Downtempo",
+        "probability": 0.1157
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.1098
+      },
+      {
+        "label": "Electronic---Trip Hop",
+        "probability": 0.0762
+      },
+      {
+        "label": "Electronic---IDM",
+        "probability": 0.0681
+      },
+      {
+        "label": "Electronic---Leftfield",
+        "probability": 0.0669
+      },
+      {
+        "label": "Hip Hop---Cloud Rap",
+        "probability": 0.0591
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1602,
+    "path": "SFX/Stabs-Hits/Sample-Magic-Sleazy-Beats_sb3_90_kit_loop_beach_sample_Fmin.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1176
+      },
+      {
+        "label": "Non-Music---Audiobook",
+        "probability": 0.0712
+      },
+      {
+        "label": "Stage & Screen---Soundtrack",
+        "probability": 0.0456
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.1004,
+    "path": "Drums/Hi-Hats/Sample-Magic-Sleazy-Beats_sb3_hat_closed_bite.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1162
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.071
+      },
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.0534
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.3977,
+    "path": "Drums/Kicks/Stickz-Chill-Toolkit-6TK05_Stickz CHT - Kick 14 - G#.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Deep House",
+        "probability": 0.4423
+      },
+      {
+        "label": "Electronic---Tech House",
+        "probability": 0.3421
+      },
+      {
+        "label": "Electronic---Minimal Techno",
+        "probability": 0.2841
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.2668
+      },
+      {
+        "label": "Electronic---Minimal",
+        "probability": 0.2078
+      },
+      {
+        "label": "Electronic---Tropical House",
+        "probability": 0.1759
+      },
+      {
+        "label": "Electronic---Electro House",
+        "probability": 0.1044
+      },
+      {
+        "label": "Electronic---Deep Techno",
+        "probability": 0.0959
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 1.0,
+    "path": "Drums/Drum-Loops/True-Deep-Tek-House_Z_Drum_Loops_0013_(120_bpm).flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.2662
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1624
+      },
+      {
+        "label": "Stage & Screen---Soundtrack",
+        "probability": 0.0868
+      },
+      {
+        "label": "Electronic---Downtempo",
+        "probability": 0.0817
+      },
+      {
+        "label": "Hip Hop---Cloud Rap",
+        "probability": 0.0625
+      },
+      {
+        "label": "Electronic---Chillwave",
+        "probability": 0.0518
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0423,
+    "path": "SFX/Stabs-Hits/Touch-Lo-Fi-House_124_D_Glide_TL_01.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.2001
+      },
+      {
+        "label": "Electronic---Glitch",
+        "probability": 0.1772
+      },
+      {
+        "label": "Electronic---IDM",
+        "probability": 0.124
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.1097
+      },
+      {
+        "label": "Electronic---Dub",
+        "probability": 0.0999
+      },
+      {
+        "label": "Electronic---Chiptune",
+        "probability": 0.0797
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.0784
+      },
+      {
+        "label": "Electronic---New Beat",
+        "probability": 0.0686
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.9963,
+    "path": "Drums/Drum-Loops/IDM-Kit-02-120bpm_K02Beat120-03.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Stage & Screen---Soundtrack",
+        "probability": 0.2513
+      },
+      {
+        "label": "Non-Music---Audiobook",
+        "probability": 0.2363
+      },
+      {
+        "label": "Non-Music---Monolog",
+        "probability": 0.2099
+      },
+      {
+        "label": "Classical---Modern",
+        "probability": 0.1992
+      },
+      {
+        "label": "Non-Music---Spoken Word",
+        "probability": 0.0838
+      },
+      {
+        "label": "Jazz---Easy Listening",
+        "probability": 0.0573
+      },
+      {
+        "label": "Non-Music---Poetry",
+        "probability": 0.0525
+      }
+    ],
+    "parent_genre": "Non-Music",
+    "danceability": 0.0,
+    "path": "Drums/Hi-Hats/musicradar-drum_CYCdh_K1close_ClHat-04.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.2038
+      },
+      {
+        "label": "Electronic---Abstract",
+        "probability": 0.1172
+      },
+      {
+        "label": "Electronic---Musique Concr\u00e8te",
+        "probability": 0.0766
+      },
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.0747
+      },
+      {
+        "label": "Electronic---Glitch",
+        "probability": 0.0729
+      },
+      {
+        "label": "Electronic---Noise",
+        "probability": 0.0662
+      },
+      {
+        "label": "Electronic---Minimal",
+        "probability": 0.0642
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.0524
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.113,
+    "path": "SFX/Stabs-Hits/99S003-Weird-Side_Tech-44.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Electro",
+        "probability": 0.1644
+      },
+      {
+        "label": "Electronic---Grime",
+        "probability": 0.1576
+      },
+      {
+        "label": "Electronic---Techno",
+        "probability": 0.131
+      },
+      {
+        "label": "Electronic---Dubstep",
+        "probability": 0.1204
+      },
+      {
+        "label": "Funk / Soul---Boogie",
+        "probability": 0.117
+      },
+      {
+        "label": "Electronic---House",
+        "probability": 0.113
+      },
+      {
+        "label": "Electronic---Bassline",
+        "probability": 0.1116
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1048
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 1.0,
+    "path": "Drums/Drum-Loops/sampleradar-hip-hop-essentials_DX Beat 04 (90BPM).flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Electronic---Ambient",
+        "probability": 0.185
+      },
+      {
+        "label": "Electronic---Experimental",
+        "probability": 0.1395
+      },
+      {
+        "label": "Electronic---Drone",
+        "probability": 0.0676
+      },
+      {
+        "label": "Electronic---Minimal",
+        "probability": 0.0666
+      },
+      {
+        "label": "Rock---Funeral Doom Metal",
+        "probability": 0.0578
+      },
+      {
+        "label": "Electronic---Dungeon Synth",
+        "probability": 0.0576
+      }
+    ],
+    "parent_genre": "Electronic",
+    "danceability": 0.0333,
+    "path": "Melodic/Keys-Piano/LegoweltEMUvintageProSamplePack_PIANO-HarvestRhodes.flac"
+  },
+  {
+    "styles": [
+      {
+        "label": "Non-Music---Monolog",
+        "probability": 0.0997
+      },
+      {
+        "label": "Stage & Screen---Soundtrack",
+        "probability": 0.0861
+      },
+      {
+        "label": "Rock---Punk",
+        "probability": 0.0584
+      },
+      {
+        "label": "Classical---Modern",
+        "probability": 0.0531
+      }
+    ],
+    "parent_genre": "Rock",
+    "danceability": 0.0534,
+    "path": "Loops/Instrument-Loops/lofi_Snare02.flac"
+  }
+]

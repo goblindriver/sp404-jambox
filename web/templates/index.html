@@ -122,8 +122,45 @@
             <!-- Browse tab -->
             <div id="tab-browse" class="sidebar-tab-content">
                 <div class="search-box">
-                    <input type="text" id="library-search" placeholder="Search library..." />
+                    <input type="text" id="library-search" placeholder="Describe a sound... (CLAP semantic search)" />
+                    <select id="library-search-type-filter" title="Filter by type">
+                        <option value="">All types</option>
+                        <option value="KIK">Kick</option>
+                        <option value="SNR">Snare</option>
+                        <option value="HAT">Hi-Hat</option>
+                        <option value="PRC">Percussion</option>
+                        <option value="BRK">Break/Loop</option>
+                        <option value="BAS">Bass</option>
+                        <option value="SYN">Synth</option>
+                        <option value="KEY">Keys</option>
+                        <option value="GTR">Guitar</option>
+                        <option value="VOX">Vocal</option>
+                        <option value="SFX">SFX</option>
+                        <option value="AMB">Ambient</option>
+                    </select>
                 </div>
+                <div class="search-filters-row">
+                    <select id="library-search-genre-filter" title="Filter by genre">
+                        <option value="">All genres</option>
+                        <option value="Electronic">Electronic</option>
+                        <option value="Rock">Rock</option>
+                        <option value="Hip Hop">Hip Hop</option>
+                        <option value="Funk / Soul">Funk / Soul</option>
+                        <option value="Jazz">Jazz</option>
+                        <option value="Latin">Latin</option>
+                        <option value="Reggae">Reggae</option>
+                        <option value="Pop">Pop</option>
+                        <option value="Folk, World, & Country">Folk/World</option>
+                        <option value="Blues">Blues</option>
+                        <option value="Classical">Classical</option>
+                        <option value="Non-Music">Non-Music</option>
+                    </select>
+                    <label class="danceable-toggle" title="Show only danceable samples (danceability > 0.6)">
+                        <input type="checkbox" id="library-search-danceable" />
+                        <span class="danceable-label">Danceable</span>
+                    </label>
+                </div>
+                <div id="library-search-mode" class="search-mode-badge"></div>
                 <div id="library-browser"></div>
             </div>
             <!-- Tags tab -->

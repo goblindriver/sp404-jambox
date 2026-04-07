@@ -221,6 +221,30 @@ def _route_and_process(library_path, rel_path):
         # LLM not available or failed — basic tags still applied from step 1
         pass
 
+    # Step 1.7: CLAP audio embedding (if engine available)
+    try:
+        from clap_engine import embed_audio_file, EmbeddingStore
+        store = EmbeddingStore(LIBRARY)
+        emb = embed_audio_file(library_path)
+        store.add(rel_path, emb)
+        store.save()
+    except Exception:
+        pass  # CLAP not installed or model not downloaded yet
+
+    # Step 1.8: Discogs genre classification (if engine available)
+    try:
+        from discogs_engine import classify_styles
+        result = classify_styles(library_path)
+        if result.get("styles"):
+            entry = tags_db.get(rel_path, {})
+            entry["discogs_styles"] = result["styles"]
+            entry["parent_genre"] = result["parent_genre"]
+            entry["danceability"] = result["danceability"]
+            tags_db[rel_path] = entry
+            save_tags(tags_db)
+    except Exception:
+        pass  # discogs model not available
+
     # Step 2: Fingerprint and inline dedup check
     is_dup = False
     try:

@@ -108,14 +108,74 @@ def _browse(subdir):
 
 @library_bp.route('/library/search')
 def search():
+    """Semantic search (CLAP) with filename fallback.
+
+    Query params:
+        q: search text (required, min 2 chars)
+        type_code: optional hard filter (e.g. KIK, BAS, SYN)
+        limit: max results (default 30, max 100)
+    """
     q = request.args.get('q', '').strip()
     if not q or len(q) < 2:
-        return jsonify({'results': []})
+        return jsonify({'results': [], 'mode': 'none'})
 
+    limit = _parse_limit_arg('limit', 30, 100)
+    type_code = request.args.get('type_code', '').strip().upper() or None
+    genre_filter = request.args.get('genre', '').strip() or None
+    danceable_flag = request.args.get('danceable', '').strip()
+    want_danceable = danceable_flag in ('1', 'true', 'yes')
+
+    # Try CLAP semantic search first
+    library_root = _library_root()
+    try:
+        from clap_engine import EmbeddingStore, embed_text, cosine_similarity
+        import numpy as np
+
+        store = EmbeddingStore(library_root)
+        if store.count > 0:
+            text_emb = embed_text(q)[0]
+            matrix = store.load_matrix()
+            paths = store.paths_array()
+            scores = cosine_similarity(text_emb, matrix)
+
+            db = _load_tag_db() or {}
+            results = []
+            for i, rel_path in enumerate(paths):
+                if not rel_path:
+                    continue
+                entry = db.get(rel_path, {})
+                if type_code and entry.get('type_code') != type_code:
+                    continue
+                if genre_filter and entry.get('parent_genre') != genre_filter:
+                    continue
+                if want_danceable and (entry.get('danceability') or 0) < 0.6:
+                    continue
+                results.append({
+                    'name': os.path.basename(rel_path),
+                    'path': rel_path,
+                    'score': round(float(scores[i]), 4),
+                    'type_code': entry.get('type_code', ''),
+                    'bpm': entry.get('bpm'),
+                    'key': entry.get('key'),
+                    'duration': entry.get('duration'),
+                    'playability': entry.get('playability', ''),
+                    'parent_genre': entry.get('parent_genre', ''),
+                    'danceability': entry.get('danceability'),
+                })
+
+            results.sort(key=lambda x: -x['score'])
+            return jsonify({
+                'results': results[:limit],
+                'query': q,
+                'mode': 'clap',
+                'total_embedded': store.count,
+            })
+    except ImportError:
+        pass
+
+    # Fallback: filename keyword matching
     words = set(re.findall(r'[a-z]+', q.lower()))
     results = []
-
-    library_root = _library_root()
     for root, dirs, files in os.walk(library_root):
         if '_RAW-DOWNLOADS' in root or '_GOLD' in root:
             continue
@@ -129,12 +189,11 @@ def search():
             if score >= 2:
                 rel = os.path.relpath(os.path.join(root, f), library_root)
                 results.append({'name': f, 'path': rel, 'score': score})
-
         if len(results) > 500:
             break
 
     results.sort(key=lambda x: -x['score'])
-    return jsonify({'results': results[:30], 'query': q})
+    return jsonify({'results': results[:limit], 'query': q, 'mode': 'filename'})
 
 
 @library_bp.route('/library/stats')
@@ -167,10 +226,32 @@ def stats():
     except OSError:
         pending_packs = 0
 
+    # CLAP embedding coverage
+    clap_embedded = 0
+    try:
+        from clap_engine import EmbeddingStore
+        store = EmbeddingStore(library_root)
+        clap_embedded = store.count
+    except ImportError:
+        pass
+
+    # Discogs classification coverage
+    discogs_classified = 0
+    discogs_danceable = 0
+    db = _load_tag_db()
+    if db:
+        discogs_classified = sum(1 for e in db.values() if e.get('discogs_styles'))
+        discogs_danceable = sum(1 for e in db.values() if (e.get('danceability') or 0) > 0.6)
+
     return jsonify({
         'total': total,
         'categories': categories,
         'pending_packs': pending_packs,
+        'clap_embedded': clap_embedded,
+        'clap_coverage': round(clap_embedded / max(total, 1) * 100, 1),
+        'discogs_classified': discogs_classified,
+        'discogs_coverage': round(discogs_classified / max(total, 1) * 100, 1),
+        'discogs_danceable': discogs_danceable,
     })
 
 

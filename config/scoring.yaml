@@ -1,5 +1,22 @@
-score_version: 4
+score_version: 5
 
+# CLAP-powered scoring (primary — cosine similarity drives ranking)
+# The CLAP similarity score (0.0-1.0) is the dominant signal.
+# BPM and key provide small structural bonuses on top.
+# Type_code and playability are hard filters, not score components.
+
+clap:
+  bpm_close_bonus: 0.05
+  bpm_near_bonus: 0.02
+  key_exact_bonus: 0.03
+  key_compatible_bonus: 0.01
+  playability_mismatch_penalty: -0.15
+  duration_mismatch_penalty: -0.10
+  min_similarity: 0.05
+  danceability_bonus: 0.03
+  danceability_threshold: 0.6
+
+# Legacy tag-based scoring (fallback when CLAP embeddings unavailable)
 weights:
   type_exact: 10
   type_related: 3

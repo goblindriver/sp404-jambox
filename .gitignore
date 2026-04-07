@@ -22,6 +22,8 @@ data/jambox.db
 data/jambox.db-wal
 data/jambox.db-shm
 artifacts/models/
+# Discogs-EffNet ONNX (~18MB) — downloaded on first classify/ingest run
+data/models/*.onnx
 
 # Secrets
 .env

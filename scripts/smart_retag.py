@@ -84,14 +84,9 @@ from tag_vocab import (
 
 # ── System prompt ──
 
-TAGGER_SYSTEM_PROMPT = """You are a sample library tagger for an SP-404 sampler used for LIVE PERFORMANCE at block parties, DJ sets, and dance events. You analyze audio features and metadata to generate precise tags that help a fetch system find the right sample for a musical context.
+TAGGER_SYSTEM_PROMPT = """You are a sample library curator for an SP-404 sampler used for LIVE PERFORMANCE at block parties, DJ sets, and dance events. You analyze audio features and metadata to generate a human-readable sonic description and quality score.
 
-PRODUCTION PHILOSOPHY: This sampler is built for making people DANCE. The aesthetic is warm, soulful, hype — funk, soul, disco, dancehall, house, electro. Quality means "would this make the crowd move?" not "is this technically interesting." The best samples have warmth and groove. Vintage/lo-fi character is a FEATURE not a flaw — dusty vinyl warmth, tape saturation, and crate-dug texture are premium qualities.
-
-VIBE PRIORITY (production target — what we optimize for):
-  hype (0.22) > warm (0.20) > soulful (0.18) > nostalgic (0.12) > playful (0.10) > dreamy (0.08) > dark (0.05) > aggressive (0.05)
-
-Tag vibes based on what the audio SOUNDS like, not what the filename suggests. A warm danceable loop should be tagged warm/hype even if the filename contains "dark." Follow the audio features, not the filename.
+PRODUCTION PHILOSOPHY: This sampler is built for making people DANCE. The aesthetic is warm, soulful, hype — funk, soul, disco, dancehall, house, electro. Quality means "would this make the crowd move?" not "is this technically interesting." Vintage/lo-fi character is a FEATURE not a flaw.
 
 You will receive:
 - Audio features extracted by librosa (spectral centroid, MFCCs, spectral rolloff, chroma, zero-crossing rate, onset strength, RMS envelope, BPM, key)
@@ -101,54 +96,11 @@ You will receive:
 Respond with ONLY a JSON object. No explanation, no markdown, no preamble. Do not wrap in code fences.
 
 {
-  "type_code": "<one of: KIK, SNR, HAT, CLP, CYM, RIM, PRC, BRK, DRM, BAS, GTR, KEY, SYN, PAD, STR, BRS, PLK, WND, VOX, FX, SFX, AMB, FLY, TPE, RSR, HRN>",
-  "playability": "<one of: one-shot, loop, chop-ready, chromatic, layer, transition>",
-  "vibe": ["<1-3 tags from: dark, warm, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty, ethereal, triumphant, melancholic, tense, chill, uplifting>"],
-  "texture": ["<1-2 tags from: dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crispy, glassy, muddy, vinyl, tape, digital, organic, crunchy, warbly, bright, thick, thin, filtered>"],
-  "genre": ["<1-2 tags from: funk, soul, disco, house, electronic, hiphop, dub, ambient, jazz, rock, punk, dancehall, latin, pop, rnb, industrial, boom-bap, lo-fi, tropical, afrobeat, lo-fi-hiphop, trap, drill, gospel, uk-garage, footwork, city-pop, psychedelic, reggae, classical, world>"],
-  "energy": "<one of: low, mid, high>",
-  "sonic_description": "<1 sentence describing the sound character>",
-  "quality_score": <1-5 integer>,
-  "instrument_hint": "<specific instrument if identifiable, null otherwise>"
+  "sonic_description": "<1-2 sentences describing what a producer would hear — timbre, character, mood, usefulness>",
+  "quality_score": <1-5 integer>
 }
 
-RULES:
-- type_code is the PRIMARY classification. Get this right above all else.
-- Use audio features to inform tags, not just the filename. Filenames lie.
-- For type_code, use spectral features:
-  - KIK: low spectral centroid (<1500), strong onset, short duration, minimal high-frequency
-  - SNR: mid-high centroid, sharp onset, broadband noise, short duration
-  - HAT: high centroid (>4000), high zero-crossing rate, very short duration
-  - PRC: variable centroid, strong onset, short-to-mid duration
-  - BAS: low centroid (<2000), sustained or rhythmic, strong low-frequency energy
-  - SYN: mid centroid, sustained, harmonic content, evolving timbre
-  - PAD: low-mid centroid, long sustained, slow attack (attack_position > 0.3), ambient character
-  - VOX: mid centroid, formant structure in MFCCs, variable duration
-  - FX: unusual spectral profile, non-musical or abstract
-  - BRK: rhythmic onsets (onset_count > 4), multiple transients, longer duration (>2s)
-  - RSR: rising spectral energy over time, building character
-  - GTR: mid centroid, plucked/strummed onset pattern, harmonic series
-  - HRN: mid-high centroid, brass formant structure, sustained
-  - KEY: mid centroid, percussive onset with sustained harmonics
-  - STR: mid centroid, bowed onset, rich harmonic series, sustained
-  - CLP: mid-high centroid, sharp onset, very short, less broadband than SNR
-  - CYM: high centroid, long decay, metallic resonance
-  - RIM: high centroid, very sharp short onset, minimal sustain
-  - DRM: use only when the sample is a full drum kit or multi-drum element
-  - BRS: mid-high centroid, brass ensemble, sustained (prefer HRN for solo brass)
-  - PLK: mid centroid, plucked single onset, quick decay
-  - WND: mid centroid, breathy formant, sustained
-  - BRK: multi-layered, mixed elements, loops, or sampled phrases
-  - SFX: stabs, hits, impacts, risers that are clearly designed sound effects
-  - AMB: very low onset_count, evolving texture, no clear transients
-  - FLY: vinyl/tape artifacts, transitional noise, foley
-  - TPE: tape-based textures, wow/flutter, lo-fi character
-- playability heuristics:
-  - Duration <2s and strong single onset -> one-shot
-  - Duration >2s with rhythmic onsets (onset_count > 4) -> loop or chop-ready
-  - Duration >2s with steady/evolving RMS -> layer or loop
-  - Rising RMS envelope (attack_position > 0.7) -> transition or riser
-- quality_score for SP-404 LIVE DANCE PERFORMANCE:
+quality_score for SP-404 LIVE DANCE PERFORMANCE:
   - 5: Would make the crowd move. Distinctive groove, warmth, or energy. Build a bank around it.
   - 4: Solid danceable character. Reliable workhorse for a set.
   - 3: Usable but generic — lacks distinctive character.
@@ -463,7 +415,10 @@ def _validate_llm_tags(llm_tags):
 
 
 def _enrichment_usable(llm_tags):
-    """True when LLM output is worth marking smart_retag_v1 (fetch + browse quality)."""
+    """True when LLM output has the minimum fields worth storing.
+
+    Post-CLAP migration: only sonic_description + quality_score are required.
+    """
     if not llm_tags:
         return False
     sonic = (llm_tags.get('sonic_description') or '').strip()
@@ -471,24 +426,14 @@ def _enrichment_usable(llm_tags):
         return False
     if 'quality_score' not in llm_tags:
         return False
-    dims = (llm_tags.get('vibe') or []) + (llm_tags.get('texture') or []) + (llm_tags.get('genre') or [])
-    if len(dims) < 1:
-        return False
-    if 'type_code' not in llm_tags or 'playability' not in llm_tags:
-        return False
-    if 'energy' not in llm_tags:
-        return False
     return True
 
 
 SMART_RETAG_REPAIR_SUFFIX = """
 
-CRITICAL — previous reply was incomplete or used wrong vocabulary. Reply with ONLY one JSON object (no markdown).
-Required keys (all must be present):
-  "type_code", "playability", "vibe" (array, 1-3 strings), "texture" (array, 1-2),
-  "genre" (array, 1-2), "energy", "sonic_description" (one sentence, non-empty),
-  "quality_score" (integer 1-5), "instrument_hint" (string or null).
-Use EXACT spellings from the system prompt vocabulary for vibe, texture, genre, type_code, playability, energy.
+CRITICAL — previous reply was incomplete. Reply with ONLY one JSON object (no markdown).
+Required keys:
+  "sonic_description" (1-2 sentence description of the sound), "quality_score" (integer 1-5).
 """
 
 
@@ -501,9 +446,13 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
     entry = dict(existing_entry) if existing_entry else {}
     prev_source = existing_entry.get('tag_source') if existing_entry else None
 
-    # LLM tags overwrite filename-inferred ones
-    for key in ('type_code', 'playability', 'vibe', 'texture', 'genre',
-                'energy', 'sonic_description', 'quality_score', 'instrument_hint'):
+    # LLM provides only sonic_description and quality_score now.
+    # Subjective tags (vibe, texture, genre) are handled by CLAP embeddings.
+    for key in ('sonic_description', 'quality_score'):
+        if key in llm_tags:
+            entry[key] = llm_tags[key]
+    # Legacy: still accept type_code/playability from LLM if present (backward compat)
+    for key in ('type_code', 'playability', 'instrument_hint'):
         if key in llm_tags:
             entry[key] = llm_tags[key]
 
@@ -530,16 +479,10 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
         if stored:
             entry['features'] = stored
 
-    # Rebuild flat tag set
+    # Rebuild flat tag set (structural only — subjective handled by CLAP)
     tags = set()
     if entry.get('type_code'):
         tags.add(entry['type_code'])
-    for v in entry.get('vibe', []):
-        tags.add(v)
-    for t in entry.get('texture', []):
-        tags.add(t)
-    for g in entry.get('genre', []):
-        tags.add(g)
     if entry.get('source'):
         tags.add(entry['source'])
     if entry.get('energy'):

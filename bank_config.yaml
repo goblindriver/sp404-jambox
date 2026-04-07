@@ -2,43 +2,49 @@ bank_a:
   name: Your Space
   notes: Bank A is yours — resample and chop on-device
 bank_b:
-  preset: auto/block-rock-riot-aggressive-rock-break-be
-  name: 'Vibe: block rock riot aggressive rock break beat lofi'
-  bpm: 120
-  key: Am
-  notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+  preset: genre/big-beat-blowout
+  name: Big Beat Blowout
+  bpm: 130
+  key: Em
+  notes: Big beat revival kit. Fat compressed breaks, squelchy 303 bass, rave stabs,
+    and vocal shouts. Built for driving, hypnotic grooves that hit hard. Think Block
+    Rockin' Beats meets Firestarter.
   pads:
-    1: KIK lo-fi rock one-shot
-    2: SNR rock aggressive one-shot
-    3: HAT aggressive beat one-shot
-    4: CLP beat block one-shot
-    5: BRK block lo-fi loop
-    6: BAS lo-fi rock loop
-    7: KEY piano rock aggressive loop
-    8: GTR guitar aggressive beat loop
-    9: PAD beat block loop
-    10: FX block lo-fi one-shot
-    11: SMP lo-fi rock loop
-    12: VOX rock aggressive chop-ready
+    1: KIK punchy distorted fat one-shot
+    2: SNR cracking loud compressed one-shot
+    3: HAT crisp open metallic one-shot
+    4: CLP big layered room one-shot
+    5: BRK funk breakbeat compressed loop
+    6: BAS acid 303 squelchy loop
+    7: SYN rave stab hoover loop
+    8: SYN acid lead distorted loop
+    9: SYN filtered sweep build loop
+    10: PRC shaker tambourine uptempo loop
+    11: BRK amen chopped dirty loop
+    12: VOX shout chant crowd chop-ready
 bank_c:
-  preset: auto/bank-c-name-disco-voltage-notes-french-t
-  name: 'Vibe: Bank C | name: Disco Voltage | notes: French-touch'
-  bpm: 120
-  key: Am
-  notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+  preset: genre/azealia-mode
+  name: Azealia Mode
+  bpm: 130
+  key: Bbm
+  notes: 'Built from recent Azealia Banks binge (Spotify recently played — 3 albums)
+    plus 212 ft. Lazy Jay in Tiger Dust. House beats meets aggressive rap delivery.
+    Art-pop deconstruction. Pairs with brat-mode as the hip-hop-inflected counterpart.
+
+    '
   pads:
-    1: KIK disco pop one-shot
-    2: SNR pop aggressive one-shot
-    3: HAT aggressive hype one-shot
-    4: CLP hype aggressive, one-shot
-    5: BRK aggressive, auto/pop-nostalgia-120-bpm-rock-high-energy-s loop
-    6: BAS auto/pop-nostalgia-120-bpm-rock-high-energy-s disco loop
-    7: KEY piano disco pop loop
-    8: STR strings pop aggressive loop
-    9: PAD aggressive hype loop
-    10: FX hype aggressive, one-shot
-    11: SMP aggressive, auto/pop-nostalgia-120-bpm-rock-high-energy-s loop
-    12: VOX auto/pop-nostalgia-120-bpm-rock-high-energy-s disco chop-ready
+    1: KIK house deep thumping four-floor one-shot
+    2: SNR sharp snappy tight crack one-shot
+    3: HHT rapid rolling programmed trap one-shot
+    4: CLP house clap reverb layered one-shot
+    5: BAS house bouncing rolling sub bass loop
+    6: VOX rapid-fire aggressive attitude rap loop
+    7: SYN house stab bright filtered chord loop
+    8: DRM house groove four-floor driving beat loop
+    9: BAS acid squelch resonant 303 bass loop
+    10: VOX chopped pitched processed diva vocal loop
+    11: SYN dark arp menacing minor synth loop
+    12: FX crowd hype energy attitude shout loop
 bank_d:
   preset: auto/pop-nostalgia-120-bpm-rock-high-energy-s
   name: Cipher Pressure

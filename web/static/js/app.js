@@ -78,12 +78,20 @@ async function init() {
         // Sidebar close
         document.getElementById('sidebar-close').onclick = () => toggleLibrary(false);
 
-        // Library search
+        // Library search (CLAP semantic + type filter)
         let searchTimer;
-        document.getElementById('library-search').oninput = (e) => {
+        const libSearchInput = document.getElementById('library-search');
+        const libSearchTypeFilter = document.getElementById('library-search-type-filter');
+        const libSearchGenreFilter = document.getElementById('library-search-genre-filter');
+        const libSearchDanceable = document.getElementById('library-search-danceable');
+        const triggerLibSearch = () => {
             clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => searchLibrary(e.target.value), 300);
+            searchTimer = setTimeout(() => searchLibrary(libSearchInput.value), 400);
         };
+        libSearchInput.oninput = triggerLibSearch;
+        if (libSearchTypeFilter) libSearchTypeFilter.onchange = triggerLibSearch;
+        if (libSearchGenreFilter) libSearchGenreFilter.onchange = triggerLibSearch;
+        if (libSearchDanceable) libSearchDanceable.onchange = triggerLibSearch;
 
         // Close inspire popover on outside click
         document.addEventListener('click', (e) => {
@@ -1327,11 +1335,23 @@ async function browseLibrary(path) {
 async function searchLibrary(query) {
     if (!query || query.length < 2) {
         browseLibrary(state.libraryPath || '');
+        const badge = document.getElementById('library-search-mode');
+        if (badge) badge.textContent = '';
         return;
     }
     try {
-        const data = await api(`/api/library/search?q=${encodeURIComponent(query)}`);
-        renderSearchResults(data.results || []);
+        const typeFilter = document.getElementById('library-search-type-filter');
+        const tc = typeFilter ? typeFilter.value : '';
+        const genreFilter = document.getElementById('library-search-genre-filter');
+        const genre = genreFilter ? genreFilter.value : '';
+        const danceCheck = document.getElementById('library-search-danceable');
+        const danceable = danceCheck && danceCheck.checked ? '1' : '';
+        let url = `/api/library/search?q=${encodeURIComponent(query)}`;
+        if (tc) url += `&type_code=${tc}`;
+        if (genre) url += `&genre=${encodeURIComponent(genre)}`;
+        if (danceable) url += `&danceable=1`;
+        const data = await api(url);
+        renderSearchResults(data.results || [], data.mode);
     } catch (e) {
         toast(`Search failed: ${e.message}`, 'error');
     }
@@ -1381,20 +1401,31 @@ function renderLibraryBrowser(data, path) {
     setupLibraryDrag(container);
 }
 
-function renderSearchResults(results) {
+function renderSearchResults(results, mode) {
     const container = document.getElementById('library-browser');
+    const badge = document.getElementById('library-search-mode');
+    if (badge) {
+        badge.textContent = mode === 'clap' ? 'CLAP semantic' : mode === 'filename' ? 'filename' : '';
+        badge.className = 'search-mode-badge' + (mode === 'clap' ? ' clap-active' : '');
+    }
     if (!results.length) {
         container.innerHTML = '<div class="lib-item" style="color:var(--text-muted)">No results</div>';
         return;
     }
-    let html = '<div class="lib-breadcrumb">Search results</div>';
+    const isClap = mode === 'clap';
+    let html = `<div class="lib-breadcrumb">Search results (${results.length})</div>`;
     for (const r of results) {
         const name = r.path.split('/').pop();
+        const scoreLabel = isClap ? (r.score > 0 ? r.score.toFixed(2) : '') : `${r.score}pts`;
+        const tc = r.type_code ? `<span class="search-type-badge">${r.type_code}</span>` : '';
+        const genreBadge = r.parent_genre ? `<span class="search-genre-badge">${r.parent_genre}</span>` : '';
+        const danceBadge = r.danceability != null && r.danceability >= 0.6 ? '<span class="search-dance-badge" title="Danceable">💃</span>' : '';
         html += `<div class="lib-item lib-file" data-library-path="${r.path}">
             <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
             <button class="lib-play" onclick="previewLibraryFile('${r.path}')" title="Preview">▶</button>
-            <span class="lib-name" title="${r.path}">${truncate(name, 23)}</span>
-            <span class="lib-size" style="color:var(--accent)">${r.score}pts</span>
+            ${tc}${genreBadge}${danceBadge}
+            <span class="lib-name" title="${r.path}">${truncate(name, 18)}</span>
+            <span class="lib-size" style="color:var(--accent)">${scoreLabel}</span>
             <button class="lib-assign" onclick="assignFromLibrary('${r.path}')" title="Assign">Assign</button>
         </div>`;
     }

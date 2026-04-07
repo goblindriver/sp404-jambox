@@ -1,0 +1,54 @@
+{
+  "test_set_coverage": {
+    "drums": {
+      "total": 50,
+      "embedded": 50
+    },
+    "loops": {
+      "total": 50,
+      "embedded": 50
+    },
+    "melodic": {
+      "total": 50,
+      "embedded": 50
+    },
+    "mixed": {
+      "total": 50,
+      "embedded": 50
+    }
+  },
+  "embedding_count": 399,
+  "type_code_retrieval": {
+    "KIK": 0.367,
+    "SNR": 0.6,
+    "HAT": 0.333,
+    "BRK": 0.367,
+    "BAS": 0.167,
+    "SYN": 0.9,
+    "VOX": 0.033,
+    "AMB": 0.067,
+    "SFX": 0.1
+  },
+  "one_shot_quality": {
+    "under_0.5s": {
+      "count": 36,
+      "avg_norm": 1.0,
+      "min_norm": 1.0
+    },
+    "0.5_to_2s": {
+      "count": 62,
+      "avg_norm": 1.0,
+      "min_norm": 1.0
+    },
+    "2_to_10s": {
+      "count": 200,
+      "avg_norm": 1.0,
+      "min_norm": 1.0
+    },
+    "over_10s": {
+      "count": 53,
+      "avg_norm": 1.0,
+      "min_norm": 1.0
+    }
+  }
+}
