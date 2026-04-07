@@ -65,7 +65,11 @@ All paths and service endpoints managed through `scripts/jambox_config.py` with 
 
 ## Web UI
 
-Launch: `cd web && python app.py` → http://localhost:5404
+Use the **single project virtualenv** (create it once with `bash scripts/bootstrap.sh`):
+
+`./.venv/bin/python web/app.py` → http://localhost:5404
+
+(`bootstrap.sh` installs `requirements.txt` into `./.venv`. Avoid bare `python3` here — Homebrew’s Python is a different environment and often has no Flask.)
 
 - Visual pad grid mirroring the SP-404 layout
 - Click pads to edit descriptions, preview audio, fetch samples

@@ -14,10 +14,15 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-from jambox_config import is_excluded_rel_path, load_bank_config, load_settings_for_script
+from jambox_config import (
+    is_excluded_rel_path,
+    load_bank_config,
+    load_settings_for_script,
+    upsert_tag_entries,
+)
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from jambox_tuning import SCORE_VERSION, load_scoring_config
-from wav_utils import convert_and_tag
+from wav_utils import convert_and_tag, wav_identity
 from tag_vocab import (
     TYPE_CODES as _VOCAB_TYPE_CODES,
     PLAYABILITIES as _VOCAB_PLAYABILITIES,
@@ -42,8 +47,120 @@ FETCH_COOLDOWN_SECONDS = int(SETTINGS.get("FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 
 # SD Card Intelligence — performance data for scoring boosts
 _PERFORMANCE_PROFILE = None
 
+
+def _perf_profile_cell(profile, identity):
+    """Return mutable stats dict for one WAV content identity (hex sha256)."""
+    if not identity:
+        return None
+    return profile.setdefault(identity, {
+        "sessions_seen": 0,
+        "bpm_adjustments": [],
+        "pattern_hits": 0,
+        "avg_velocity": 0.0,
+    })
+
+
+def _parse_pattern_pad_key(key):
+    """Pattern keys look like ``E2`` (bank E, pad 2) or ``A10``."""
+    if not key or not isinstance(key, str) or len(key) < 2:
+        return None, None
+    bank = key[0].upper()
+    if bank not in "ABCDEFGHIJ":
+        return None, None
+    try:
+        pad_num = int(key[1:])
+    except ValueError:
+        return None, None
+    if not 1 <= pad_num <= 12:
+        return None, None
+    return bank, pad_num
+
+
+def _identity_session_bank_pad(banks, bank, pad_num):
+    blk = banks.get(bank) or {}
+    for p in blk.get("pads", []):
+        if int(p.get("pad", -1)) == int(pad_num) and p.get("on_card") and p.get("identity"):
+            return p["identity"]
+    return None
+
+
+def _identity_toolkit_pad(toolkit, pad_num):
+    for f in toolkit.get("files", []):
+        if int(f.get("pad", -1)) == int(pad_num) and f.get("identity"):
+            return f["identity"]
+    return None
+
+
+def _identity_bed_pad(bed_context, pad_num):
+    name = f"A{int(pad_num):07d}.WAV"
+    for f in bed_context.get("files", []):
+        if str(f.get("name", "")).upper() == name:
+            return f.get("identity")
+    return None
+
+
+def _ingest_card_session(profile, session):
+    """Merge one archived card intelligence JSON into ``profile`` keyed by wav identity."""
+    sb = session.get("session_banks") or {}
+    banks = sb.get("banks") or {}
+    toolkit = session.get("toolkit") or {}
+    bed = session.get("bed_context") or {}
+
+    # BPM tweaks: C–J from session_banks.adjustments (Bank A omitted — no reliable PAD_INFO).
+    for adj in sb.get("adjustments", []):
+        bank = str(adj.get("bank", "")).upper()
+        try:
+            pad_num = int(adj.get("pad", 0))
+        except (TypeError, ValueError):
+            continue
+        if bank == "A":
+            continue
+        ident = _identity_toolkit_pad(toolkit, pad_num) if bank == "B" else _identity_session_bank_pad(banks, bank, pad_num)
+        if adj.get("field") == "bpm" and ident:
+            cell = _perf_profile_cell(profile, ident)
+            cell["bpm_adjustments"].append({
+                "original": adj.get("original"), "user": adj.get("user"),
+            })
+
+    # Bank B toolkit adjustments (separate list in session JSON).
+    for adj in toolkit.get("adjustments", []):
+        if str(adj.get("bank", "")).upper() != "B":
+            continue
+        try:
+            pad_num = int(adj.get("pad", 0))
+        except (TypeError, ValueError):
+            continue
+        ident = _identity_toolkit_pad(toolkit, pad_num)
+        if adj.get("field") == "bpm" and ident:
+            cell = _perf_profile_cell(profile, ident)
+            cell["bpm_adjustments"].append({
+                "original": adj.get("original"), "user": adj.get("user"),
+            })
+
+    # Pattern favorites: all banks including A (resolve A from bed filenames).
+    ptn = sb.get("pattern_usage") or {}
+    for item in ptn.get("most_used", []):
+        bank, pad_num = _parse_pattern_pad_key(item.get("pad", ""))
+        if not bank:
+            continue
+        if bank == "A":
+            ident = _identity_bed_pad(bed, pad_num)
+        elif bank == "B":
+            ident = _identity_toolkit_pad(toolkit, pad_num)
+        else:
+            ident = _identity_session_bank_pad(banks, bank, pad_num)
+        if not ident:
+            continue
+        cell = _perf_profile_cell(profile, ident)
+        cell["pattern_hits"] += int(item.get("hit_count", 0) or 0)
+        cell["avg_velocity"] = max(
+            float(cell["avg_velocity"]),
+            float(item.get("avg_velocity", 0) or 0),
+        )
+
+
 def _load_performance_profile():
-    """Build per-library-file performance profile from card session history."""
+    """Build per-WAV-identity performance profile from ``data/card_sessions/*.json``."""
     global _PERFORMANCE_PROFILE
     if _PERFORMANCE_PROFILE is not None:
         return _PERFORMANCE_PROFILE
@@ -53,41 +170,49 @@ def _load_performance_profile():
     if not os.path.isdir(sessions_dir):
         return _PERFORMANCE_PROFILE
 
-    sessions = sorted(f for f in os.listdir(sessions_dir) if f.endswith(".json"))
-    for sess_file in sessions:
+    for sess_file in sorted(f for f in os.listdir(sessions_dir) if f.endswith(".json")):
         try:
             with open(os.path.join(sessions_dir, sess_file), encoding="utf-8") as fh:
                 session = json.load(fh)
         except (OSError, json.JSONDecodeError):
             continue
-
-        # Track which library files have performance data
-        # Session bank pads carry identity hashes we can match later
-        sess_banks = session.get("session_banks", {})
-        for adj in sess_banks.get("adjustments", []):
-            key = f"{adj.get('bank', '')}{adj.get('pad', '')}"
-            profile = _PERFORMANCE_PROFILE.setdefault(key, {
-                "sessions_seen": 0, "bpm_adjustments": [],
-                "pattern_hits": 0, "avg_velocity": 0,
-            })
-            if adj.get("field") == "bpm":
-                profile["bpm_adjustments"].append({
-                    "original": adj.get("original"), "user": adj.get("user"),
-                })
-
-        ptn = sess_banks.get("pattern_usage", {})
-        for item in ptn.get("most_used", []):
-            pad_key = item.get("pad", "")
-            profile = _PERFORMANCE_PROFILE.setdefault(pad_key, {
-                "sessions_seen": 0, "bpm_adjustments": [],
-                "pattern_hits": 0, "avg_velocity": 0,
-            })
-            profile["pattern_hits"] += item.get("hit_count", 0)
-            profile["avg_velocity"] = max(
-                profile["avg_velocity"], item.get("avg_velocity", 0)
-            )
+        _ingest_card_session(_PERFORMANCE_PROFILE, session)
 
     return _PERFORMANCE_PROFILE
+
+
+def _library_rel_path(full_path):
+    """Tag DB keys are relative to the sample library root."""
+    full_path = os.path.normpath(os.path.abspath(full_path))
+    lib = os.path.normpath(os.path.abspath(LIBRARY))
+    prefix = lib + os.sep
+    if not full_path.startswith(prefix):
+        return None
+    rel = full_path[len(prefix) :]
+    return rel.replace("\\", "/")
+
+
+def _persist_sp404_wav_identity(tag_db, rel_path, staged_path):
+    """Store SP-404 output identity on the tag row after a successful fetch convert.
+
+    Returns True if the tag row was updated (caller may invalidate score cache).
+    """
+    ident = wav_identity(staged_path)
+    if not ident or not rel_path:
+        return False
+    entry = tag_db.get(rel_path)
+    if not isinstance(entry, dict):
+        return False
+    if entry.get("sp404_wav_identity") == ident:
+        return False
+    updated = dict(entry)
+    updated["sp404_wav_identity"] = ident
+    tag_db[rel_path] = updated
+    try:
+        upsert_tag_entries(TAGS_FILE, {rel_path: updated})
+    except Exception:
+        return False
+    return True
 
 # ═══════════════════════════════════════════════════════════
 # Tag database scoring
@@ -308,9 +433,9 @@ def score_from_tags(entry, parsed_query, bank_config):
     # --- SD Card performance intelligence ---
     perf = _load_performance_profile()
     if perf:
-        card_identity = entry.get("card_identity")
-        if card_identity and card_identity in perf:
-            p = perf[card_identity]
+        wid = entry.get("sp404_wav_identity") or entry.get("card_identity")
+        if wid and wid in perf:
+            p = perf[wid]
             if p.get("pattern_hits", 0) > 0:
                 score += weights.get("performance_pattern_used", 0)
             if p.get("bpm_adjustments"):
@@ -733,6 +858,10 @@ def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_file
         print(f"    LOCAL (score={score}): {os.path.relpath(local_path, LIBRARY)}")
         if convert_and_tag(local_path, staged_path, bank_letter.upper(), pad_number):
             used_files.add(local_path)  # mark as used
+            rel = _library_rel_path(local_path)
+            if rel:
+                if _persist_sp404_wav_identity(tag_db, rel, staged_path) and cache_entries is not None:
+                    cache_entries.clear()
             return staged_path
         print(f"    Conversion failed")
 

@@ -7,7 +7,7 @@ Builds WAVs with the exact structure the SP-404 expects:
 
 Based on reverse engineering from @uttori/audio-wave, super-pads, and sp404loader.
 """
-import struct, os, wave, subprocess
+import hashlib, struct, os, wave, subprocess
 
 from jambox_config import load_settings_for_script
 
@@ -95,6 +95,34 @@ def build_sp404_wav(pcm_data, bank_letter, pad_number):
     riff = b'RIFF' + struct.pack('<I', 4 + len(body)) + b'WAVE'
 
     return riff + body
+
+
+def wav_identity(wav_path, chunk_size=65536):
+    """SHA-256 of the first ``chunk_size`` bytes of WAV ``data`` payload.
+
+    Walks RIFF chunks (skips RLND, fmt, etc.) so the digest matches what the
+    SP-404 card stores and stays stable when only the RLND pad index changes.
+    """
+    try:
+        with open(wav_path, "rb") as f:
+            header = f.read(12)
+            if len(header) < 12 or header[:4] != b"RIFF":
+                return None
+            h = hashlib.sha256()
+            while True:
+                chunk_hdr = f.read(8)
+                if len(chunk_hdr) < 8:
+                    break
+                cid = chunk_hdr[:4]
+                csz = struct.unpack("<I", chunk_hdr[4:])[0]
+                if cid == b"data":
+                    to_read = min(csz, chunk_size)
+                    h.update(f.read(to_read))
+                    return h.hexdigest()
+                f.read(csz + (csz % 2))
+    except (OSError, struct.error):
+        pass
+    return None
 
 
 def convert_and_tag(src, dst, bank_letter, pad_number, trim_silence=True):

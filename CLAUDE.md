@@ -324,7 +324,7 @@ Pattern training is intentionally separate from vibe training. No MIDI corpus ex
 **Format**: All library files are FLAC (lossless). Output to SD card converts to 16-bit WAV.
 
 ## Web UI
-Launch: `cd web && python app.py` (runs on http://localhost:5404)
+Launch: `./.venv/bin/python web/app.py` (runs on http://localhost:5404). One env: repo `./.venv` from `bash scripts/bootstrap.sh` — do not use bare Homebrew `python3` for the UI.
 - Visual pad grid mirroring the SP-404 layout
 - Click pads to edit descriptions, preview audio, fetch samples
 - Drag-and-drop from library sidebar or OS file explorer onto pads

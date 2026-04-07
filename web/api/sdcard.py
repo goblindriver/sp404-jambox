@@ -1,6 +1,7 @@
 """SD card status, scan, and Bank A sync API."""
-import os, hashlib, shutil, struct, subprocess
+import os, shutil, struct, subprocess
 from flask import Blueprint, jsonify, request, current_app
+from wav_utils import wav_identity as _wav_identity
 
 sdcard_bp = Blueprint('sdcard', __name__)
 
@@ -154,36 +155,6 @@ def decode_padinfo_diffs(path):
                 'modifications': modifications,
             }
     return diffs
-
-
-def _wav_identity(wav_path, chunk_size=65536):
-    """Compute a stable identity hash for a WAV file.
-
-    Uses SHA-256 of the first ``chunk_size`` bytes of audio data (after
-    the RIFF header).  Skips RLND chunks so the hash is stable across
-    Jambox re-deploys that only change the RLND pad index.
-    """
-    try:
-        with open(wav_path, 'rb') as f:
-            header = f.read(12)
-            if len(header) < 12 or header[:4] != b'RIFF':
-                return None
-            h = hashlib.sha256()
-            # Walk chunks until we hit 'data', then hash its payload
-            while True:
-                chunk_hdr = f.read(8)
-                if len(chunk_hdr) < 8:
-                    break
-                cid = chunk_hdr[:4]
-                csz = struct.unpack('<I', chunk_hdr[4:])[0]
-                if cid == b'data':
-                    to_read = min(csz, chunk_size)
-                    h.update(f.read(to_read))
-                    return h.hexdigest()
-                f.read(csz + (csz % 2))  # skip non-data chunks (incl. RLND)
-    except (OSError, struct.error):
-        pass
-    return None
 
 
 def _wav_provenance(wav_path):

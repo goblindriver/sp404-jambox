@@ -37,8 +37,8 @@
                 <button id="btn-eject" class="header-icon-btn eject-btn" title="Eject SD card" disabled>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l-7 8h14l-7-8z"/><rect x="5" y="16" width="14" height="2" rx="1"/></svg>
                 </button>
-                <button id="btn-card-intel" class="header-icon-btn" title="Pull card intelligence">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <button id="btn-card-intel" class="header-icon-btn smart-sparkle-btn" title="Card intelligence — capture PAD_INFO, patterns, beds (smart pull)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/></svg>
                 </button>
             </div>
         </div>
@@ -53,11 +53,11 @@
         <span id="bank-meta" class="bank-meta"></span>
         <div class="bank-toolbar">
             <button id="btn-edit-bank" class="btn-edit-bank" title="Edit bank settings">&#9998;</button>
-            <button id="btn-inspire" class="bank-tool-btn" title="Inspire — LLM generates name, BPM, key, description">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/></svg>
+            <button id="btn-inspire" class="bank-tool-btn smart-sparkle-btn" title="Inspire — LLM generates name, BPM, key, description">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/></svg>
             </button>
-            <button id="btn-draft-pads" class="bank-tool-btn" title="Draft pads — LLM generates pad descriptions from bank metadata" disabled>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <button id="btn-draft-pads" class="bank-tool-btn smart-sparkle-btn" title="Draft pads — LLM writes pad descriptions from bank metadata" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/></svg>
             </button>
             <button id="btn-fetch-current" class="bank-tool-btn" title="Fetch samples for this bank">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -337,7 +337,7 @@
                     <div class="step-num">2</div>
                     <div class="step-content">
                         <h4>Draft pad descriptions</h4>
-                        <p>Press the <strong>grid icon</strong> to let the LLM write pad descriptions from the bank&rsquo;s metadata. Review and tweak them if you like.</p>
+                        <p>Press the <strong>sparkle</strong> button next to Inspire (same icon) to let the LLM write pad descriptions from the bank&rsquo;s metadata. Review and tweak them if you like.</p>
                     </div>
                 </div>
                 <div class="tutorial-step">
@@ -351,7 +351,7 @@
                     <div class="step-num">4</div>
                     <div class="step-content">
                         <h4>Export &amp; jam</h4>
-                        <p>Hit <strong>Export to SD</strong> to build PAD_INFO and deploy. Bank A is yours &mdash; resample and chop on-device. Plug the card back in to pull your edits.</p>
+                        <p>Hit <strong>Export to SD</strong> to build PAD_INFO and deploy. Bank A is yours &mdash; resample and chop on-device. Plug the card back in and tap the header <strong>sparkle</strong> (same icon as Inspire) to pull <strong>card intelligence</strong>: PAD_INFO tweaks, pattern usage, and bed context.</p>
                     </div>
                 </div>
                 <div class="tutorial-step">

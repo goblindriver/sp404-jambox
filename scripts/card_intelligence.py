@@ -33,6 +33,7 @@ REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 from jambox_config import load_settings_for_script
+from wav_utils import wav_identity
 
 SETTINGS = load_settings_for_script(__file__)
 SD_CARD = SETTINGS["SD_CARD"]
@@ -46,31 +47,6 @@ ROLAND_DEFAULT_YEAR = 2009
 # ═══════════════════════════════════════════════════════════
 # WAV inspection utilities
 # ═══════════════════════════════════════════════════════════
-
-def wav_identity(wav_path, chunk_size=65536):
-    """SHA-256 of the first chunk_size bytes of WAV audio data."""
-    try:
-        with open(wav_path, "rb") as f:
-            header = f.read(12)
-            if len(header) < 12 or header[:4] != b"RIFF":
-                return None
-            import hashlib
-            h = hashlib.sha256()
-            while True:
-                chunk_hdr = f.read(8)
-                if len(chunk_hdr) < 8:
-                    break
-                cid = chunk_hdr[:4]
-                csz = struct.unpack("<I", chunk_hdr[4:])[0]
-                if cid == b"data":
-                    to_read = min(csz, chunk_size)
-                    h.update(f.read(to_read))
-                    return h.hexdigest()
-                f.read(csz + (csz % 2))
-    except (OSError, struct.error):
-        pass
-    return None
-
 
 def wav_provenance(wav_path):
     """Classify provenance: device-created, jambox, or user-loaded."""
