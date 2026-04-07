@@ -86,7 +86,9 @@ async function init() {
         const libSearchDanceable = document.getElementById('library-search-danceable');
         const triggerLibSearch = () => {
             clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => searchLibrary(libSearchInput.value), 400);
+            searchTimer = setTimeout(() => {
+                searchLibrary(libSearchInput ? libSearchInput.value : '');
+            }, 400);
         };
         libSearchInput.oninput = triggerLibSearch;
         if (libSearchTypeFilter) libSearchTypeFilter.onchange = triggerLibSearch;
@@ -1332,11 +1334,26 @@ async function browseLibrary(path) {
     }
 }
 
+function _librarySearchFacetActive() {
+    const typeFilter = document.getElementById('library-search-type-filter');
+    const genreFilter = document.getElementById('library-search-genre-filter');
+    const danceCheck = document.getElementById('library-search-danceable');
+    const tc = typeFilter ? typeFilter.value : '';
+    const genre = genreFilter ? genreFilter.value : '';
+    const danceable = danceCheck && danceCheck.checked;
+    return !!(tc || genre || danceable);
+}
+
 async function searchLibrary(query) {
-    if (!query || query.length < 2) {
+    const q = (query || '').trim();
+    const facets = _librarySearchFacetActive();
+    if (q.length < 2 && !facets) {
         browseLibrary(state.libraryPath || '');
         const badge = document.getElementById('library-search-mode');
-        if (badge) badge.textContent = '';
+        if (badge) {
+            badge.textContent = '';
+            badge.className = 'search-mode-badge';
+        }
         return;
     }
     try {
@@ -1346,7 +1363,7 @@ async function searchLibrary(query) {
         const genre = genreFilter ? genreFilter.value : '';
         const danceCheck = document.getElementById('library-search-danceable');
         const danceable = danceCheck && danceCheck.checked ? '1' : '';
-        let url = `/api/library/search?q=${encodeURIComponent(query)}`;
+        let url = `/api/library/search?q=${encodeURIComponent(q.length >= 2 ? q : '')}`;
         if (tc) url += `&type_code=${tc}`;
         if (genre) url += `&genre=${encodeURIComponent(genre)}`;
         if (danceable) url += `&danceable=1`;
@@ -1405,14 +1422,15 @@ function renderSearchResults(results, mode) {
     const container = document.getElementById('library-browser');
     const badge = document.getElementById('library-search-mode');
     if (badge) {
-        badge.textContent = mode === 'clap' ? 'CLAP semantic' : mode === 'filename' ? 'filename' : '';
-        badge.className = 'search-mode-badge' + (mode === 'clap' ? ' clap-active' : '');
+        const labels = { clap: 'CLAP semantic', filename: 'filename', facet: 'filters only' };
+        badge.textContent = labels[mode] || '';
+        badge.className = 'search-mode-badge' + (mode === 'clap' || mode === 'facet' ? ' clap-active' : '');
     }
     if (!results.length) {
         container.innerHTML = '<div class="lib-item" style="color:var(--text-muted)">No results</div>';
         return;
     }
-    const isClap = mode === 'clap';
+    const isClap = mode === 'clap' || mode === 'facet';
     let html = `<div class="lib-breadcrumb">Search results (${results.length})</div>`;
     for (const r of results) {
         const name = r.path.split('/').pop();

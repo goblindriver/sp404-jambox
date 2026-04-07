@@ -111,19 +111,52 @@ def search():
     """Semantic search (CLAP) with filename fallback.
 
     Query params:
-        q: search text (required, min 2 chars)
+        q: search text (min 2 chars), unless type_code / genre / danceable alone
         type_code: optional hard filter (e.g. KIK, BAS, SYN)
         limit: max results (default 30, max 100)
     """
     q = request.args.get('q', '').strip()
-    if not q or len(q) < 2:
-        return jsonify({'results': [], 'mode': 'none'})
-
     limit = _parse_limit_arg('limit', 30, 100)
     type_code = request.args.get('type_code', '').strip().upper() or None
     genre_filter = request.args.get('genre', '').strip() or None
     danceable_flag = request.args.get('danceable', '').strip()
     want_danceable = danceable_flag in ('1', 'true', 'yes')
+    has_facets = bool(type_code or genre_filter or want_danceable)
+
+    if len(q) < 2 and not has_facets:
+        return jsonify({'results': [], 'mode': 'none'})
+
+    # Facet-only browse (no CLAP query text)
+    if len(q) < 2 and has_facets:
+        db = _load_tag_db() or {}
+        results = []
+        for rel_path, entry in db.items():
+            if type_code and entry.get('type_code') != type_code:
+                continue
+            if genre_filter and entry.get('parent_genre') != genre_filter:
+                continue
+            if want_danceable and (entry.get('danceability') or 0) < 0.6:
+                continue
+            d = entry.get('danceability') or 0.0
+            results.append({
+                'name': os.path.basename(rel_path),
+                'path': rel_path,
+                'score': round(float(d), 4),
+                'type_code': entry.get('type_code', ''),
+                'bpm': entry.get('bpm'),
+                'key': entry.get('key'),
+                'duration': entry.get('duration'),
+                'playability': entry.get('playability', ''),
+                'parent_genre': entry.get('parent_genre', ''),
+                'danceability': entry.get('danceability'),
+            })
+        results.sort(key=lambda x: (-x['score'], x['path']))
+        return jsonify({
+            'results': results[:limit],
+            'query': q,
+            'mode': 'facet',
+            'total_matched': len(results),
+        })
 
     # Try CLAP semantic search first
     library_root = _library_root()

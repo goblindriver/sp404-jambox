@@ -491,15 +491,21 @@ def server_status():
         except Exception:
             features['fpcalc'] = False
 
+        tag_db = _load_tag_db_for_status() or {}
+
         clap_info = {'available': False, 'embedded': 0, 'coverage': 0}
         try:
             from clap_engine import EmbeddingStore
             library = current_app.config.get('SAMPLE_LIBRARY', '')
             store = EmbeddingStore(library)
+            if tag_db:
+                cov = round(store.count / max(1, len(tag_db)) * 100, 1)
+            else:
+                cov = 100.0 if store.count else 0.0
             clap_info = {
                 'available': True,
                 'embedded': store.count,
-                'coverage': round(store.count / max(1, 26000) * 100, 1),
+                'coverage': cov,
             }
             features['clap'] = store.count > 0
         except ImportError:
@@ -511,11 +517,10 @@ def server_status():
             _get_model()
             discogs_info['available'] = True
             features['discogs'] = True
-            db = _load_tag_db_for_status()
-            if db:
-                classified = sum(1 for e in db.values() if e.get('discogs_styles'))
-                danceable = sum(1 for e in db.values() if (e.get('danceability') or 0) > 0.6)
-                total = len(db)
+            if tag_db:
+                classified = sum(1 for e in tag_db.values() if e.get('discogs_styles'))
+                danceable = sum(1 for e in tag_db.values() if (e.get('danceability') or 0) > 0.6)
+                total = len(tag_db)
                 discogs_info['classified'] = classified
                 discogs_info['coverage'] = round(classified / max(1, total) * 100, 1)
                 discogs_info['danceable'] = danceable
