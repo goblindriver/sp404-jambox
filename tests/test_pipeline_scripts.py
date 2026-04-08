@@ -62,13 +62,15 @@ class FetchSamplesScriptTests(unittest.TestCase):
         self.assertEqual(config["score_version"], jambox_tuning.DEFAULT_SCORING["score_version"])
         self.assertEqual(config["weights"]["type_exact"], 10)
 
-    def test_score_from_tags_uses_configurable_weights(self):
+    def test_score_from_tags_returns_positive_for_good_match(self):
+        """A perfect match across all dimensions should score well."""
         parsed = {
             "type_code": "KIK",
             "playability": "one-shot",
             "bpm": 120,
             "key": "Am",
             "keywords": {"dusty"},
+            "energy": None,
         }
         entry = {
             "type_code": "KIK",
@@ -84,12 +86,33 @@ class FetchSamplesScriptTests(unittest.TestCase):
             "plex_moods": [],
             "plex_play_count": 0,
         }
-        custom_weights = dict(fetch_samples.SCORING_WEIGHTS)
-        custom_weights["type_exact"] = 99
-        with patch.object(fetch_samples, "SCORING_WEIGHTS", custom_weights):
-            score = fetch_samples.score_from_tags(entry, parsed, {"bpm": 120, "key": "Am"})
+        score = fetch_samples.score_from_tags(entry, parsed, {"bpm": 120, "key": "Am"})
+        # Unified engine normalizes then scales to ~0-30 range
+        self.assertGreater(score, 10)
 
-        self.assertGreaterEqual(score, 99)
+    def test_score_from_tags_penalizes_type_mismatch(self):
+        """Wrong type code should score much lower than a match."""
+        parsed = {
+            "type_code": "KIK",
+            "playability": "one-shot",
+            "bpm": 120,
+            "key": None,
+            "keywords": set(),
+            "energy": None,
+        }
+        good = {
+            "type_code": "KIK", "playability": "one-shot", "bpm": 120,
+            "vibe": [], "texture": [], "genre": [], "tags": [],
+            "path": "kick.wav", "duration": 1,
+        }
+        bad = {
+            "type_code": "PAD", "playability": "loop", "bpm": 80,
+            "vibe": [], "texture": [], "genre": [], "tags": [],
+            "path": "pad.wav", "duration": 30,
+        }
+        good_score = fetch_samples.score_from_tags(good, parsed, {"bpm": 120})
+        bad_score = fetch_samples.score_from_tags(bad, parsed, {"bpm": 120})
+        self.assertGreater(good_score, bad_score)
 
     def test_rank_library_matches_reuses_score_cache_for_same_query(self):
         with tempfile.TemporaryDirectory() as tempdir:

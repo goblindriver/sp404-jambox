@@ -65,6 +65,16 @@ DEFAULT_VIBE_MAPPINGS = {
 }
 
 DEFAULT_CLAP_SCORING = {
+    "similarity_weight": 0.6,
+    "bpm_weight": 0.05,
+    "key_weight": 0.03,
+    "energy_weight": 0.03,
+    "danceability_weight": 0.03,
+    "discogs_weight": 0.03,
+    "quality_weight": 0.02,
+    "plex_weight": 0.02,
+    "instrument_hint_weight": 0.02,
+    "performance_weight": 0.04,
     "bpm_close_bonus": 0.05,
     "bpm_near_bonus": 0.02,
     "key_exact_bonus": 0.03,
@@ -73,9 +83,15 @@ DEFAULT_CLAP_SCORING = {
     "duration_mismatch_penalty": -0.10,
     "min_similarity": 0.05,
     "danceability_bonus": 0.03,
-    "danceability_threshold": 0.6,
+    "danceability_threshold": 0.5,
     "discogs_keyword_bonus": 0.018,
     "discogs_keyword_bonus_cap": 0.045,
+}
+
+DEFAULT_PERFORMANCE_SCORING = {
+    "pad_reuse": 4,
+    "bpm_stable": 3,
+    "high_velocity": 2,
 }
 
 DEFAULT_SCORING = {
@@ -107,9 +123,6 @@ DEFAULT_SCORING = {
         "performance_pattern_used": 4,
         "performance_bpm_adjust": 3,
         "performance_velocity_high": 2,
-        "bed_complement": 3,
-        "toolkit_survival": 5,
-        "session_survival": 2,
     },
 }
 
@@ -187,6 +200,7 @@ def load_scoring_config(path=None):
         "score_version": DEFAULT_SCORING["score_version"],
         "weights": dict(DEFAULT_SCORING["weights"]),
         "clap": dict(DEFAULT_CLAP_SCORING),
+        "performance": dict(DEFAULT_PERFORMANCE_SCORING),
     }
 
     try:
@@ -211,6 +225,14 @@ def load_scoring_config(path=None):
                 result["clap"][key] = float(clap.get(key, default_value))
             except (TypeError, ValueError):
                 result["clap"][key] = default_value
+
+    performance = payload.get("performance")
+    if isinstance(performance, dict):
+        for key, default_value in result["performance"].items():
+            try:
+                result["performance"][key] = float(performance.get(key, default_value))
+            except (TypeError, ValueError):
+                result["performance"][key] = default_value
 
     return result
 

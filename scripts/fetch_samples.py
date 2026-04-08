@@ -30,6 +30,12 @@ from tag_vocab import (
 )
 from clap_engine import EmbeddingStore, embed_text, cosine_similarity
 from discogs_fetch_bridge import discogs_keyword_tokens
+from scoring_engine import (
+    score_sample as _unified_score,
+    bpm_score as _bpm_score_smooth,
+    normalize_key as _normalize_key_se,
+    keys_compatible as _keys_compatible_se,
+)
 
 SETTINGS = load_settings_for_script(__file__)
 SCORING_CONFIG = load_scoring_config()
@@ -313,142 +319,21 @@ def parse_pad_query(query):
 
 
 def score_from_tags(entry, parsed_query, bank_config):
-    """Score a library entry against a parsed pad query using the tag database.
+    """Score a library entry against a parsed pad query using the unified scoring engine.
 
-    Scoring weights:
-      Type code match:     +10 (critical — wrong type = wrong sound)
-      Playability match:   +5  (one-shot vs loop matters a lot)
-      BPM within ±5:       +4
-      BPM within ±15:      +2
-      Key match:           +3
-      Keyword in tags:     +3  (vibe, texture, genre from tag DB)
-      Keyword in filename: +1  (fallback for untagged dimensions)
-
-    Penalties:
-      Type code MISMATCH:  -8  (asking for KIK, got PAD = bad)
-      Playability mismatch:-4  (asking for one-shot, got loop = bad)
-      Duration mismatch:   -3  (one-shot pad but file > 10s)
+    Legacy wrapper — delegates to scoring_engine.score_sample() without CLAP similarity.
+    Returns a float score on the legacy 0-30+ scale (converted from unified 0-1 range).
     """
-    score = 0
-    weights = SCORING_WEIGHTS
-    q = parsed_query
-
-    # --- Type code (most important) ---
-    entry_tc = entry.get("type_code", "")
-    if q["type_code"]:
-        if entry_tc == q["type_code"]:
-            score += weights["type_exact"]
-        elif not entry_tc:
-            pass
-        elif entry_tc in _RELATED_TYPE_CODES.get(q["type_code"], set()):
-            score += weights["type_related"]
-        else:
-            score += weights["type_mismatch"]
-
-    # --- Playability ---
-    entry_play = entry.get("playability", "")
-    if q["playability"]:
-        if entry_play == q["playability"]:
-            score += weights["playability_exact"]
-        elif q["playability"] == "one-shot" and entry_play == "loop":
-            score += weights["playability_mismatch"]  # definitely wrong
-        elif q["playability"] == "loop" and entry_play == "one-shot":
-            score += weights["playability_mismatch"]
-
-    # --- BPM ---
-    entry_bpm = entry.get("bpm")
-    target_bpm = q["bpm"] or bank_config.get("bpm")
-    if target_bpm and entry_bpm:
-        try:
-            diff = abs(float(entry_bpm) - float(target_bpm))
-        except (TypeError, ValueError):
-            diff = 999
-        if diff <= 5:
-            score += weights["bpm_close"]
-        elif diff <= 15:
-            score += weights["bpm_near"]
-        elif diff <= 30:
-            score += weights.get("bpm_distant", -1)
-        else:
-            score += weights["bpm_far"]
-
-    # --- Key ---
-    entry_key = entry.get("key")
-    target_key = q["key"] or bank_config.get("key")
-    if target_key and target_key.upper() != "XX" and entry_key:
-        norm_entry = _normalize_key(entry_key)
-        norm_target = _normalize_key(target_key)
-        if norm_entry.lower() == norm_target.lower():
-            score += weights["key_exact"]
-        elif _keys_compatible(target_key, entry_key):
-            score += weights["key_compatible"]
-
-    # --- Keywords vs tag dimensions ---
-    entry_tags = set(t.lower() for t in entry.get("tags", []))
-    entry_vibes = set(v.lower() for v in entry.get("vibe", []))
-    entry_textures = set(t.lower() for t in entry.get("texture", []))
-    entry_genres = set(g.lower() for g in entry.get("genre", []))
-    fname_lower = os.path.basename(entry.get("path", "")).lower()
-    discogs_toks = discogs_keyword_tokens(entry)
-    disc_w = weights.get("discogs_keyword_match", 0)
-
-    for kw in q["keywords"]:
-        if kw in entry_vibes or kw in entry_textures or kw in entry_genres:
-            score += weights["keyword_dimension"]
-        elif kw in entry_tags:
-            score += weights["keyword_tag"]
-        elif kw in discogs_toks:
-            score += disc_w
-        elif kw in fname_lower:
-            score += weights["keyword_filename"]
-
-    # --- Duration penalty for one-shots ---
-    duration = entry.get("duration", 0)
-    if q["playability"] == "one-shot" and duration > 10:
-        score += weights["oneshot_long_penalty"]
-    if q["playability"] == "loop" and duration < 1:
-        score += weights["loop_short_penalty"]
-
-    # --- Energy dimension ---
-    entry_energy = (entry.get("energy") or "").lower()
-    if entry_energy and q["energy"]:
-        if entry_energy == q["energy"]:
-            score += weights.get("energy_match", 0)
-        else:
-            score += weights.get("energy_mismatch", 0)
-
-    # --- Instrument hint ---
-    hint = (entry.get("instrument_hint") or "").lower().strip()
-    if hint and q["keywords"]:
-        hint_tokens = set(hint.split())
-        if hint_tokens & q["keywords"]:
-            score += weights.get("instrument_hint_match", 0)
-
-    # --- Quality score tiebreaker ---
-    qs = entry.get("quality_score")
-    if isinstance(qs, (int, float)) and 1 <= qs <= 5:
-        score += qs * weights.get("quality_tiebreaker", 0)
-
-    # --- Plex metadata bonuses ---
-    if entry.get("plex_moods"):
-        score += weights["plex_moods_bonus"]
-    if entry.get("plex_play_count", 0) > 0:
-        score += weights["plex_play_count_bonus"]
-
-    # --- SD Card performance intelligence ---
     perf = _load_performance_profile()
-    if perf:
-        wid = entry.get("sp404_wav_identity") or entry.get("card_identity")
-        if wid and wid in perf:
-            p = perf[wid]
-            if p.get("pattern_hits", 0) > 0:
-                score += weights.get("performance_pattern_used", 0)
-            if p.get("bpm_adjustments"):
-                score += weights.get("performance_bpm_adjust", 0)
-            if p.get("avg_velocity", 0) > 90:
-                score += weights.get("performance_velocity_high", 0)
-
-    return score
+    unified, _breakdown = _unified_score(
+        entry, parsed_query, bank_config,
+        clap_similarity=None,
+        performance_profile=perf,
+        discogs_tokens_fn=discogs_keyword_tokens,
+    )
+    # Scale unified 0-1 score to legacy ~0-30 range for backward compatibility
+    # with min_score thresholds and cache consumers
+    return round(unified * 30, 2)
 
 
 # Normalize sharp/flat enharmonic spellings to a canonical form
@@ -563,18 +448,7 @@ def rank_library_clap(query, bank_config=None, tag_db=None, used_files=None, lim
     paths = store.paths_array()
     scores = cosine_similarity(text_emb, matrix)
 
-    target_bpm = parsed["bpm"] or bank_config.get("bpm")
-    target_key = parsed["key"] or bank_config.get("key")
-    weights = SCORING_WEIGHTS
-
-    _DANCE_KEYWORDS = {"dance", "groove", "party", "hype", "danceable", "funky",
-                       "disco", "house", "bounce", "club", "rave", "energy"}
-    wants_danceable = bool(parsed["keywords"] & _DANCE_KEYWORDS)
-    _clap = SCORING_CONFIG.get("clap") or {}
-    dance_bonus_val = _clap.get("danceability_bonus", 0.03)
-    dance_threshold = _clap.get("danceability_threshold", 0.6)
-    disc_bonus_each = _clap.get("discogs_keyword_bonus", 0.018)
-    disc_bonus_cap = _clap.get("discogs_keyword_bonus_cap", 0.045)
+    perf = _load_performance_profile()
 
     results = []
     for i, rel_path in enumerate(paths):
@@ -588,7 +462,7 @@ def rank_library_clap(query, bank_config=None, tag_db=None, used_files=None, lim
         if full_path in used_files:
             continue
 
-        # Hard filter: type_code
+        # Hard filter: type_code (skip completely wrong types before scoring)
         if parsed["type_code"]:
             entry_tc = entry.get("type_code", "")
             if entry_tc != parsed["type_code"]:
@@ -596,84 +470,25 @@ def rank_library_clap(query, bank_config=None, tag_db=None, used_files=None, lim
                 if entry_tc not in related:
                     continue
 
-        # Hard filter: playability (soft — penalize rather than exclude)
-        entry_play = entry.get("playability", "")
-        play_penalty = 0.0
-        if parsed["playability"]:
-            if parsed["playability"] == "one-shot" and entry_play == "loop":
-                play_penalty = -0.15
-            elif parsed["playability"] == "loop" and entry_play == "one-shot":
-                play_penalty = -0.15
-
-        # Duration sanity
-        duration = entry.get("duration", 0) or 0
-        dur_penalty = 0.0
-        if parsed["playability"] == "one-shot" and duration > 10:
-            dur_penalty = -0.10
-        elif parsed["playability"] == "loop" and 0 < duration < 1:
-            dur_penalty = -0.10
-
-        # BPM bonus (normalized to 0-0.05 range)
-        bpm_bonus = 0.0
-        if target_bpm and entry.get("bpm"):
-            try:
-                diff = abs(float(entry["bpm"]) - float(target_bpm))
-            except (TypeError, ValueError):
-                diff = 999
-            if diff <= 5:
-                bpm_bonus = 0.05
-            elif diff <= 15:
-                bpm_bonus = 0.02
-
-        # Key bonus (normalized to 0-0.03 range)
-        key_bonus = 0.0
-        if target_key and target_key.upper() != "XX" and entry.get("key"):
-            norm_entry = _normalize_key(entry["key"])
-            norm_target = _normalize_key(target_key)
-            if norm_entry and norm_target:
-                if norm_entry.lower() == norm_target.lower():
-                    key_bonus = 0.03
-                elif _keys_compatible(target_key, entry["key"]):
-                    key_bonus = 0.01
-
-        # Danceability bonus for dance-related queries
-        dance_bonus = 0.0
-        if wants_danceable:
-            file_dance = entry.get("danceability") or 0.0
-            if file_dance >= dance_threshold:
-                dance_bonus = dance_bonus_val
-
-        discogs_bonus = 0.0
-        if parsed["keywords"]:
-            dtoks = discogs_keyword_tokens(entry)
-            entry_genres_clap = {g.lower() for g in (entry.get("genre") or []) if isinstance(g, str)}
-            for kw in parsed["keywords"]:
-                if kw in dtoks and kw not in entry_genres_clap:
-                    discogs_bonus += disc_bonus_each
-            if discogs_bonus > disc_bonus_cap:
-                discogs_bonus = disc_bonus_cap
-
-        final_score = (
-            float(scores[i])
-            + bpm_bonus
-            + key_bonus
-            + play_penalty
-            + dur_penalty
-            + dance_bonus
-            + discogs_bonus
+        # Unified scoring — CLAP similarity as primary signal
+        final_score, breakdown = _unified_score(
+            entry, parsed, bank_config,
+            clap_similarity=float(scores[i]),
+            performance_profile=perf,
+            discogs_tokens_fn=discogs_keyword_tokens,
         )
 
         if final_score >= min_score:
             results.append({
                 "path": full_path,
                 "rel_path": rel_path,
-                "score": round(final_score, 4),
+                "score": final_score,
                 "clap_sim": round(float(scores[i]), 4),
                 "type_code": entry.get("type_code"),
-                "playability": entry_play,
+                "playability": entry.get("playability", ""),
                 "bpm": entry.get("bpm"),
                 "key": entry.get("key"),
-                "duration": duration,
+                "duration": entry.get("duration", 0) or 0,
             })
 
     results.sort(key=lambda x: x["score"], reverse=True)

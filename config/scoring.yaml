@@ -1,11 +1,37 @@
-score_version: 6
+score_version: 7
 
-# CLAP-powered scoring (primary — cosine similarity drives ranking)
-# The CLAP similarity score (0.0-1.0) is the dominant signal.
-# BPM and key provide small structural bonuses on top.
-# Type_code and playability are hard filters, not score components.
+# ══════════════════════════════════════════════════════════════
+# Unified Scoring Engine — config/scoring.yaml
+# ══════════════════════════════════════════════════════════════
+#
+# Both CLAP and legacy paths flow through scoring_engine.py.
+# All weights below affect both paths. No more hidden hardcoded values.
 
+# CLAP-specific settings + shared dimension weights
 clap:
+  # Primary signal weight (how much CLAP cosine similarity dominates)
+  similarity_weight: 0.6
+
+  # Structural bonus weights (applied in both CLAP and legacy paths)
+  bpm_weight: 0.05
+  key_weight: 0.03
+  energy_weight: 0.03
+  danceability_weight: 0.03
+  discogs_weight: 0.03
+  quality_weight: 0.02
+  plex_weight: 0.02
+  instrument_hint_weight: 0.02
+  performance_weight: 0.04
+
+  # Danceability thresholds
+  danceability_bonus: 0.03
+  danceability_threshold: 0.5
+
+  # Discogs keyword scoring
+  discogs_keyword_bonus: 0.018
+  discogs_keyword_bonus_cap: 0.045
+
+  # Structural match thresholds (kept for reference / backward compat)
   bpm_close_bonus: 0.05
   bpm_near_bonus: 0.02
   key_exact_bonus: 0.03
@@ -13,12 +39,15 @@ clap:
   playability_mismatch_penalty: -0.15
   duration_mismatch_penalty: -0.10
   min_similarity: 0.05
-  danceability_bonus: 0.03
-  danceability_threshold: 0.6
-  discogs_keyword_bonus: 0.018
-  discogs_keyword_bonus_cap: 0.045
 
-# Legacy tag-based scoring (fallback when CLAP embeddings unavailable)
+# SD Card performance intelligence — applies to both scoring paths
+performance:
+  pad_reuse: 4        # sample survived multiple sessions
+  bpm_stable: 3       # user tweaked BPM = they cared
+  high_velocity: 2    # played hard = liked it
+
+# Legacy tag-based scoring (used as fallback when CLAP unavailable,
+# and for keyword matching normalization in both paths)
 weights:
   type_exact: 10
   type_related: 3
@@ -43,11 +72,6 @@ weights:
   instrument_hint_match: 5
   energy_match: 3
   energy_mismatch: -2
-
-  # SD Card Intelligence — performance-derived scoring signals
   performance_pattern_used: 4
   performance_bpm_adjust: 3
   performance_velocity_high: 2
-  bed_complement: 3
-  toolkit_survival: 5
-  session_survival: 2
