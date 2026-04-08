@@ -11,11 +11,17 @@ TYPE_CODES = {
     "FX", "SFX", "AMB", "FLY", "TPE", "RSR", "HRN",
 }
 
-# ── Vibes (mood / feel) ──
+# ── Vibes (mood / feel — emotional, not sonic) ──
+# NOTE: "dusty", "raw", "warm" moved to texture-only (they describe sonic
+# character, not emotional mood). Replacements added here for the emotional
+# meanings those words used to carry:
+#   dusty -> nostalgic (was already here, now more prominent)
+#   raw -> unfiltered (emotional honesty/directness)
+#   warm -> comforting (emotional warmth, safety, intimacy)
 VIBES = {
-    "dark", "warm", "hype", "dreamy", "nostalgic", "aggressive", "mellow",
+    "dark", "hype", "dreamy", "nostalgic", "aggressive", "mellow",
     "soulful", "eerie", "playful", "gritty", "ethereal", "triumphant",
-    "melancholic", "tense", "chill", "uplifting",
+    "melancholic", "tense", "chill", "uplifting", "unfiltered", "comforting",
 }
 
 # ── Textures (sonic character) ──
@@ -77,6 +83,8 @@ VIBE_ALIASES = {
     "energetic": "hype", "energy": "hype", "fun": "playful",
     "relaxed": "chill", "calm": "mellow", "groovy": "soulful",
     "scary": "eerie",
+    # Migrate old vibe uses of texture terms to emotional equivalents
+    "warm": "comforting", "raw": "unfiltered", "dusty": "nostalgic",
 }
 
 

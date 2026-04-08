@@ -1,4 +1,5 @@
 genre_instruments:
+  # Original mappings
   funk:
     - [GTR, guitar]
     - [KEY, clavinet]
@@ -36,7 +37,7 @@ genre_instruments:
     - [SYN, synth]
     - [BRK, break]
   jungle:
-    - [SYN, synth]
+    - [BRK, break]
     - [BAS, bass]
   experimental:
     - [SYN, synth]
@@ -54,14 +55,94 @@ genre_instruments:
     - [SYN, synth]
     - [KEY, piano]
 
+  # Expanded genre mappings (from Chat's plan)
+  afrobeat:
+    - [PRC, percussion]
+    - [BAS, bass]
+  city-pop:
+    - [KEY, piano]
+    - [SYN, synth]
+  shoegaze:
+    - [GTR, guitar]
+    - [PAD, pad]
+  punk:
+    - [GTR, guitar]
+    - [BAS, bass]
+  jazz:
+    - [KEY, piano]
+    - [BRS, brass]
+  rnb:
+    - [KEY, piano]
+    - [SYN, synth]
+  boom-bap:
+    - [KEY, piano]
+    - [BAS, bass]
+  dancehall:
+    - [BAS, bass]
+    - [SYN, synth]
+  dub:
+    - [BAS, bass]
+    - [FX, effects]
+  latin:
+    - [PRC, percussion]
+    - [GTR, guitar]
+  tropical:
+    - [PRC, percussion]
+    - [SYN, synth]
+  trap:
+    - [BAS, bass]
+    - [SYN, synth]
+  drill:
+    - [BAS, bass]
+    - [SYN, synth]
+  gospel:
+    - [KEY, organ]
+    - [VOX, vocals]
+  footwork:
+    - [BRK, break]
+    - [VOX, vocals]
+  grime:
+    - [BAS, bass]
+    - [SYN, synth]
+  uk-garage:
+    - [BRK, break]
+    - [BAS, bass]
+  lo-fi-hiphop:
+    - [KEY, piano]
+    - [GTR, guitar]
+  baile-funk:
+    - [BRK, break]
+    - [VOX, vocals]
+  breakcore:
+    - [BRK, break]
+    - [SYN, synth]
+  gqom:
+    - [BRK, break]
+    - [BAS, bass]
+  psychedelic:
+    - [SYN, synth]
+    - [GTR, guitar]
+  reggae:
+    - [GTR, guitar]
+    - [BAS, bass]
+  classical:
+    - [STR, strings]
+    - [KEY, piano]
+  world:
+    - [PRC, percussion]
+    - [GTR, guitar]
+  industrial-techno:
+    - [SYN, synth]
+    - [BRK, break]
+
 default_instruments:
   - [SYN, synth]
-  - [KEY, keys]
+  - [BAS, bass]
 
 fallback_dimensions:
-  genre: [funk, disco, soul, rock, electronic, ambient, house, techno, trance, dubstep, drum-and-bass, breakbeat, jungle, experimental, hiphop, lo-fi, industrial, pop, rnb, dub, dancehall, latin, boom-bap, tropical, afrobeat]
-  vibe: [dark, mellow, hype, dreamy, nostalgic, aggressive, soulful, warm, tense, chill, playful, eerie, gritty, ethereal, triumphant, melancholic, uplifting]
-  texture: [dusty, lo-fi, raw, clean, warm, bitcrushed, airy, crunchy, crispy, glassy, saturated, vinyl, tape, digital, organic, bright, thick, thin, filtered, muddy, warbly]
+  genre: [afrobeat, ambient, baile-funk, boom-bap, breakbeat, breakcore, city-pop, classical, dancehall, disco, drill, drum-and-bass, dub, dubstep, electronic, experimental, footwork, funk, gospel, gqom, grime, hiphop, house, industrial, industrial-techno, jazz, jungle, latin, lo-fi, lo-fi-hiphop, pop, psychedelic, punk, reggae, rnb, rock, shoegaze, soul, techno, trap, trance, tropical, uk-garage, world]
+  vibe: [dark, mellow, hype, dreamy, nostalgic, aggressive, soulful, tense, chill, playful, eerie, gritty, ethereal, triumphant, melancholic, uplifting, unfiltered, comforting]
+  texture: [dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crunchy, crispy, glassy, muddy, vinyl, tape, digital, organic, bright, thick, thin, filtered, warbly]
   energy: [low, mid, high]
 
 type_keyword_aliases:
