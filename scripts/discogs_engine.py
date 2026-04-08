@@ -256,14 +256,8 @@ def classify_styles(filepath):
 # ---------------------------------------------------------------------------
 
 def _walk_library_audio(library_root, skip_dirs):
-    audio_exts = {".flac", ".wav", ".mp3", ".aif", ".aiff", ".ogg"}
-    for dirpath, dirnames, filenames in os.walk(library_root):
-        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-        for fn in filenames:
-            if os.path.splitext(fn)[1].lower() in audio_exts:
-                abs_path = os.path.join(dirpath, fn)
-                rel_path = os.path.relpath(abs_path, library_root)
-                yield rel_path, abs_path
+    from library_walker import walk_library_audio
+    return walk_library_audio(library_root, skip_dirs=skip_dirs)
 
 
 def batch_classify(library_root, tag_db, tags_file, skip_dirs=None,
