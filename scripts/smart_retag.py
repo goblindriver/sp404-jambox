@@ -34,7 +34,14 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from jambox_config import LIBRARY_SKIP_DIRS, is_excluded_rel_path, load_settings_for_script, LONG_HOLD_DIRNAME
+from jambox_config import (
+    LIBRARY_SKIP_DIRS,
+    LONG_HOLD_DIRNAME,
+    delete_tag_paths,
+    is_excluded_rel_path,
+    load_settings_for_script,
+    upsert_tag_entries,
+)
 from audio_analysis import extract_features, is_available as librosa_available
 
 SETTINGS = load_settings_for_script(__file__)
@@ -57,6 +64,7 @@ SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 BATCH_SIZE = 50
 _tag_db_lock = threading.Lock()
+_persist_lock = threading.RLock()
 
 # Type code processing order — preset-demand-first
 TYPE_CODE_ORDER = [
@@ -538,6 +546,35 @@ def _save_checkpoint(cp):
         raise
 
 
+def _persist_tag_row(rel_path, entry):
+    """Write one row to tags SQLite so a crash mid-batch does not lose work."""
+    if not rel_path or not isinstance(entry, dict):
+        return
+    try:
+        payload = json.loads(json.dumps(entry, default=str))
+    except (TypeError, ValueError):
+        payload = dict(entry)
+    with _persist_lock:
+        upsert_tag_entries(TAGS_FILE, {rel_path: payload})
+
+
+def _save_slim_checkpoint(progress, meta):
+    """Progress JSON for UI (no processed_files list — avoids huge rewrites)."""
+    _save_checkpoint({
+        "started_at": meta.get("started_at", ""),
+        "last_updated": datetime.now().isoformat(),
+        "total_files": meta.get("total_files", 0),
+        "processed": progress.get("processed", 0),
+        "tagged": progress.get("tagged", 0),
+        "quarantined": progress.get("quarantined", 0),
+        "errors": progress.get("errors", 0),
+        "incomplete": progress.get("incomplete", 0),
+        "batch_size": meta.get("batch_size", BATCH_SIZE),
+        "llm_stats": dict(_llm_stats),
+        "avg_time_per_file_ms": int(meta.get("avg_ms", 0)),
+    })
+
+
 def _load_tags():
     from jambox_config import load_tag_db
     return load_tag_db(TAGS_FILE)
@@ -689,15 +726,41 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
 
 
 def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
-                delete_low_quality=False):
+                delete_low_quality=False, progress=None, checkpoint_meta=None):
     """Process a batch through feature extraction + LLM tagging.
 
     Returns (tagged, quarantined, errors, incomplete_n, completed_rel_paths).
     completed_rel_paths: rows safe to mark in resume checkpoint (omits LLM-incomplete when endpoint set).
+
+    When ``progress`` / ``checkpoint_meta`` are set, each finished file updates SQLite via
+    ``upsert_tag_entries`` and rewrites a slim ``retag_checkpoint.json`` so interrupts do not
+    lose expensive feature/LLM work.
     """
     tagged = quarantined = errors = incomplete_n = 0
     llm_failures = 0
     completed_rel_paths = []
+    cp_lock = threading.Lock()
+
+    def _apply_progress_delta(
+        *, errors_add=0, processed_add=0, tagged_add=0, quarantined_add=0, incomplete_add=0,
+    ):
+        if dry_run or not progress or not checkpoint_meta:
+            return
+        with cp_lock:
+            if errors_add:
+                progress["errors"] = progress.get("errors", 0) + errors_add
+            if processed_add:
+                progress["processed"] = progress.get("processed", 0) + processed_add
+            if tagged_add:
+                progress["tagged"] = progress.get("tagged", 0) + tagged_add
+            if quarantined_add:
+                progress["quarantined"] = progress.get("quarantined", 0) + quarantined_add
+            if incomplete_add:
+                progress["incomplete"] = progress.get("incomplete", 0) + incomplete_add
+            elapsed = time.time() - checkpoint_meta.get("t0", time.time())
+            meta = dict(checkpoint_meta)
+            meta["avg_ms"] = int(elapsed * 1000 / max(progress.get("processed", 1), 1))
+            _save_slim_checkpoint(progress, meta)
 
     def _handle_result(r):
         nonlocal tagged, quarantined, errors, incomplete_n, llm_failures
@@ -707,9 +770,10 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
 
         if status == "error":
             if verbose:
-                print("  SKIP (no features): %s" % fname)
+                print("  SKIP (no features): %s" % fname, flush=True)
             errors += 1
             completed_rel_paths.append(rel_path)
+            _apply_progress_delta(errors_add=1, processed_add=1)
             return
 
         if r.get("dry_run"):
@@ -718,7 +782,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                 print("  DRY-RUN: %s (dur=%.1fs centroid=%.0f onsets=%d)" % (
                     fname, f.get('duration', 0),
                     f.get('spectral_centroid', 0),
-                    f.get('onset_count', 0)))
+                    f.get('onset_count', 0)), flush=True)
             tagged += 1
             completed_rel_paths.append(rel_path)
             return
@@ -733,9 +797,6 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
         vibe_str = ','.join(entry.get('vibe', [])[:2])
         desc = (entry.get('sonic_description') or '')[:50]
 
-        with _tag_db_lock:
-            tag_db[rel_path] = entry
-
         if status == "low_quality":
             if delete_low_quality:
                 try:
@@ -743,9 +804,12 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                         os.remove(full_path)
                     with _tag_db_lock:
                         tag_db.pop(rel_path, None)
+                    if not dry_run:
+                        with _persist_lock:
+                            delete_tag_paths(TAGS_FILE, [rel_path])
                     quarantined += 1
                     if verbose:
-                        print("  DELETE q=%d %s: %s — %s" % (qs, tc, fname, desc))
+                        print("  DELETE q=%d %s: %s — %s" % (qs, tc, fname, desc), flush=True)
                 except OSError:
                     pass
             else:
@@ -761,19 +825,29 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                         with _tag_db_lock:
                             tag_db.pop(rel_path, None)
                             tag_db[q_rel] = entry
+                        if not dry_run:
+                            with _persist_lock:
+                                delete_tag_paths(TAGS_FILE, [rel_path])
+                            _persist_tag_row(q_rel, entry)
                         if verbose:
-                            print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc))
+                            print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc), flush=True)
                     except OSError:
                         pass
             completed_rel_paths.append(rel_path)
+            _apply_progress_delta(quarantined_add=1, tagged_add=1, processed_add=1)
             return
+
+        with _tag_db_lock:
+            tag_db[rel_path] = entry
+        if not dry_run:
+            _persist_tag_row(rel_path, entry)
 
         if status == "llm_fail":
             llm_failures += 1
         if status == "incomplete":
             incomplete_n += 1
             if r.get("llm_tags") and verbose:
-                print("  INCOMPLETE (not checkpointed, will retry on next run): %s" % fname, flush=True)
+                print("  INCOMPLETE (features saved; will retry LLM on next run): %s" % fname, flush=True)
 
         tagged += 1
         if usable:
@@ -789,10 +863,18 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
             src = "features"
             q_show = qs if qs is not None else "?"
         if verbose:
-            print("  %s q=%s %s [%s]: %s — %s" % (src, q_show, tc, vibe_str, fname, desc))
+            print("  %s | %s q=%s %s [%s]: %s — %s" % (
+                rel_path, src, q_show, tc, vibe_str, fname, desc), flush=True)
 
         if mark_smart or not LLM_ENDPOINT or skipped_long:
             completed_rel_paths.append(rel_path)
+
+        _apply_progress_delta(
+            tagged_add=1,
+            processed_add=1,
+            incomplete_add=1 if status == "incomplete" else 0,
+            errors_add=1 if status == "llm_fail" else 0,
+        )
 
     if workers > 1 and not dry_run:
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -809,6 +891,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                     print("  ERROR %s: %s" % (rel, exc), file=sys.stderr)
                     errors += 1
                     completed_rel_paths.append(rel)
+                    _apply_progress_delta(errors_add=1, processed_add=1)
     else:
         for rel_path, full_path in files:
             try:
@@ -820,11 +903,12 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                 print("  ERROR %s: %s" % (rel_path, exc), file=sys.stderr)
                 errors += 1
                 completed_rel_paths.append(rel_path)
+                _apply_progress_delta(errors_add=1, processed_add=1)
 
     if llm_failures and verbose:
-        print("  [batch LLM empty/fail: %d/%d]" % (llm_failures, len(files)))
+        print("  [batch LLM empty/fail: %d/%d]" % (llm_failures, len(files)), flush=True)
     if incomplete_n and verbose and LLM_ENDPOINT:
-        print("  [batch incomplete (will retry): %d/%d]" % (incomplete_n, len(files)))
+        print("  [batch incomplete (will retry): %d/%d]" % (incomplete_n, len(files)), flush=True)
 
     return tagged, quarantined, errors, incomplete_n, completed_rel_paths
 
@@ -880,24 +964,18 @@ def run(args):
     tag_db = _load_tags()
     print("Tag DB: %d entries" % len(tag_db))
 
-    # Determine files to process
-    processed_files = []
+    # Determine files to process (on-disk tag rows are authoritative — no processed_files list).
     if args.resume:
         cp = _load_checkpoint()
-        if not cp:
-            print("No checkpoint found. Use --all to start fresh.")
-            sys.exit(1)
-        done_from_cp = set(cp.get("processed_files", []))
-        # Old checkpoints marked thin LLM rows "done" — put them back in the queue.
-        requeue = {r for r in done_from_cp if _entry_needs_smart_retag(tag_db.get(r, {}))}
-        if requeue:
-            print("Re-queuing %d checkpointed rows missing full enrichment" % len(requeue))
-        done = done_from_cp - requeue
-        all_files = _walk_library()
-        files = [(r, f) for r, f in all_files if r not in done]
-        print("Resuming: %d remaining of %d" % (len(files), len(all_files)))
-        processed_files = list(done)
-    elif args.path:
+        if cp:
+            print(
+                "Resume: last checkpoint %s — queue is rebuilt from tag DB (files still needing retag)."
+                % (cp.get("last_updated") or "unknown",)
+            )
+        else:
+            print("Resume: no checkpoint file yet — queue from tag DB only.")
+    processed_files = []
+    if args.path:
         path = os.path.expanduser(args.path)
         if not os.path.isabs(path):
             path = os.path.join(LIBRARY, path)
@@ -958,6 +1036,16 @@ def run(args):
     total_tagged = total_quarantined = total_errors = total_incomplete = 0
     t0 = time.time()
     run_started_at = datetime.now().isoformat()
+    progress = None
+    checkpoint_meta = None
+    if not args.dry_run:
+        progress = {"processed": 0, "tagged": 0, "quarantined": 0, "errors": 0, "incomplete": 0}
+        checkpoint_meta = {
+            "started_at": run_started_at,
+            "total_files": len(files),
+            "batch_size": BATCH_SIZE,
+            "t0": t0,
+        }
 
     for i in range(0, len(files), BATCH_SIZE):
         batch = files[i:i + BATCH_SIZE]
@@ -969,39 +1057,32 @@ def run(args):
         eta = ((len(files) - i) / rate / 60) if rate > 0 else 0
 
         print("=== Batch %d/%d  |  %.0f/min  |  ETA %.0fm ===" % (
-            batch_num, total_batches, rate * 60, eta))
+            batch_num, total_batches, rate * 60, eta), flush=True)
 
         t, q, e, inc, batch_done = retag_batch(
             batch, tag_db, dry_run=args.dry_run, verbose=not args.quiet,
-            workers=workers, delete_low_quality=delete_low_quality)
+            workers=workers, delete_low_quality=delete_low_quality,
+            progress=progress, checkpoint_meta=checkpoint_meta,
+        )
 
-        for rel in batch_done:
-            processed_files.append(rel)
+        total_tagged += t
+        total_quarantined += q
+        total_errors += e
+        total_incomplete += inc
+        processed_files.extend(batch_done)
 
-        # Save after each batch
+        # Full JSON + JamboxDB sync each batch (SQLite already updated per file).
         if not args.dry_run:
             _save_tags(tag_db)
-            _save_checkpoint({
-                'started_at': run_started_at,
-                'last_updated': datetime.now().isoformat(),
-                'total_files': len(files),
-                'processed': len(processed_files),
-                'tagged': total_tagged,
-                'quarantined': total_quarantined,
-                'errors': total_errors,
-                'batch_size': BATCH_SIZE,
-                'processed_files': processed_files,
-                'avg_time_per_file_ms': int(elapsed * 1000 / max(len(processed_files), 1)),
-                'llm_stats': dict(_llm_stats),
-            })
 
     elapsed = time.time() - t0
     print("\n" + "=" * 60)
     print("Smart Retag Complete")
-    print("  Checkpointed: %d  Tagged: %d  Quarantined: %d  Errors: %d  LLM-incomplete: %d" % (
-        len(processed_files), total_tagged, total_quarantined, total_errors, total_incomplete))
+    done_count = progress["processed"] if progress else len(processed_files)
+    print("  Processed: %d  Tagged: %d  Quarantined: %d  Errors: %d  LLM-incomplete: %d" % (
+        done_count, total_tagged, total_quarantined, total_errors, total_incomplete))
     print("  Time: %.1f min  Rate: %.0f files/min" % (
-        elapsed / 60, len(processed_files) / max(elapsed / 60, 0.01)))
+        elapsed / 60, done_count / max(elapsed / 60, 0.01)))
     print("  Tag DB: %d entries" % len(tag_db))
     if _llm_stats['calls']:
         s = _llm_stats

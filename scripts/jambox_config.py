@@ -455,6 +455,23 @@ def upsert_tag_entries(tags_file, entries):
         conn.close()
 
 
+def delete_tag_paths(tags_file, rel_paths):
+    """Remove rows from the tags SQLite DB (e.g. path moved to _QUARANTINE)."""
+    import sqlite3
+    paths = [p for p in rel_paths if p]
+    if not paths:
+        return
+    db_path = _tags_sqlite_path(tags_file)
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executemany("DELETE FROM tags WHERE rel_path=?", [(p,) for p in paths])
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def save_tag_db(tags_file, db, *, allow_shrink=False):
     """Save the tag database to SQLite. Also writes JSON for compatibility.
 
