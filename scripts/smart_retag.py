@@ -17,6 +17,7 @@ Env:
     SP404_SMART_RETAG_DURATION_SPLIT_SEC — seconds; longer audio uses the fast retag model (default 60).
     SP404_SMART_RETAG_LLM_MODEL — model for long clips (default: qwen3:8b).
     SP404_SMART_RETAG_SKIP_ABOVE_SECONDS — if set, skip LLM entirely when duration >= this (features only).
+    SP404_SMART_RETAG_WORKERS — concurrent workers (default 3, max SP404_SMART_RETAG_WORKERS_MAX). Ollama manages model memory; tune workers if the server queues or OOMs.
 """
 
 import argparse
@@ -53,6 +54,10 @@ PRIMARY_LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3:8b")
 LONG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3:8b"
 SMART_RETAG_DURATION_SPLIT_SEC = int(SETTINGS.get("SMART_RETAG_DURATION_SPLIT_SEC", 60))
 SMART_RETAG_SKIP_ABOVE_SECONDS = SETTINGS.get("SMART_RETAG_SKIP_ABOVE_SECONDS")
+SMART_RETAG_WORKERS_CAP = int(SETTINGS.get("SMART_RETAG_WORKERS_MAX", 16))
+SMART_RETAG_WORKERS_DEFAULT = max(
+    1, min(int(SETTINGS.get("SMART_RETAG_WORKERS", 3)), SMART_RETAG_WORKERS_CAP)
+)
 LLM_TIMEOUT = SETTINGS.get("LLM_TIMEOUT", 30)
 SMART_RETAG_LLM_TIMEOUT = SETTINGS.get("SMART_RETAG_LLM_TIMEOUT")
 SMART_RETAG_LLM_RETRIES = SETTINGS.get("SMART_RETAG_LLM_RETRIES")
@@ -162,6 +167,17 @@ def _build_prompt(filepath, features):
 
 _llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
               'empty': 0, 'parse_fail': 0, 'exception': 0, 'incomplete': 0}
+_llm_stats_lock = threading.Lock()
+
+
+def _bump_llm_stat(key, delta=1):
+    with _llm_stats_lock:
+        _llm_stats[key] = _llm_stats.get(key, 0) + delta
+
+
+def _llm_stats_snapshot():
+    with _llm_stats_lock:
+        return dict(_llm_stats)
 
 
 # Aliases imported from tag_vocab — single source of truth for variant spellings.
@@ -236,7 +252,7 @@ def _call_llm(prompt, model, retries=None):
     timeout = (30, read_timeout)
 
     for attempt in range(retries + 1):
-        _llm_stats['calls'] += 1
+        _bump_llm_stat('calls')
         try:
             resp = requests.post(
                 LLM_ENDPOINT,
@@ -248,7 +264,7 @@ def _call_llm(prompt, model, retries=None):
                 timeout=timeout,
             )
             if resp.status_code != 200:
-                _llm_stats['http_error'] += 1
+                _bump_llm_stat('http_error')
                 print("  LLM HTTP %d (attempt %d/%d)" % (
                     resp.status_code, attempt + 1, retries + 1), file=sys.stderr)
                 if attempt < retries:
@@ -263,7 +279,7 @@ def _call_llm(prompt, model, retries=None):
                 content = choices[0].get("message", {}).get("content", "")
 
             if not content:
-                _llm_stats['empty'] += 1
+                _bump_llm_stat('empty')
                 return None
 
             content = content.strip()
@@ -278,7 +294,7 @@ def _call_llm(prompt, model, retries=None):
             # Try parsing JSON, fix common truncation issues
             try:
                 result = json.loads(content)
-                _llm_stats['success'] += 1
+                _bump_llm_stat('success')
                 return result
             except json.JSONDecodeError:
                 # Try fixing truncated JSON (trailing comma, missing closing brace)
@@ -287,14 +303,14 @@ def _call_llm(prompt, model, retries=None):
                     fixed += '}'
                 try:
                     result = json.loads(fixed)
-                    _llm_stats['success'] += 1
+                    _bump_llm_stat('success')
                     return result
                 except json.JSONDecodeError:
                     extracted = _extract_json_object(content)
                     if isinstance(extracted, dict):
-                        _llm_stats['success'] += 1
+                        _bump_llm_stat('success')
                         return extracted
-                    _llm_stats['parse_fail'] += 1
+                    _bump_llm_stat('parse_fail')
                     print("  LLM parse fail (attempt %d/%d): %s..." % (
                         attempt + 1, retries + 1, content[:120]), file=sys.stderr)
                     if attempt < retries:
@@ -303,7 +319,7 @@ def _call_llm(prompt, model, retries=None):
                     return None
 
         except requests.exceptions.Timeout:
-            _llm_stats['timeout'] += 1
+            _bump_llm_stat('timeout')
             if attempt < retries:
                 wait = 5 * (attempt + 1)
                 print("  LLM timeout (attempt %d/%d, retry in %ds)" % (
@@ -313,7 +329,7 @@ def _call_llm(prompt, model, retries=None):
             print("  LLM timeout (all %d attempts exhausted)" % (retries + 1), file=sys.stderr)
             return None
         except Exception as e:
-            _llm_stats['exception'] += 1
+            _bump_llm_stat('exception')
             print("  LLM error: %s" % e, file=sys.stderr)
             return None
 
@@ -570,7 +586,7 @@ def _save_slim_checkpoint(progress, meta):
         "errors": progress.get("errors", 0),
         "incomplete": progress.get("incomplete", 0),
         "batch_size": meta.get("batch_size", BATCH_SIZE),
-        "llm_stats": dict(_llm_stats),
+        "llm_stats": _llm_stats_snapshot(),
         "avg_time_per_file_ms": int(meta.get("avg_ms", 0)),
     })
 
@@ -688,7 +704,7 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
             full_path, features, verbose=verbose)
         usable = _enrichment_usable(llm_tags)
         if not usable and not skipped_long:
-            _llm_stats['incomplete'] += 1
+            _bump_llm_stat('incomplete')
     mark_smart = bool(usable) if LLM_ENDPOINT else False
     entry = _merge_tags(existing, llm_tags, features, rel_path,
                         mark_smart_retag_complete=mark_smart)
@@ -876,7 +892,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
             errors_add=1 if status == "llm_fail" else 0,
         )
 
-    if workers > 1 and not dry_run:
+    if workers > 1:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
                 pool.submit(_process_single_file, rel, full, tag_db, dry_run,
@@ -1005,7 +1021,7 @@ def run(args):
         return
 
     print("Processing %d files...\n" % len(files))
-    workers = getattr(args, 'workers', 1) or 1
+    workers = args.workers
     delete_low_quality = getattr(args, 'delete_low_quality', False)
 
     if LLM_ENDPOINT:
@@ -1084,8 +1100,8 @@ def run(args):
     print("  Time: %.1f min  Rate: %.0f files/min" % (
         elapsed / 60, done_count / max(elapsed / 60, 0.01)))
     print("  Tag DB: %d entries" % len(tag_db))
-    if _llm_stats['calls']:
-        s = _llm_stats
+    s = _llm_stats_snapshot()
+    if s.get('calls'):
         print("  LLM: %d calls, %d ok (%.0f%%), %d incomplete rows, %d timeout, %d parse fail, %d empty, %d http err" % (
             s['calls'], s['success'],
             s['success'] / max(s['calls'], 1) * 100,
@@ -1349,8 +1365,8 @@ def run_retry_llm_failures(args):
     print("\n" + "=" * 60)
     print("LLM Retry Complete")
     print("  Success: %d  Errors: %d" % (success, errors))
-    if _llm_stats['calls']:
-        s = _llm_stats
+    s = _llm_stats_snapshot()
+    if s.get('calls'):
         print("  LLM: %d calls, %d ok (%.0f%%), %d timeout, %d parse fail" % (
             s['calls'], s['success'],
             s['success'] / max(s['calls'], 1) * 100,
@@ -1383,7 +1399,9 @@ def run_validate(args):
     print("Validation: %d files (%d per type code across %d types)" %
           (len(selected), per_type, len(by_type)))
 
-    t, q, e, inc, _ = retag_batch(selected, tag_db, dry_run=args.dry_run, verbose=True)
+    workers = getattr(args, 'workers', SMART_RETAG_WORKERS_DEFAULT) or SMART_RETAG_WORKERS_DEFAULT
+    t, q, e, inc, _ = retag_batch(
+        selected, tag_db, dry_run=args.dry_run, verbose=True, workers=workers)
     if not args.dry_run:
         _save_tags(tag_db)
 
@@ -1401,8 +1419,8 @@ def run_validate(args):
         avg_q = sum(quality_scores) / len(quality_scores)
         print("  Quality scores: min=%.0f avg=%.1f max=%.0f (n=%d)" %
               (min(quality_scores), avg_q, max(quality_scores), len(quality_scores)))
-    if _llm_stats['calls']:
-        s = _llm_stats
+    s = _llm_stats_snapshot()
+    if s.get('calls'):
         print("  LLM: %d calls, %d ok (%.0f%%), %d timeout, %d parse fail" % (
             s['calls'], s['success'],
             s['success'] / max(s['calls'], 1) * 100,
@@ -1420,8 +1438,8 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Feature extraction only')
     parser.add_argument('--force', action='store_true', help='Retag already tagged files')
     parser.add_argument('--quiet', '-q', action='store_true', help='Less output')
-    parser.add_argument('--workers', type=int, default=1,
-                        help='Concurrent LLM workers (default: 1, try 2-4 for throughput)')
+    parser.add_argument('--workers', type=int, default=None,
+                        help='Concurrent file workers (default from RAM or SP404_SMART_RETAG_WORKERS; cap %d)' % SMART_RETAG_WORKERS_CAP)
     parser.add_argument('--delete-low-quality', action='store_true',
                         help='Permanently delete quality_score <= 2 files instead of quarantining')
     parser.add_argument('--revibe', action='store_true',
@@ -1429,6 +1447,11 @@ def main():
     parser.add_argument('--retry-llm-failures', action='store_true',
                         help='Re-run LLM on files that have features but no LLM enrichment')
     args = parser.parse_args()
+    args.workers = (
+        SMART_RETAG_WORKERS_DEFAULT
+        if args.workers is None
+        else max(1, min(int(args.workers), SMART_RETAG_WORKERS_CAP))
+    )
 
     if args.revibe:
         run_revibe(args)

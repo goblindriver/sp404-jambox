@@ -238,6 +238,12 @@ def load_settings(repo_dir):
     drobo_root = _read_required_path("SP404_DROBO_ROOT", DEFAULT_DROBO_ROOT)
     tool_path_prefix = _read_optional_path("SP404_TOOL_PATH_PREFIX", DEFAULT_TOOL_PATH_PREFIX)
 
+    smart_retag_workers_max = _read_int("SP404_SMART_RETAG_WORKERS_MAX", 16, minimum=1)
+    smart_retag_workers = max(
+        1,
+        min(_read_int("SP404_SMART_RETAG_WORKERS", 3, minimum=1), smart_retag_workers_max),
+    )
+
     return {
         "REPO_DIR": repo_dir,
         "SAMPLE_LIBRARY": sample_library,
@@ -281,6 +287,8 @@ def load_settings(repo_dir):
         "SMART_RETAG_LLM_RETRIES": _read_optional_int(
             "SP404_SMART_RETAG_LLM_RETRIES", default=None, minimum=0
         ),
+        "SMART_RETAG_WORKERS_MAX": smart_retag_workers_max,
+        "SMART_RETAG_WORKERS": smart_retag_workers,
         "MUSICVAE_CHECKPOINT_DIR": _read_optional_path(
             "SP404_MUSICVAE_CHECKPOINT_DIR", os.path.join(repo_dir, "models", "musicvae")
         ),

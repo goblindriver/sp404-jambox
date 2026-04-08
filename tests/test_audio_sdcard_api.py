@@ -127,6 +127,32 @@ class AudioSdcardApiTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["saved"], 7)
 
+    def test_pull_intelligence_also_runs_bank_a_gold_pull(self):
+        session = {
+            "session_date": "2026-04-07T00:00:00",
+            "bed_context": {"files": []},
+            "toolkit": {},
+            "session_banks": {"adjustments": [], "pattern_usage": {"most_used": []}},
+        }
+        fake_ci = SimpleNamespace(
+            pull_intelligence=lambda **kwargs: session,
+            save_session=lambda s, sessions_dir=None: "/tmp/session.json",
+            load_latest_session=lambda sessions_dir=None: None,
+            diff_sessions=lambda cur, prev: [{"type": "first_session", "message": "ok"}],
+        )
+        fake_sync = SimpleNamespace(pull_bank_a=lambda: 3)
+        with patch.dict(
+            "sys.modules",
+            {"card_intelligence": fake_ci, "sync_bank_a": fake_sync},
+        ):
+            response = self.client.post("/api/sdcard/pull-intelligence")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["session"], session)
+        self.assertEqual(payload["gold_saved"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

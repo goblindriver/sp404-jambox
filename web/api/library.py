@@ -575,6 +575,7 @@ def smart_retag():
         limit: max samples (default 50)
         force: re-process already enriched (default false)
         dry_run: preview only (default false)
+        workers: concurrent smart_retag workers (default from SP404_SMART_RETAG_WORKERS / app config)
     """
     payload = request.get_json(silent=True) or {}
 
@@ -591,6 +592,22 @@ def smart_retag():
         args_list.append("--dry-run")
     limit = payload.get("limit", 50)
     args_list += ["--limit", str(limit)]
+
+    cap = int(current_app.config.get("SMART_RETAG_WORKERS_MAX", 16))
+    w = payload.get("workers")
+    if w is not None:
+        try:
+            wn = max(1, min(int(w), cap))
+            args_list += ["--workers", str(wn)]
+        except (TypeError, ValueError):
+            pass
+    else:
+        cfg_w = current_app.config.get("SMART_RETAG_WORKERS", 3)
+        try:
+            wn = max(1, min(int(cfg_w), cap))
+            args_list += ["--workers", str(wn)]
+        except (TypeError, ValueError):
+            args_list += ["--workers", str(max(1, min(3, cap)))]
 
     import uuid, time as _time
     with _retag_lock:

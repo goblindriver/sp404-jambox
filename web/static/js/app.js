@@ -515,6 +515,10 @@ async function pullCardIntelligence() {
         if (changes.length > 0 && changes[0].type !== 'first_session') {
             msg += ` · ${changes.length} changes since last pull`;
         }
+        const gs = result.gold_saved;
+        if (typeof gs === 'number' && gs > 0) {
+            msg += ` · ${gs} Bank A sample(s) archived to gold`;
+        }
         toast(msg, 'success');
 
         // Re-scan to refresh UI with latest data

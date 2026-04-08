@@ -338,7 +338,8 @@ def pull_bank_a():
 @sdcard_bp.route('/sdcard/pull-intelligence', methods=['POST'])
 def pull_intelligence():
     """Run full card intelligence pull: decode PAD_INFO, read patterns,
-    scan WAV provenance, archive session, diff against last pull."""
+    scan WAV provenance, archive session, diff against last pull.
+    Also archives Bank A WAVs from the card into the gold library (same as pull-bank-a)."""
     sd_smpl = _sd_smpl_dir()
     if not os.path.isdir(sd_smpl):
         return jsonify({'ok': False, 'error': 'SD card not mounted'}), 400
@@ -349,6 +350,7 @@ def pull_intelligence():
         pull_intelligence as _pull, save_session, load_latest_session,
         diff_sessions,
     )
+    from sync_bank_a import pull_bank_a as _pull_bank_a
 
     sd_card = _sd_card()
     previous = load_latest_session()
@@ -358,12 +360,14 @@ def pull_intelligence():
 
     path = save_session(session)
     changes = diff_sessions(session, previous)
+    gold_saved = _pull_bank_a()
 
     return jsonify({
         'ok': True,
         'session': session,
         'session_file': os.path.basename(path),
         'changes': changes,
+        'gold_saved': gold_saved,
     })
 
 

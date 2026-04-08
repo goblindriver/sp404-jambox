@@ -106,6 +106,26 @@ class LoadSettingsTests(unittest.TestCase):
         self.assertEqual(resolved, "/usr/bin/ffmpeg")
         which.assert_called_once()
 
+    def test_smart_retag_workers_explicit(self):
+        with patch.dict(os.environ, {"SP404_SMART_RETAG_WORKERS": "4"}, clear=True):
+            settings = load_settings("/tmp/jambox-repo")
+        self.assertEqual(settings["SMART_RETAG_WORKERS"], 4)
+
+    def test_smart_retag_workers_explicit_capped(self):
+        with patch.dict(
+            os.environ,
+            {"SP404_SMART_RETAG_WORKERS": "100", "SP404_SMART_RETAG_WORKERS_MAX": "6"},
+            clear=True,
+        ):
+            settings = load_settings("/tmp/jambox-repo")
+        self.assertEqual(settings["SMART_RETAG_WORKERS"], 6)
+
+    def test_smart_retag_workers_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            settings = load_settings("/tmp/jambox-repo")
+        self.assertEqual(settings["SMART_RETAG_WORKERS"], 3)
+        self.assertLessEqual(settings["SMART_RETAG_WORKERS"], settings["SMART_RETAG_WORKERS_MAX"])
+
 
 class CheckSetupTests(unittest.TestCase):
     def test_run_checks_returns_failure_for_missing_required_prereqs(self):
