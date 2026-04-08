@@ -17,7 +17,7 @@ vibe_bp = Blueprint("vibe", __name__)
 
 # Job tracking for populate-bank (shared with pipeline.py pattern)
 _vibe_jobs = {}
-_vibe_lock = threading.Lock()
+_vibe_lock = threading.RLock()  # RLock: _create_vibe_job is called within _vibe_lock scope
 
 
 def _update_vibe_job(job_id, **fields):
@@ -306,21 +306,22 @@ def _prune_finished_jobs():
 
 
 def _create_vibe_job(bank, prompt):
-    _prune_finished_jobs()
-    job_id = str(uuid.uuid4())[:8]
-    _vibe_jobs[job_id] = {
-        "id": job_id,
-        "status": "starting",
-        "progress": "",
-        "prompt": prompt,
-        "bank": bank,
-        "session_id": None,
-        "preset_ref": None,
-        "fetched": None,
-        "fallback_used": False,
-        "fallback_reason": "",
-    }
-    return job_id
+    with _vibe_lock:
+        _prune_finished_jobs()
+        job_id = str(uuid.uuid4())[:8]
+        _vibe_jobs[job_id] = {
+            "id": job_id,
+            "status": "starting",
+            "progress": "",
+            "prompt": prompt,
+            "bank": bank,
+            "session_id": None,
+            "preset_ref": None,
+            "fetched": None,
+            "fallback_used": False,
+            "fallback_reason": "",
+        }
+        return job_id
 
 
 @vibe_bp.route("/vibe/inspire-bank", methods=["POST"])

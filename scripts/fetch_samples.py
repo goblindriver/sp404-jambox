@@ -583,7 +583,7 @@ def rank_library_matches_legacy(query, bank_config=None, tag_db=None, used_files
                 "duration": entry.get("duration"),
             })
         cached_results.sort(key=lambda item: item["score"], reverse=True)
-        cached_results = cached_results[:500]
+        cached_results = cached_results[:200]
         cache_entries[cache_key] = cached_results
         if owns_cache:
             save_score_cache(LIBRARY, cache_entries)

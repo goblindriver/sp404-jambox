@@ -17,6 +17,7 @@ AUDIO_EXTS = {'.wav', '.aif', '.aiff', '.mp3', '.flac'}
 # Cache the tag database in memory (loaded on first request)
 _tag_db_cache = None
 _tag_db_mtime = 0
+_tag_db_lock = threading.Lock()
 
 
 def _library_root():
@@ -49,15 +50,24 @@ def _load_tag_db():
         mtime = max(mtime_json, mtime_sqlite)
     except OSError:
         return {}
-    if _tag_db_cache is not None and mtime <= _tag_db_mtime:
-        return _tag_db_cache
-    try:
-        payload = _config_load_tag_db(tags_file)
-        _tag_db_cache = payload if isinstance(payload, dict) else {}
-        _tag_db_mtime = mtime
-        return _tag_db_cache
-    except Exception:
-        return {}
+    with _tag_db_lock:
+        if _tag_db_cache is not None and mtime <= _tag_db_mtime:
+            return _tag_db_cache
+        try:
+            payload = _config_load_tag_db(tags_file)
+            _tag_db_cache = payload if isinstance(payload, dict) else {}
+            _tag_db_mtime = mtime
+            return _tag_db_cache
+        except Exception:
+            return {}
+
+
+def _invalidate_tag_db_cache():
+    """Thread-safe cache invalidation (called after smart-retag completes)."""
+    global _tag_db_cache, _tag_db_mtime
+    with _tag_db_lock:
+        _tag_db_cache = None
+        _tag_db_mtime = 0
 
 
 @library_bp.route('/library/browse')
@@ -542,9 +552,7 @@ def _run_smart_retag(job_id, repo_dir, settings, args_list):
             finished_at=_time.time(),
         )
 
-        global _tag_db_cache, _tag_db_mtime
-        _tag_db_cache = None
-        _tag_db_mtime = 0
+        _invalidate_tag_db_cache()
 
     except subprocess.TimeoutExpired:
         if proc is not None and proc.pid:
