@@ -44,6 +44,7 @@ from jambox_config import (
     upsert_tag_entries,
 )
 from audio_analysis import extract_features, is_available as librosa_available
+from llm_client import LLMError, call_llm_chat
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -239,101 +240,40 @@ def _llm_model_for_duration(duration_sec):
 
 
 def _call_llm(prompt, model, retries=None):
-    """Send prompt to Ollama and parse JSON response. Retries on timeout."""
+    """Send prompt to Ollama and parse JSON response. Retries on timeout.
+
+    Thin wrapper around llm_client.call_llm_chat() that injects the smart-retag
+    system prompt and uses the long-running read timeout for big libraries.
+    """
     if not LLM_ENDPOINT:
         return None
 
-    import requests
-
     if retries is None:
         retries = _retag_llm_retries()
-    read_timeout = _retag_llm_read_timeout_seconds()
-    # Separate connect (fail fast) vs read (generation can be slow under GPU/CPU load)
-    timeout = (30, read_timeout)
+    # Use long read timeout for retag (32B models + librosa contention)
+    timeout = _retag_llm_read_timeout_seconds()
 
-    for attempt in range(retries + 1):
-        _bump_llm_stat('calls')
-        try:
-            resp = requests.post(
-                LLM_ENDPOINT,
-                json={"model": model, "messages": [
-                    {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ], "temperature": 0.3, "max_tokens": 2048,
-                    "response_format": {"type": "json_object"}},
-                timeout=timeout,
-            )
-            if resp.status_code != 200:
-                _bump_llm_stat('http_error')
-                print("  LLM HTTP %d (attempt %d/%d)" % (
-                    resp.status_code, attempt + 1, retries + 1), file=sys.stderr)
-                if attempt < retries:
-                    time.sleep(3 * (attempt + 1))
-                    continue
-                return None
+    messages = [
+        {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
 
-            data = resp.json()
-            content = ""
-            choices = data.get("choices", [])
-            if choices:
-                content = choices[0].get("message", {}).get("content", "")
-
-            if not content:
-                _bump_llm_stat('empty')
-                return None
-
-            content = content.strip()
-            # Strip markdown fences
-            if content.startswith("```"):
-                content = re.sub(r'^```\w*\n?', '', content)
-                content = re.sub(r'\n?```$', '', content)
-                content = content.strip()
-            # Strip <think> blocks (qwen3 reasoning)
-            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
-
-            # Try parsing JSON, fix common truncation issues
-            try:
-                result = json.loads(content)
-                _bump_llm_stat('success')
-                return result
-            except json.JSONDecodeError:
-                # Try fixing truncated JSON (trailing comma, missing closing brace)
-                fixed = content.rstrip().rstrip(',')
-                if not fixed.endswith('}'):
-                    fixed += '}'
-                try:
-                    result = json.loads(fixed)
-                    _bump_llm_stat('success')
-                    return result
-                except json.JSONDecodeError:
-                    extracted = _extract_json_object(content)
-                    if isinstance(extracted, dict):
-                        _bump_llm_stat('success')
-                        return extracted
-                    _bump_llm_stat('parse_fail')
-                    print("  LLM parse fail (attempt %d/%d): %s..." % (
-                        attempt + 1, retries + 1, content[:120]), file=sys.stderr)
-                    if attempt < retries:
-                        time.sleep(2 * (attempt + 1))
-                        continue
-                    return None
-
-        except requests.exceptions.Timeout:
-            _bump_llm_stat('timeout')
-            if attempt < retries:
-                wait = 5 * (attempt + 1)
-                print("  LLM timeout (attempt %d/%d, retry in %ds)" % (
-                    attempt + 1, retries + 1, wait), file=sys.stderr)
-                time.sleep(wait)
-                continue
-            print("  LLM timeout (all %d attempts exhausted)" % (retries + 1), file=sys.stderr)
-            return None
-        except Exception as e:
-            _bump_llm_stat('exception')
-            print("  LLM error: %s" % e, file=sys.stderr)
-            return None
-
-    return None
+    try:
+        return call_llm_chat(
+            LLM_ENDPOINT,
+            model,
+            messages,
+            timeout=timeout,
+            retries=retries,
+            json_mode=True,
+            temperature=0.3,
+            max_tokens=2048,
+            on_stat=_bump_llm_stat,
+        )
+    except LLMError as exc:
+        # All retries exhausted; log and return None to match legacy contract
+        print("  LLM %s: %s" % (exc.code, exc.message), file=sys.stderr)
+        return None
 
 
 def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):

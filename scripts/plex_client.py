@@ -106,9 +106,9 @@ MOOD_TO_VIBE = {
     # → chill
     'chill': 'chill', 'cool': 'chill', 'detached': 'chill',
     'aloof': 'chill', 'nonchalant': 'chill', 'understated': 'chill',
-    # → warm (expanded per Chat review — production profile)
-    'groovy': 'warm', 'sensual': 'warm', 'sultry': 'warm',
-    'funky': 'warm', 'smooth': 'warm', 'silky': 'warm',
+    # → comforting (was "warm" — migrated per TAGGING_SPEC v4 vibe/texture split)
+    'groovy': 'comforting', 'sensual': 'comforting', 'sultry': 'comforting',
+    'funky': 'comforting', 'smooth': 'comforting', 'silky': 'comforting',
     # → hype (expanded — production profile needs more positive-energy mappings)
     'upbeat': 'hype', 'danceable': 'hype', 'festive': 'hype',
     'triumphant': 'hype', 'swaggering': 'hype',

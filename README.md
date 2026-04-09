@@ -1,281 +1,82 @@
 # SP-404 Jam Box
 
-A fully-loaded SP-404A/SX sampler SD card builder with a web UI, intelligent sample matching, and a 9,600+ WAV library. Define your banks in YAML, fetch matching samples automatically, and deploy to SD card in one click.
+A fully-loaded SP-404A sampler SD card builder with a web UI, intelligent sample matching, and a 30K+ sample library. Define your banks in YAML or with natural language, fetch matching samples automatically, and deploy to SD card in one click.
 
 ## What Is This?
 
-This project turns a blank SD card into a **jam-ready SP-404** with 10 genre-themed banks designed to harmonize and mix together. A Flask web UI lets you browse your library, edit bank layouts, preview audio, and run the full pipeline without touching the terminal.
+This project turns a blank SD card into a **jam-ready SP-404** with 10 genre-themed banks designed to harmonize and mix together. A Flask web UI lets you browse your library, edit bank layouts, describe sounds in plain English, preview audio, and run the full pipeline without touching the terminal.
 
-All samples are **royalty-free** (MusicRadar SampleRadar + curated sample packs).
+## Bank Layout — Tiger Dust Block Party
 
-## Bank Layout
+Every bank key is diatonic to C major so everything harmonizes. BPMs cluster around 90–130 for clean mixing. Energy arc: warm up → groove → peak → breathe → weapons.
 
-Every bank key is diatonic to C major (Am, Dm, Em, F) so everything harmonizes. BPMs cluster around 112–130 for clean mixing.
+| Bank | Name | BPM | Key | Energy | Vibe |
+|------|------|-----|-----|--------|------|
+| A | Soul Kitchen | 98 | G | Low | Dusty soul grooves, golden hour opener |
+| B | Funk Muscle | 112 | Em | High | James Brown tight, Parliament nasty |
+| C | Disco Inferno | 118 | Am | High | Four-on-the-floor, lush strings |
+| D | Boom Bap Cipher | 90 | Dm | Mid | Golden age hip-hop, vinyl crackle |
+| E | Caribbean Heat | 108 | Cm | High | Dancehall riddims, tropical bass |
+| F | Electro Sweat | 120 | Dm | High | Dance-punk, dirty synths, LCD energy |
+| G | Neon Rave | 128 | F | High | Blog-house, rave stabs, 2007 warehouse |
+| H | Peak Hour | 125 | Gm | High | Maximum intensity, the drop |
+| I | Dub Cooldown | 100 | Am | Low | Echo chamber, melodica, reverb for days |
+| J | Weapons Cache | 120 | XX | Mid | Air horns, sirens, transitions, impacts |
 
-| Bank | Name | BPM | Key | Vibe |
-|------|------|-----|-----|------|
-| A | Your Space | — | — | Empty — resample and chop on-device |
-| B | Sessions | 120 | Am | Long-form breaks/tracks for live chopping |
-| C | Drum Loops | 120 | XX | Pure rhythm across all genres |
-| D | Funk | 112 | Em | Guitar-driven dance-punk, !!! energy |
-| E | Disco | 120 | Am | Four-on-the-floor, warm, danceable |
-| F | Electroclash | 120 | Dm | Dirty, minimal, Fischerspooner attitude |
-| G | Nu-Rave | 128 | F | Neon blog-house, 2007 energy |
-| H | Aggressive | 130 | Dm | Industrial-tinged, peak-time |
-| I | Textures & Transitions | 120 | Am | Pads, risers, ambient glue |
-| J | Utility & Fun | 120 | any | Speeches, gunshots, iconic SFX |
+**Pad convention:** Pads 1–4 = drum one-shots. Pads 5–8 = loops & breaks. Pads 9–10 = melodic. Pads 11–12 = texture/FX.
 
-**Pad convention:** Pads 1–4 = drum hits (one-shots), Pads 5–12 = loops & melodic content
+## Quick Start
 
-## Plex Integration
+```bash
+# Setup
+git clone <repo> && cd sp404-jambox
+bash scripts/bootstrap.sh          # Create .venv, install deps
 
-Reads directly from the local Plex SQLite database (read-only) to pull rich metadata for your personal music library. 33,408 tracks across 1,005 artists with 298 mood tags and 412 style tags — far richer than ID3 scanning alone. Plex metadata flows through to stem splitting and sample scoring.
+# Build a card
+./.venv/bin/python web/app.py      # Launch web UI → http://localhost:5404
+# Or from terminal:
+python scripts/fetch_samples.py    # Match samples to all banks
+python scripts/gen_padinfo.py      # Generate PAD_INFO.BIN
+bash scripts/copy_to_sd.sh        # Deploy to SD card
+```
 
-## Bank Preset Library
-
-Bank configurations are now standalone YAML files in `presets/`, organized by category. Presets can be browsed, searched, previewed, and dragged onto bank tabs in the web UI. Sets group 10 presets into saved configurations for different session types. The existing `bank_config.yaml` remains fully expanded for backward compatibility.
-
-## Background File Watcher
-
-The ingest pipeline now runs as a background daemon using `watchdog`. Monitors `~/Downloads` in real-time, waits for file sizes to stabilize, reads `_SOURCE.txt` context files from Cowork, auto-tags after ingest, and logs everything to `_ingest_log.json`. Toggle on/off from the web UI.
-
-## Smart Features
-
-JamBox now includes optional local-first creative tooling:
-
-- Natural-language vibe search via a self-hosted LLM endpoint
-- Pattern generation via a Magenta-compatible external generator
-- Duplicate analysis with `fpcalc` when available, plus a Python fallback
-- Daily auto-presets built from recent library history or `trending.json`
-
-### Natural Language Vibe Prompts
-Describe the sound you're hearing -- the system translates it into fetch parameters via a local LLM. Results scored against the full library including Plex metadata. Requires `SP404_LLM_ENDPOINT`.
-
-### Pattern Generation (Magenta)
-Generate drum patterns and melodic sequences with human-feel swing using MusicVAE/GrooVAE. Outputs SP-404 .PTN pattern files. Requires Magenta checkpoints.
-
-### Audio Deduplication
-Chromaprint fingerprint-based duplicate detection. Runs on demand or during ingest via `--dedupe` flag. Install `fpcalc` via `brew install chromaprint`.
-
-### Daily Bank
-Auto-generates a fresh preset each day from recent/trending library activity. Presets land in `presets/auto/`.
-
-### Centralized Configuration
-All paths and service endpoints managed through `scripts/jambox_config.py` with environment variable overrides.
+See [docs/DEPLOYMENT_RUNBOOK.md](docs/DEPLOYMENT_RUNBOOK.md) for the full step-by-step.
 
 ## Web UI
 
-Use the **single project virtualenv** (create it once with `bash scripts/bootstrap.sh`):
-
 `./.venv/bin/python web/app.py` → http://localhost:5404
 
-(`bootstrap.sh` installs `requirements.txt` into `./.venv`. Avoid bare `python3` here — Homebrew’s Python is a different environment and often has no Flask.)
-
 - Visual pad grid mirroring the SP-404 layout
-- Click pads to edit descriptions, preview audio, fetch samples
+- Natural language vibe prompts — describe a sound, get matched samples
 - Drag-and-drop from library sidebar onto pads
-- Library browser with dimension-aware tag cloud filtering
-- Preset browser: browse, search, filter, preview, drag presets onto bank tabs
-- Set selector: switch entire bank configurations instantly
-- My Music: browse personal library by artist, mood, style (Plex-powered)
-- Bank edit modal: name, BPM, key, notes, save as preset
-- Vibe prompt bar: describe a mood/genre and get ranked suggestions
-- Pipeline controls: Fetch All, Ingest Downloads, Watch, Build, Generate Pattern, Deploy
-- Daily Bank button: generate a fresh auto preset for the current bank
-- SD card status indicator with auto-polling
+- Preset browser with 22+ genre presets
+- Personal music integration (Plex-powered, 33K+ tracks)
+- Pipeline controls: Fetch, Build, Deploy, Watch, Retag
+- SD card status with one-click deploy and eject
 
-## Pipeline
+## Smart Features
 
-```
-Sample Packs (MusicRadar / Curated Packs)
-        │
-        ▼
-  ~/Downloads/*.zip
-        │
-        ▼
-  ingest_downloads.py ──► ~/Music/SP404-Sample-Library/ (9,600+ WAVs)
-        │                    └── _tags.json (auto-generated tag database)
-        │
-        ▼
-  tag_library.py ──► Tags every sample across 7 dimensions
-        │
-        ▼
-  deduplicate_samples.py ──► Duplicate report via fpcalc or Python fallback
-        │
-        ▼
-  fetch_samples.py ──► Scores library against bank_config.yaml pad descriptions
-        │                  Falls back to Curated Packs API if no local match
-        │
-        ▼
-  gen_padinfo.py ──► PAD_INFO.BIN (loop/gate mode per pad)
-  gen_patterns.py ──► Starter .PTN pattern files
-  generate_patterns.py ──► Local Magenta-backed pattern generation
-        │
-        ▼
-  copy_to_sd.sh ──► /Volumes/SP-404SX/ROLAND/SP-404SX/SMPL/
-```
+All local-first, no cloud required:
 
-### Commands
+- **Vibe Prompts** — Describe a mood/genre in plain English, get ranked sample matches via local LLM
+- **Smart Retag** — LLM-powered dimensional tagging (vibe, texture, genre, energy, quality)
+- **CLAP Embeddings** — Semantic audio search via text-to-audio similarity
+- **Audio Analysis** — librosa BPM/key/loudness detection
+- **Stem Splitting** — Background Demucs separation for tracks >60s
+- **Audio Dedup** — Multi-tier fingerprint + timbral + semantic duplicate detection
+- **Daily Bank** — Auto-generates fresh presets from library activity
+- **Card Intelligence** — Learns from your live performance (pad reuse, velocity, BPM stability)
 
-```bash
-# Full pipeline
-python scripts/fetch_samples.py          # Fetch all banks
-python scripts/fetch_samples.py --bank d # Fetch single bank
-python scripts/fetch_samples.py --bank d --pad 1  # Fetch single pad
-python scripts/gen_padinfo.py            # Generate PAD_INFO.BIN
-python scripts/gen_patterns.py           # Generate starter patterns
-python scripts/generate_patterns.py      # Generate a pattern from a local Magenta-compatible tool
-bash scripts/copy_to_sd.sh              # Deploy to SD card
+## Documentation
 
-# Library management
-python scripts/ingest_downloads.py       # Import new sample packs
-python scripts/ingest_downloads.py --dedupe  # Import, tag, then run duplicate analysis
-python scripts/ingest_downloads.py --watch  # Background watcher daemon
-python scripts/tag_library.py            # Tag entire library
-python scripts/tag_library.py --update   # Tag new files only
-python scripts/deduplicate_samples.py --report-json  # Write a duplicate report
-
-# Local creative helpers
-python scripts/daily_bank.py             # Generate a daily auto preset in presets/auto/
-# vibe_generate.py and generate_patterns.py read JSON on stdin
-```
-
-## Local Integration Setup
-
-These features are optional and use the same env-backed runtime config as the rest of the app.
-
-```bash
-SP404_LLM_ENDPOINT=http://127.0.0.1:11434/v1/chat/completions
-SP404_LLM_MODEL=qwen3
-SP404_LLM_TIMEOUT=30
-SP404_MUSICVAE_CHECKPOINT_DIR="$PWD/models/musicvae"
-SP404_MAGENTA_COMMAND=music_vae_generate
-SP404_FINGERPRINT_TOOL=fpcalc
-SP404_DAILY_BANK_SOURCE=recent
-SP404_TRENDING_FILE="$PWD/trending.json"
-```
-
-Use `SP404_LLM_ENDPOINT` for a local chat-completions endpoint. A locally hosted Qwen-family model is a strong fit for prompt interpretation because it handles descriptive instruction-following well while staying practical on consumer hardware.
-
-Point `SP404_MUSICVAE_CHECKPOINT_DIR` at your MusicVAE/GrooVAE checkpoints. `generate_patterns.py` validates the checkpoint path before running, and `SP404_MAGENTA_COMMAND` can either be `music_vae_generate` or your own wrapper command.
-
-If `fpcalc` is installed, duplicate detection uses Chromaprint-style fingerprints first. If not, `deduplicate_samples.py` falls back to the repo's Python similarity implementation and still produces a reviewable report.
-
-## Environment Variables
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `SP404_LLM_ENDPOINT` | Local LLM endpoint for vibe prompts | (disabled) |
-| `SP404_MUSICVAE_CHECKPOINT_DIR` | MusicVAE model checkpoints | (disabled) |
-| `SP404_MAGENTA_COMMAND` | Magenta pattern generation command | `music_vae_generate` |
-| `SP404_FINGERPRINT_TOOL` | Audio fingerprint tool | `fpcalc` |
-| `SP404_LLM_MODEL` | LLM model name | `qwen3` |
-| `SP404_LLM_TIMEOUT` | LLM request timeout (seconds) | `30` |
-| `SP404_DAILY_BANK_SOURCE` | Daily bank source (`recent` or `trending`) | `recent` |
-| `SP404_TRENDING_FILE` | Path to trending.json | `$REPO/trending.json` |
-| `SP404_SAMPLE_LIBRARY` | Sample library root | `~/Music/SP404-Sample-Library` |
-| `SP404_FFMPEG` | ffmpeg binary path | `/opt/homebrew/bin/ffmpeg` |
-
-## Key Paths (Smart Features)
-
-```
-scripts/jambox_config.py        # Centralized configuration
-scripts/vibe_generate.py        # NL vibe -> fetch parameters
-scripts/generate_patterns.py    # Magenta pattern generation
-scripts/deduplicate_samples.py  # Audio deduplication
-scripts/daily_bank.py           # Daily preset generator
-web/api/vibe.py                 # POST /api/vibe/generate
-web/api/pattern.py              # POST /api/pattern/generate
-trending.json                   # Tag trend data
-```
-
-## How Fetching Works
-
-1. `fetch_samples.py` parses each pad description from `bank_config.yaml`
-2. Scores every file in `_tags.json` against the query
-3. Scoring: type code match = +10 (mismatch = −8), playability = +5, BPM/key = +3–4, keywords = +3 each
-4. Global deduplication — no file used twice across any pad
-5. Returns empty result if no local match (UI shows "no match" state)
-6. Converts winner to 16-bit/44.1kHz/mono WAV with RLND chunk
-
-## Tag System
-
-Every sample is auto-tagged across 7 dimensions (see `docs/TAGGING_SPEC.md`):
-
-| Dimension | What it answers | Examples |
-|-----------|----------------|---------|
-| type_code | What is it? | KIK, SNR, HAT, BAS, SYN, PAD, VOX, FX, BRK |
-| vibe | What does it feel like? | dark, mellow, hype, dreamy, aggressive |
-| texture | What does it sound like? | dusty, lo-fi, raw, clean, warm, bright |
-| genre | What style? | funk, disco, house, electronic, ambient |
-| energy | How intense? | low, mid, high |
-| source | Where from? | kit, dug, synth, field, processed |
-| playability | How to use it? | one-shot, loop, chop-ready, layer, transition |
-
-### Tag Cloud API
-
-- `GET /api/library/tags` — dimension-grouped tag frequencies
-- `GET /api/library/by-tag?type_code=KIK&vibe=dark` — filter (OR within dimension, AND across)
-
-## Sample Library
-
-```
-~/Music/SP404-Sample-Library/         (~9,600+ WAVs)
-├── Ambient-Textural/Atmospheres
-├── Drums/{Kicks, Snares-Claps, Hi-Hats, Percussion, Drum-Loops}
-├── Loops/Instrument-Loops
-├── Melodic/{Bass, Guitar, Keys-Piano, Synths-Pads}
-├── SFX/Stabs-Hits
-├── Vocals/Chops
-├── Curated Packs/{bank-name}/           (API downloads with attribution)
-├── _RAW-DOWNLOADS/                  (original packs, archived after ingest)
-├── _GOLD/Bank-A/                    (saved Bank A sessions)
-├── _tags.json                       (tag database)
-└── _ingest_log.json                 (watcher activity log)
-```
-
-## Presets & Sets
-
-```
-presets/                              Bank preset YAML files
-  genre/                              Genre-specific (funk, disco, electroclash, etc.)
-  utility/                            Utility banks (textures, SFX, voices)
-  song-kits/                          Complete production kits
-  palette/                            Single sound type across all pads
-  community/                          Shared/imported presets
-  auto/                               Auto-generated presets
-
-sets/                                 Set configurations (10 presets per set)
-  default.yaml                        Original v3 bank layout
-```
-
-`trending.json` can be either a flat list of keywords or a small object of lists. The daily bank generator uses it when `SP404_DAILY_BANK_SOURCE=trending`.
-
-## SD Card Structure
-
-```
-SD_CARD/
-└── ROLAND/
-    └── SP-404SX/
-        ├── SMPL/
-        │   ├── PAD_INFO.BIN
-        │   ├── A0000001.WAV ... A0000012.WAV  (Bank A)
-        │   └── ...through J0000012.WAV        (Bank J)
-        └── PTN/
-            └── PTN00001.BIN ... (pattern files)
-```
-
-### Audio Format
-
-All output WAVs: **16-bit / 44.1kHz / Mono / PCM** (uncompressed)
-
-```bash
-ffmpeg -y -i input -ar 44100 -ac 1 -sample_fmt s16 -c:a pcm_s16le output.WAV
-```
-
-### File Naming
-
-`{BANK}0000{PAD}.WAV` — e.g., `G0000007.WAV` = Bank G, Pad 7
+| Doc | What it covers |
+|-----|---------------|
+| [CLAUDE.md](CLAUDE.md) | Full project context for agents and contributors |
+| [docs/TAGGING_SPEC.md](docs/TAGGING_SPEC.md) | Tag vocabulary, dimensions, quality rubric |
+| [docs/DEPLOYMENT_RUNBOOK.md](docs/DEPLOYMENT_RUNBOOK.md) | Complete build-to-card workflow |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 78 API endpoints |
+| [docs/SP404_ECOSYSTEM_RESEARCH.md](docs/SP404_ECOSYSTEM_RESEARCH.md) | Research index |
+| [docs/SMART_RETAG_SPEC.md](docs/SMART_RETAG_SPEC.md) | LLM retag system prompt and config |
 
 ## Multi-Agent Workflow
 
@@ -284,39 +85,17 @@ This project uses three Claude agents coordinated by the user:
 | Agent | Role | Owns |
 |-------|------|------|
 | **Chat** | Creative direction, bank curation, documentation | Docs, tag vocabulary, genre research |
-| **Code** | Implementation, scripts, web UI, pipeline | All code, `bank_config.yaml` updates |
+| **Code** | Implementation, scripts, web UI, pipeline | All code, config, deployment |
 | **Cowork** | Sample sourcing, downloading to watchfolders | Scraping, file acquisition |
 
-See `CLAUDE.md` for full coordination details.
-
-## Quick Start
-
-1. Format an SD card as FAT32
-2. Clone this repo
-3. Run `python scripts/ingest_downloads.py` to import sample packs
-4. Run `python scripts/tag_library.py` to build the tag database
-5. Edit `bank_config.yaml` to define your banks (or use the web UI)
-6. Run `python scripts/fetch_samples.py` to match and convert samples
-7. Run `python scripts/gen_padinfo.py && python scripts/gen_patterns.py`
-8. Run `bash scripts/copy_to_sd.sh` to deploy
-9. Insert card into SP-404, jam immediately
-
-Or: `cd web && python app.py` and do it all from http://localhost:5404
-
-Optional smart flows:
-
-1. Configure `SP404_LLM_ENDPOINT`, then use the vibe prompt bar or `scripts/vibe_generate.py`
-2. Install a Magenta-compatible generator plus checkpoints, then use `Generate Pattern` or `scripts/generate_patterns.py`
-3. Run `python scripts/ingest_downloads.py --dedupe` or `python scripts/deduplicate_samples.py --report-json`
-4. Use the Daily Bank button or `python scripts/daily_bank.py` to generate an auto preset under `presets/auto/`
+See [CLAUDE.md](CLAUDE.md) for full coordination details and key paths.
 
 ## Related Projects
 
 - [spEdit404](https://github.com/bobgonzalez/spEdit404) — Create/modify SP-404SX pattern files
 - [Super Pads](https://github.com/MatthewCallis/super-pads) — Visual sample manager
 - [ptn2midi](https://tyleroderkirk.github.io/ptn2midi/) — Convert SP-404SX patterns to MIDI
-- [SP-404SX format docs](https://gist.github.com/threedaymonk/701ca30e5d363caa288986ad972ab3e0) — Reverse-engineered sample format
 
 ## License
 
-Scripts: MIT. Samples: royalty-free (MusicRadar SampleRadar + Curated Packs).
+Scripts: MIT. Samples: royalty-free (MusicRadar SampleRadar + curated packs).

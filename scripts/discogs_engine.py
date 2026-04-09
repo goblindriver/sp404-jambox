@@ -16,10 +16,13 @@ import gc
 import json
 import os
 import sys
+import threading
 import time
 import urllib.request
 
 import numpy as np
+
+from library_walker import walk_library_audio as _walk_library_audio
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -119,15 +122,23 @@ def _models_dir():
     return d
 
 
+_download_lock = threading.Lock()
+
+
 def _download_if_needed(url, dest):
     if os.path.exists(dest):
         return dest
-    print(f"[Discogs] Downloading {os.path.basename(dest)}...")
-    tmp = dest + ".tmp"
-    urllib.request.urlretrieve(url, tmp)
-    os.replace(tmp, dest)
-    print(f"[Discogs] Saved to {dest}")
-    return dest
+    with _download_lock:
+        # Double-checked locking: another thread may have finished the download
+        # while we were waiting on the lock.
+        if os.path.exists(dest):
+            return dest
+        print(f"[Discogs] Downloading {os.path.basename(dest)}...")
+        tmp = dest + ".tmp"
+        urllib.request.urlretrieve(url, tmp)
+        os.replace(tmp, dest)
+        print(f"[Discogs] Saved to {dest}")
+        return dest
 
 
 def _get_model():
@@ -255,11 +266,6 @@ def classify_styles(filepath):
 # Batch classification
 # ---------------------------------------------------------------------------
 
-def _walk_library_audio(library_root, skip_dirs):
-    from library_walker import walk_library_audio
-    return walk_library_audio(library_root, skip_dirs=skip_dirs)
-
-
 def batch_classify(library_root, tag_db, tags_file, skip_dirs=None,
                    checkpoint_every=200, limit=None, resume=True):
     """Classify all audio files and store results in the tag DB.
@@ -272,7 +278,7 @@ def batch_classify(library_root, tag_db, tags_file, skip_dirs=None,
         skip_dirs = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE",
                      "Stems", "_LONG-HOLD"}
 
-    all_files = list(_walk_library_audio(library_root, skip_dirs))
+    all_files = list(_walk_library_audio(library_root, skip_dirs=skip_dirs))
     if resume:
         pending = [(r, a) for r, a in all_files
                    if not tag_db.get(r, {}).get("discogs_styles")]
@@ -353,7 +359,7 @@ def main():
 
     if args.status:
         db = load_tag_db(tags_file)
-        all_files = list(_walk_library_audio(library, LIBRARY_SKIP_DIRS))
+        all_files = list(_walk_library_audio(library, skip_dirs=LIBRARY_SKIP_DIRS))
         classified = sum(1 for r, _ in all_files
                          if db.get(r, {}).get("discogs_styles"))
         danceable = sum(1 for r, _ in all_files

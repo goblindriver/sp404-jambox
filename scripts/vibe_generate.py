@@ -12,9 +12,8 @@ import re
 import sys
 import yaml
 
-from jambox_config import ConfigError, load_settings_for_script
+from jambox_config import ConfigError, load_settings_for_script, load_vibe_mappings
 from integration_runtime import IntegrationFailure, call_json_endpoint
-from jambox_tuning import load_vibe_mappings
 from taste_engine import get_system_prompt
 from vibe_retrieval import build_retrieval_context
 import fetch_samples

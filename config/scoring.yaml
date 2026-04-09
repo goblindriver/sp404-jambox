@@ -1,20 +1,29 @@
-score_version: 7
+score_version: 8
 
 # ══════════════════════════════════════════════════════════════
 # Unified Scoring Engine — config/scoring.yaml
 # ══════════════════════════════════════════════════════════════
 #
 # Both CLAP and legacy paths flow through scoring_engine.py.
-# All weights below affect both paths. No more hidden hardcoded values.
+# Every weight here is read by the code — no dead keys.
+# Bumped to v8 after extracting hardcoded values and removing dead keys.
 
-# CLAP-specific settings + shared dimension weights
+# Dimension weights — shared across CLAP and legacy paths.
+# In CLAP mode, clap similarity is the primary signal.
+# In legacy mode, tag_match is the primary signal.
 clap:
-  # Primary signal weight (how much CLAP cosine similarity dominates)
-  similarity_weight: 0.6
+  # Primary signal weights
+  similarity_weight: 0.6           # CLAP cosine similarity (CLAP mode only)
+  legacy_tag_match_weight: 0.6     # tag keyword matching (legacy mode only)
 
-  # Structural bonus weights (applied in both CLAP and legacy paths)
+  # Type code: strongest structural signal — wrong type is a dealbreaker
+  type_code_weight: 0.20
+
+  # Structural bonus weights
   bpm_weight: 0.05
   key_weight: 0.03
+  playability_weight: 0.15         # strong — wrong playability is bad
+  duration_weight: 0.10
   energy_weight: 0.03
   danceability_weight: 0.03
   discogs_weight: 0.03
@@ -23,7 +32,11 @@ clap:
   instrument_hint_weight: 0.02
   performance_weight: 0.04
 
-  # Danceability thresholds
+  # Sub-score tuning
+  key_compatible_score: 0.33       # relative major/minor (not exact) match
+  energy_mismatch_score: -0.66     # penalty for wrong energy level
+
+  # Danceability
   danceability_bonus: 0.03
   danceability_threshold: 0.5
 
@@ -31,47 +44,18 @@ clap:
   discogs_keyword_bonus: 0.018
   discogs_keyword_bonus_cap: 0.045
 
-  # Structural match thresholds (kept for reference / backward compat)
-  bpm_close_bonus: 0.05
-  bpm_near_bonus: 0.02
-  key_exact_bonus: 0.03
-  key_compatible_bonus: 0.01
-  playability_mismatch_penalty: -0.15
-  duration_mismatch_penalty: -0.10
-  min_similarity: 0.05
-
 # SD Card performance intelligence — applies to both scoring paths
 performance:
   pad_reuse: 4        # sample survived multiple sessions
   bpm_stable: 3       # user tweaked BPM = they cared
   high_velocity: 2    # played hard = liked it
 
-# Legacy tag-based scoring (used as fallback when CLAP unavailable,
-# and for keyword matching normalization in both paths)
+# Legacy tag-based keyword matching weights.
+# Used by _tag_match_score() for per-keyword scoring in both paths.
 weights:
-  type_exact: 10
-  type_related: 3
-  type_mismatch: -8
-  playability_exact: 5
-  playability_mismatch: -4
-  bpm_close: 4
-  bpm_near: 2
-  bpm_distant: -1
-  bpm_far: -2
-  key_exact: 3
-  key_compatible: 1
-  keyword_dimension: 3
-  keyword_tag: 2
-  keyword_filename: 1
-  discogs_keyword_match: 2
-  oneshot_long_penalty: -3
-  loop_short_penalty: -3
-  plex_moods_bonus: 1
-  plex_play_count_bonus: 2
-  quality_tiebreaker: 0.5
-  instrument_hint_match: 5
-  energy_match: 3
-  energy_mismatch: -2
-  performance_pattern_used: 4
-  performance_bpm_adjust: 3
-  performance_velocity_high: 2
+  keyword_dimension: 3       # keyword found in vibe/texture/genre
+  keyword_tag: 2             # keyword found in general tags
+  keyword_filename: 1        # keyword found in filename
+  discogs_keyword_match: 2   # keyword found in Discogs tokens
+  plex_moods_bonus: 1        # has Plex mood metadata
+  plex_play_count_bonus: 2   # has Plex play count > 0

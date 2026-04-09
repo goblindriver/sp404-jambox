@@ -1,18 +1,7 @@
 """Pipeline control API — fetch, build, deploy, watcher."""
 import os, sys, time as _time, threading, subprocess, uuid, json
 from flask import Blueprint, jsonify, request, current_app
-from jambox_config import build_subprocess_env, load_tag_db as _config_load_tag_db
-
-
-def _load_tag_db_for_status():
-    """Load tag DB for status reporting (quick, no caching)."""
-    try:
-        tags_file = current_app.config.get('TAGS_FILE', '')
-        if tags_file:
-            return _config_load_tag_db(tags_file)
-    except Exception:
-        pass
-    return {}
+from jambox_config import build_subprocess_env, load_tag_db
 
 pipeline_bp = Blueprint('pipeline', __name__)
 
@@ -492,7 +481,11 @@ def server_status():
         except Exception:
             features['fpcalc'] = False
 
-        tag_db = _load_tag_db_for_status() or {}
+        try:
+            tags_file = current_app.config.get('TAGS_FILE', '')
+            tag_db = load_tag_db(tags_file) if tags_file else {}
+        except Exception:
+            tag_db = {}
 
         clap_info = {'available': False, 'embedded': 0, 'coverage': 0}
         try:

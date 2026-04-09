@@ -1,51 +1,15 @@
-"""Shared wrappers for external integrations and structured failures."""
+"""Shared wrappers for external integrations and structured failures.
+
+LLM call helpers live in llm_client.py — this module re-exports them for
+backward compatibility and adds subprocess helpers for non-LLM integrations.
+"""
 
 from __future__ import annotations
 
-import json
 import subprocess
-import urllib.error
-import urllib.request
 
-
-class IntegrationFailure(RuntimeError):
-    """Structured failure for optional external integrations."""
-
-    def __init__(self, code, message, *, detail=None):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.detail = detail or ""
-
-    def as_dict(self):
-        payload = {
-            "code": self.code,
-            "message": self.message,
-        }
-        if self.detail:
-            payload["detail"] = self.detail
-        return payload
-
-
-def call_json_endpoint(url, payload, *, timeout, headers=None):
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", **(headers or {})},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except TimeoutError as exc:
-        raise IntegrationFailure("timeout", "Request timed out") from exc
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise IntegrationFailure("http_error", f"Request failed: {exc.code}", detail=detail) from exc
-    except urllib.error.URLError as exc:
-        raise IntegrationFailure("connection_error", f"Request failed: {exc.reason}") from exc
-    except json.JSONDecodeError as exc:
-        raise IntegrationFailure("invalid_json", "Integration returned invalid JSON") from exc
+from llm_client import LLMError as IntegrationFailure  # noqa: F401 — re-export
+from llm_client import call_json_endpoint  # noqa: F401 — re-export
 
 
 def run_command(command, *, cwd, timeout, settings=None, env=None):

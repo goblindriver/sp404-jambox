@@ -18,7 +18,7 @@ import math
 import os
 from typing import Any
 
-from jambox_tuning import load_scoring_config
+from jambox_config import load_scoring_config
 
 # ---------------------------------------------------------------------------
 # Config loading
@@ -110,7 +110,8 @@ def key_score(target: str | None, actual: str | None) -> float:
     if norm_t.lower() == norm_a.lower():
         return 1.0
     if keys_compatible(target, actual):
-        return 0.33
+        cfg = (_get_config().get("clap") or {})
+        return cfg.get("key_compatible_score", 0.33)
     return 0.0
 
 
@@ -219,13 +220,16 @@ def _weighted_sum(breakdown: dict[str, float], is_clap: bool, config: dict) -> f
         score = breakdown["clap_similarity"] * sim_weight
     else:
         # Legacy tag matching: scale tag_match (0-1) to be the dominant signal
-        score = breakdown.get("tag_match", 0.0) * 0.6
+        score = breakdown.get("tag_match", 0.0) * clap_cfg.get("legacy_tag_match_weight", 0.6)
+
+    # Type code: strongest structural signal — wrong type is a dealbreaker
+    score += breakdown["type_code"] * clap_cfg.get("type_code_weight", 0.20)
 
     # Structural bonuses (shared, smaller contributions)
     score += breakdown["bpm"] * clap_cfg.get("bpm_weight", 0.05)
     score += breakdown["key"] * clap_cfg.get("key_weight", 0.03)
-    score += breakdown["playability"] * 0.15  # strong signal — wrong playability is bad
-    score += breakdown["duration"] * 0.10
+    score += breakdown["playability"] * clap_cfg.get("playability_weight", 0.15)
+    score += breakdown["duration"] * clap_cfg.get("duration_weight", 0.10)
     score += breakdown["energy"] * clap_cfg.get("energy_weight", 0.03)
     score += breakdown["danceability"] * clap_cfg.get("danceability_weight", 0.03)
     score += breakdown["discogs"] * clap_cfg.get("discogs_weight", 0.03)
@@ -291,7 +295,10 @@ def _energy_score(entry: dict, q: dict) -> float:
     query_energy = q.get("energy")
     if not entry_energy or not query_energy:
         return 0.0
-    return 1.0 if entry_energy == query_energy else -0.66
+    if entry_energy == query_energy:
+        return 1.0
+    cfg = (_get_config().get("clap") or {})
+    return cfg.get("energy_mismatch_score", -0.66)
 
 
 def _danceability_score(entry: dict, q: dict, clap_cfg: dict) -> float:

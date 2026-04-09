@@ -93,7 +93,8 @@ def evaluate_ranking(path, fixture_path):
     for row in rows:
         parse_result = vibe_generate.parse_vibe_prompt(row["prompt"], bpm=row.get("bpm"), key=row.get("key"))
         query = vibe_generate._build_query(row, parse_result["tags"])
-        matches = fetch_samples.rank_library_matches(
+        # Force legacy path: fixture entries don't have CLAP embeddings
+        matches = fetch_samples.rank_library_matches_legacy(
             query,
             bank_config={"bpm": row.get("bpm"), "key": row.get("key")},
             tag_db=fixture,

@@ -15,13 +15,14 @@ REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 from jambox_config import (
+    get_score_version,
     is_excluded_rel_path,
     load_bank_config,
+    load_scoring_config,
     load_settings_for_script,
     upsert_tag_entries,
 )
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
-from jambox_tuning import SCORE_VERSION, load_scoring_config
 from wav_utils import convert_and_tag, wav_identity
 from tag_vocab import (
     TYPE_CODES as _VOCAB_TYPE_CODES,
@@ -37,19 +38,67 @@ from scoring_engine import (
     keys_compatible as _keys_compatible_se,
 )
 
-SETTINGS = load_settings_for_script(__file__)
-SCORING_CONFIG = load_scoring_config()
-SCORING_WEIGHTS = SCORING_CONFIG["weights"]
-SCORING_VERSION = SCORE_VERSION
-LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
-TAGS_FILE = SETTINGS["TAGS_FILE"]
-CONFIG_PATH = SETTINGS["CONFIG_PATH"]
-STAGING = SETTINGS["STAGING_DIR"]
-SMPL_DIR = SETTINGS["SMPL_DIR"]
-FETCH_HISTORY_FILE = SETTINGS.get("FETCH_HISTORY_FILE", os.path.join(REPO_DIR, "data", "fetch_history.json"))
-FETCH_TOP_N = int(SETTINGS.get("FETCH_DIVERSITY_TOP_N", 8) or 8)
-FETCH_DETERMINISTIC = str(SETTINGS.get("FETCH_DETERMINISTIC", "0")).strip().lower() in ("1", "true", "yes", "on")
-FETCH_COOLDOWN_SECONDS = int(SETTINGS.get("FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 * 3600) or 21600)
+# Lazy-initialized module globals. These exist at the module level so tests
+# and other modules can still patch them by name (e.g. patch.object(
+# fetch_samples, "LIBRARY", ...)). The values are populated on the first
+# call to _ensure_settings() from inside a function, deferring the config
+# read until it's actually needed. Subsequent calls are no-ops, so test
+# patches applied after initialization stay in effect.
+SETTINGS = None
+SCORING_CONFIG = None
+SCORING_WEIGHTS = None
+SCORING_VERSION = None
+LIBRARY = None
+TAGS_FILE = None
+CONFIG_PATH = None
+STAGING = None
+SMPL_DIR = None
+FETCH_HISTORY_FILE = None
+FETCH_TOP_N = None
+FETCH_DETERMINISTIC = None
+FETCH_COOLDOWN_SECONDS = None
+
+def _ensure_settings():
+    """Populate module-level settings on first access.
+
+    Safe to call from any public function. Only fills globals that are
+    still None, so test patches applied before the call (via
+    patch.object) are preserved rather than clobbered. Reading config
+    defers the expensive work until actually needed; once a field is
+    populated subsequent calls are cheap no-ops for it.
+    """
+    global SETTINGS, SCORING_CONFIG, SCORING_WEIGHTS, SCORING_VERSION
+    global LIBRARY, TAGS_FILE, CONFIG_PATH, STAGING, SMPL_DIR
+    global FETCH_HISTORY_FILE, FETCH_TOP_N, FETCH_DETERMINISTIC, FETCH_COOLDOWN_SECONDS
+    global _WEIGHTS_HASH
+    if SETTINGS is None:
+        SETTINGS = load_settings_for_script(__file__)
+    if SCORING_CONFIG is None:
+        SCORING_CONFIG = load_scoring_config()
+    if SCORING_WEIGHTS is None:
+        SCORING_WEIGHTS = SCORING_CONFIG["weights"]
+    if SCORING_VERSION is None:
+        SCORING_VERSION = SCORING_CONFIG["score_version"]
+    if LIBRARY is None:
+        LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
+    if TAGS_FILE is None:
+        TAGS_FILE = SETTINGS["TAGS_FILE"]
+    if CONFIG_PATH is None:
+        CONFIG_PATH = SETTINGS["CONFIG_PATH"]
+    if STAGING is None:
+        STAGING = SETTINGS["STAGING_DIR"]
+    if SMPL_DIR is None:
+        SMPL_DIR = SETTINGS["SMPL_DIR"]
+    if FETCH_HISTORY_FILE is None:
+        FETCH_HISTORY_FILE = SETTINGS.get("FETCH_HISTORY_FILE", os.path.join(REPO_DIR, "data", "fetch_history.json"))
+    if FETCH_TOP_N is None:
+        FETCH_TOP_N = int(SETTINGS.get("FETCH_DIVERSITY_TOP_N", 8) or 8)
+    if FETCH_DETERMINISTIC is None:
+        FETCH_DETERMINISTIC = str(SETTINGS.get("FETCH_DETERMINISTIC", "0")).strip().lower() in ("1", "true", "yes", "on")
+    if FETCH_COOLDOWN_SECONDS is None:
+        FETCH_COOLDOWN_SECONDS = int(SETTINGS.get("FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 * 3600) or 21600)
+    if _WEIGHTS_HASH is None:
+        _WEIGHTS_HASH = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()).hexdigest()[:8]
 
 # SD Card Intelligence — performance data for scoring boosts
 _PERFORMANCE_PROFILE = None
@@ -232,7 +281,8 @@ STOP_WORDS = {"a", "an", "the", "or", "and", "in", "for", "not", "but", "with", 
 
 _ALL_ALIASES = {**GENRE_ALIASES, **TEXTURE_ALIASES, **VIBE_ALIASES}
 
-_WEIGHTS_HASH = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()).hexdigest()[:8]
+# Populated by _ensure_settings() on first use.
+_WEIGHTS_HASH = None
 
 _RELATED_TYPE_CODES_RAW = {
     "KIK": {"DRM"}, "SNR": {"DRM"}, "HAT": {"DRM"}, "CLP": {"DRM", "SNR"},
@@ -262,6 +312,7 @@ def parse_pad_query(query):
       key: str or None
       keywords: set of remaining search words
     """
+    _ensure_settings()
     query = "" if query is None else str(query)
     words = query.strip().split()
     result = {
@@ -324,6 +375,7 @@ def score_from_tags(entry, parsed_query, bank_config):
     Legacy wrapper — delegates to scoring_engine.score_sample() without CLAP similarity.
     Returns a float score on the legacy 0-30+ scale (converted from unified 0-1 range).
     """
+    _ensure_settings()
     perf = _load_performance_profile()
     unified, _breakdown = _unified_score(
         entry, parsed_query, bank_config,
@@ -374,6 +426,7 @@ def _keys_compatible(key_a, key_b):
 
 def load_tag_db():
     """Load the tag database."""
+    _ensure_settings()
     from jambox_config import load_tag_db as _load
     db = _load(TAGS_FILE)
     if not db:
@@ -428,6 +481,7 @@ def rank_library_clap(query, bank_config=None, tag_db=None, used_files=None, lim
     Type_code and playability act as hard filters when specified in the query.
     Falls back to tag-based scoring if CLAP store is empty.
     """
+    _ensure_settings()
     parsed = parse_pad_query(query)
     bank_config = bank_config or {}
     tag_db = tag_db if tag_db is not None else load_tag_db()
@@ -500,6 +554,7 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entr
 
     Returns (filepath, score) or (None, 0).
     """
+    _ensure_settings()
     if _clap_available():
         matches = rank_library_clap(
             query,
@@ -527,6 +582,7 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entr
 
 def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0, cache_entries=None):
     """Public interface — routes to CLAP or legacy scoring."""
+    _ensure_settings()
     if _clap_available():
         clap_min = min_score / 30.0 if min_score > 1 else min_score
         return rank_library_clap(
@@ -542,6 +598,7 @@ def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, 
 
 def rank_library_matches_legacy(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0, cache_entries=None):
     """Legacy tag-based ranking (fallback when no CLAP embeddings exist)."""
+    _ensure_settings()
     parsed = parse_pad_query(query)
     bank_config = bank_config or {}
     tag_db = tag_db if tag_db is not None else load_tag_db()
@@ -620,6 +677,7 @@ def _save_fetch_history(history):
 
 def choose_diverse_match(matches, deterministic=False):
     """Pick from top-N with recency penalties to reduce repetition."""
+    _ensure_settings()
     if not matches:
         return None
     top = matches[:max(1, FETCH_TOP_N)]
@@ -660,6 +718,7 @@ def choose_diverse_match(matches, deterministic=False):
 
 
 def load_config():
+    _ensure_settings()
     return load_bank_config(CONFIG_PATH, strict=True)
 
 
@@ -670,6 +729,7 @@ def clear_staging_wavs(bank=None, pad=None):
     bank='b', pad=None → wipe only Bank B WAVs.
     bank='b', pad=3    → wipe only B0000003.WAV.
     """
+    _ensure_settings()
     if not os.path.isdir(STAGING):
         return
 
@@ -691,6 +751,7 @@ def clear_staging_wavs(bank=None, pad=None):
 
 def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_files, cache_entries=None):
     """Fetch a sample for one pad. Returns the path to the staged file or None."""
+    _ensure_settings()
     sp404_name = f"{bank_letter.upper()}{pad_number:07d}.WAV"
     staged_path = os.path.join(STAGING, sp404_name)
 
@@ -711,6 +772,7 @@ def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_file
 
 
 def main():
+    _ensure_settings()
     parser = argparse.ArgumentParser(description='Fetch samples for SP-404 banks')
     parser.add_argument('--bank', '-b', help='Single bank letter to fetch (e.g., b)')
     parser.add_argument('--pad', '-p', type=int, help='Single pad number (use with --bank)')

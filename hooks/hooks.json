@@ -1,0 +1,16 @@
+{
+  "description": "Jambox session start hook — provides project context summary",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "## Jambox — SP-404A Sample Bank Builder\n\nYou are working on sp404-jambox: a Python/Flask system that curates royalty-free samples into genre-themed banks for the Roland SP-404A sampler. Three agents coordinate — Code (you), Chat (creative direction), and Cowork (sample sourcing). All deliverables flow through ~/Downloads/ via ingest_downloads.py. The web UI runs on localhost:5404. Audio output must be 16-bit/44.1kHz/mono WAV. The SP-404A has 12 pads per bank (A-J), Sub Pad is a retrigger button (not a sample slot). Use /sp404-jambox skills for project context, bank design, tagging, hardware reference, ML pipeline, API routes, and troubleshooting."
+          }
+        ]
+      }
+    ]
+  }
+}

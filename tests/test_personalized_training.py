@@ -181,7 +181,8 @@ class ParserModeTests(unittest.TestCase):
 
 class EvalRunnerTests(unittest.TestCase):
     def test_evaluate_ranking_uses_fixture_library(self):
-        with patch.dict(vibe_generate.SETTINGS, {"VIBE_PARSER_MODE": "base"}, clear=False):
+        with patch.dict(vibe_generate.SETTINGS, {"VIBE_PARSER_MODE": "base"}, clear=False), \
+             patch("fetch_samples._clap_available", return_value=False):
             summary, details = vibe_eval_model.evaluate_ranking(
                 os.path.join(REPO_ROOT, "data", "evals", "prompt_to_ranking.jsonl"),
                 os.path.join(REPO_ROOT, "data", "evals", "ranking_fixture.json"),

@@ -20,6 +20,8 @@ import time
 
 import numpy as np
 
+from library_walker import walk_library_audio as _walk_library_audio
+
 # ---------------------------------------------------------------------------
 # Lazy CLAP model singleton
 # ---------------------------------------------------------------------------
@@ -269,12 +271,6 @@ class EmbeddingStore:
 # Batch embedding
 # ---------------------------------------------------------------------------
 
-def _walk_library_audio(library_root, skip_dirs):
-    """Yield (rel_path, abs_path) for all audio files in the library."""
-    from library_walker import walk_library_audio
-    return walk_library_audio(library_root, skip_dirs=skip_dirs)
-
-
 def batch_embed(library_root, store, skip_dirs=None, checkpoint_every=200,
                 limit=None, resume=True):
     """Embed all audio files in the library that don't yet have embeddings.
@@ -291,7 +287,7 @@ def batch_embed(library_root, store, skip_dirs=None, checkpoint_every=200,
         skip_dirs = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE",
                      "Stems", "_LONG-HOLD"}
 
-    all_files = list(_walk_library_audio(library_root, skip_dirs))
+    all_files = list(_walk_library_audio(library_root, skip_dirs=skip_dirs))
     if resume:
         pending = [(r, a) for r, a in all_files if not store.has(r)]
     else:
@@ -367,7 +363,7 @@ def main():
     store = EmbeddingStore(library)
 
     if args.status:
-        all_files = list(_walk_library_audio(library, LIBRARY_SKIP_DIRS))
+        all_files = list(_walk_library_audio(library, skip_dirs=LIBRARY_SKIP_DIRS))
         print(f"Library audio files: {len(all_files)}")
         print(f"Embedded:            {store.count}")
         print(f"Coverage:            {store.count/max(len(all_files),1)*100:.1f}%")

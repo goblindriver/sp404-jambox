@@ -26,7 +26,7 @@ This project is worked on by multiple Claude agents coordinated by the user:
 ## Key Paths
 - **Repo**: `/Users/jasongronvold/Desktop/SP-404SX/sp404-jambox/`
 - **SD card mount**: `/Volumes/SP-404SX`
-- **Sample library**: `~/Music/SP404-Sample-Library/` (~20,925 FLACs, 15 GB)
+- **Sample library**: `~/Music/SP404-Sample-Library/` (~30,700 FLACs)
 - **Tag database**: `~/Music/SP404-Sample-Library/_tags.json`
 - **Raw downloads archive**: `~/Music/SP404-Sample-Library/_RAW-DOWNLOADS/`
 - **Bank config**: `bank_config.yaml` (defines all banks, pads, BPM, key)
@@ -137,12 +137,12 @@ Smart retag: `python scripts/smart_retag.py` (LLM-powered, see `docs/SMART_RETAG
 | Dimension | What it answers | Examples |
 |-----------|----------------|---------|
 | type_code | What is it? | KIK, SNR, HAT, PRC, BAS, SYN, PAD, VOX, FX, BRK, RSR, GTR, HRN, KEY, STR |
-| vibe | What does it feel like? | dark, warm, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty, ethereal, triumphant, melancholic, tense |
+| vibe | What does it feel like? | dark, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty, ethereal, triumphant, melancholic, tense, chill, uplifting, unfiltered, comforting |
 | texture | What does it sound like? | dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crispy, glassy, vinyl, tape, digital, organic |
 | genre | What style? | funk, soul, disco, house, electronic, hiphop, dub, ambient, jazz, rock, punk, dancehall, latin, pop, rnb, boom-bap, lo-fi, tropical, afrobeat |
 | energy | How intense? | low, mid, high |
 | source | Where from? | kit, dug, synth, field, processed |
-| playability | How to use it? | one-shot, loop, chop-ready, layer, transition |
+| playability | How to use it? | one-shot, loop, chop-ready, chromatic, layer, transition |
 | instrument_hint | Specific instrument? | rhodes, 808, clavinet, melodica, congas, etc. (from smart retag) |
 | quality_score | How good for SP-404? | 1-5 (from smart retag) |
 | sonic_description | What would a producer hear? | Free text (from smart retag, for browsing/search) |
@@ -151,7 +151,7 @@ Smart retag: `python scripts/smart_retag.py` (LLM-powered, see `docs/SMART_RETAG
 Each pad in `bank_config.yaml` uses: `TYPE_CODE keyword keyword playability`
 - Type code first (3 letters, caps): KIK, BRK, SYN, VOX, etc.
 - 2-3 keywords from any dimension (vibe, texture, genre)
-- Playability last: one-shot, loop, chop-ready, layer, transition
+- Playability last: one-shot, loop, chop-ready, chromatic, layer, transition
 - **Less is more** — 3-4 total keywords get better matches than 6-7
 
 Example: `BAS funk warm loop` — finds a warm funk bass loop
@@ -299,8 +299,10 @@ Pattern training is intentionally separate from vibe training. No MIDI corpus ex
 
 ### Vibe API Endpoints (web/api/vibe.py)
 - `POST /api/vibe/generate` — Parse prompt, return suggestions + session_id
+- `POST /api/vibe/inspire-bank` — Generate bank metadata (name, notes, BPM, key) via LLM
 - `POST /api/vibe/apply-bank` — Apply reviewed draft to a bank (with optional auto-fetch)
 - `POST /api/vibe/populate-bank` — End-to-end: LLM parse → preset → load → fetch
+- `POST /api/vibe/generate-fetch-bank` — Metadata-first generation + fetch for one bank
 - `GET /api/vibe/populate-status/<job_id>` — Poll background populate job
 
 ## Sample Library Structure
@@ -317,7 +319,7 @@ Pattern training is intentionally separate from vibe training. No MIDI corpus ex
 ├── _DUPES/                        (fingerprint-detected duplicates, review before deleting)
 ├── _QUARANTINE/                   (quality 1-2 files from smart retag, review before deleting)
 ├── _GOLD/Bank-A/                  (saved Bank A sessions)
-├── _tags.json                     (tag database, ~20,925 entries)
+├── _tags.json                     (tag database, ~26,700 entries)
 └── _ingest_log.json               (watcher activity log)
 ```
 
@@ -364,7 +366,7 @@ Bank configurations are standalone YAML files in `presets/`, organized by catego
 Local-first creative tools. Status shown in the Power Button UI dashboard.
 
 ### Smart Retag (LLM-Powered Library Intelligence) — NEXT PRIORITY
-Runs every file through librosa feature extraction + Ollama LLM tagging to generate real dimensional tags (vibe, texture, genre, energy, instrument_hint, quality_score). Currently only 108 of 30,511 files have dimensional tags — this is the #1 blocker for fetch quality.
+Runs every file through librosa feature extraction + Ollama LLM tagging to generate real dimensional tags (vibe, texture, genre, energy, instrument_hint, quality_score). Currently ~700 of ~30,700 files have dimensional tags — this is the #1 blocker for fetch quality.
 
 **Architecture:** CLI batch tool (`scripts/smart_retag.py`) for bulk pass, inline in ingest pipeline for new files, webapp for monitoring + review only. Training stays standalone CLI.
 
@@ -443,7 +445,7 @@ training/pattern/readiness.py      # Pattern training readiness gates
 data/evals/                        # Seed eval suite
 data/vibe_sessions.sqlite          # Runtime session store (gitignored)
 data/retag_checkpoint.json         # Smart retag progress (gitignored)
-web/api/vibe.py                    # POST /api/vibe/generate, apply-bank, populate-bank
+web/api/vibe.py                    # POST /api/vibe/generate, inspire-bank, apply-bank, populate-bank, generate-fetch-bank
 web/api/pattern.py                 # POST /api/pattern/generate
 trending.json                      # Tag trend data
 ```
@@ -487,7 +489,7 @@ These should feed the RAG corpus and/or synthetic training examples:
 - Key producers to study: Dibiase (chain-resampling), STLNDRMS (hybrid MPC+404), Flying Lotus (effects processing)
 - LofiAndy, CremaSound, SPVIDZ — paid pack creators whose bank architectures inform Jambox's structure
 
-Full ecosystem research doc: see `docs/SP404_ECOSYSTEM_RESEARCH.md`
+Ecosystem research docs: see `docs/SP404_ECOSYSTEM_RESEARCH.md` (index) and `docs/research/` (individual reports)
 
 ## Important Notes
 - The SP-404A (original, non-SX) is more restrictive — always use 44.1kHz/16-bit/mono

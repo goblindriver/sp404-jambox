@@ -1,0 +1,9 @@
+{
+  "name": "sp404-jambox",
+  "version": "0.2.0",
+  "description": "SP-404A sample bank builder — project intelligence, hardware reference, ML pipeline, and API docs for multi-agent coordination",
+  "author": {
+    "name": "Jason Gronvold"
+  },
+  "keywords": ["sp404", "sampler", "sample-library", "music-production", "ml-pipeline"]
+}

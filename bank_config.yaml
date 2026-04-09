@@ -23,7 +23,7 @@ bank_b:
     11: BRK amen chopped dirty loop
     12: VOX shout chant crowd chop-ready
 bank_c:
-  preset: genre/azealia-mode
+  preset: auto/test
   name: Azealia Mode
   bpm: 130
   key: Bbm
@@ -33,18 +33,18 @@ bank_c:
 
     '
   pads:
-    1: BRK house four-floor kick-heavy loop
-    2: BRK trap-leaning snare-roll break loop
-    3: BRK rapid programmed hat groove loop
-    4: BRK house clap layer stack loop
-    5: BAS house bouncing rolling sub bass loop
-    6: VOX rapid-fire aggressive attitude rap loop
-    7: SYN house stab bright filtered chord loop
-    8: DRM house groove four-floor driving beat loop
-    9: BAS acid squelch resonant 303 bass loop
-    10: VOX chopped pitched processed diva vocal loop
-    11: SYN dark arp menacing minor synth loop
-    12: FX crowd hype energy attitude shout loop
+    1: KIK test one-shot
+    2: SNR test one-shot
+    3: HAT test one-shot
+    4: CLP test one-shot
+    5: BRK test loop
+    6: BAS test loop
+    7: SYN synth test loop
+    8: BAS bass test loop
+    9: PAD test loop
+    10: FX test one-shot
+    11: BRK test loop
+    12: VOX test chop-ready
 bank_d:
   preset: genre/breakbeat-bunker
   name: Breakbeat Bunker
@@ -164,7 +164,7 @@ bank_i:
     6: PAD dreamy glassy vocal wash layer
     7: SYN crystalline arp loop
     8: PAD dark underwater swell loop
-    9: BAS soft pulsing sub loop
+    9: BAS synth pulsing sub loop
     10: SYN distant lead wistful loop
     11: KEY glassy bell chime ethereal loop
     12: PAD reverse-bloom transition

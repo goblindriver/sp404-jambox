@@ -16,7 +16,7 @@ if SCRIPTS_DIR not in sys.path:
 
 import fetch_samples
 import ingest_downloads
-import jambox_tuning
+import jambox_config
 import low_rank_audit
 import tag_hygiene
 import tag_vocab
@@ -55,12 +55,12 @@ class FetchSamplesScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             scoring_path = os.path.join(tempdir, "scoring.yaml")
             with open(scoring_path, "w", encoding="utf-8") as handle:
-                handle.write("score_version: nope\nweights:\n  type_exact: loud\n")
+                handle.write("score_version: nope\nweights:\n  keyword_dimension: loud\n")
 
-            config = jambox_tuning.load_scoring_config(scoring_path)
+            config = jambox_config.load_scoring_config(scoring_path)
 
-        self.assertEqual(config["score_version"], jambox_tuning.DEFAULT_SCORING["score_version"])
-        self.assertEqual(config["weights"]["type_exact"], 10)
+        self.assertEqual(config["score_version"], jambox_config.DEFAULT_SCORING["score_version"])
+        self.assertEqual(config["weights"]["keyword_dimension"], 3)
 
     def test_score_from_tags_returns_positive_for_good_match(self):
         """A perfect match across all dimensions should score well."""
@@ -126,7 +126,10 @@ class FetchSamplesScriptTests(unittest.TestCase):
             }
             score_mock = lambda entry, parsed, bank: 10 if "dusty" in entry.get("tags", []) else 1
 
-            with patch.object(fetch_samples, "LIBRARY", tempdir), patch.object(fetch_samples, "TAGS_FILE", tags_path), patch("fetch_samples.score_from_tags", side_effect=score_mock) as score_spy:
+            with patch.object(fetch_samples, "LIBRARY", tempdir), \
+                 patch.object(fetch_samples, "TAGS_FILE", tags_path), \
+                 patch("fetch_samples._clap_available", return_value=False), \
+                 patch("fetch_samples.score_from_tags", side_effect=score_mock) as score_spy:
                 first = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120}, tag_db=tag_db)
                 second = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120}, tag_db=tag_db)
 

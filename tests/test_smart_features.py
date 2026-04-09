@@ -25,7 +25,7 @@ import deduplicate_samples
 import daily_bank
 import generate_patterns
 from integration_runtime import IntegrationFailure
-import jambox_tuning
+import jambox_config
 import vibe_generate
 
 
@@ -313,7 +313,7 @@ class VibeGenerateTests(unittest.TestCase):
             with open(mappings_path, "w", encoding="utf-8") as handle:
                 handle.write("genre_instruments:\n  funk: nope\n")
 
-            mappings = jambox_tuning.load_vibe_mappings(mappings_path)
+            mappings = jambox_config.load_vibe_mappings(mappings_path)
 
         self.assertEqual(mappings["genre_instruments"]["funk"][0][0], "GTR")
 

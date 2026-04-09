@@ -114,6 +114,7 @@ def _build_tag_freq_index(tag_db):
 
 def _get_tag_freq_index():
     """Return cached frequency index, rebuilding only when tag DB file changes."""
+    fetch_samples._ensure_settings()
     tags_path = fetch_samples.TAGS_FILE
     try:
         current_mtime = os.path.getmtime(tags_path)

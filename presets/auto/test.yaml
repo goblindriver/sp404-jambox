@@ -1,0 +1,23 @@
+name: 'Vibe: test'
+slug: test
+author: jambox-vibe
+bpm: 130
+key: Bbm
+vibe: test
+notes: Keyword fallback parser used because the configured LLM integration was unavailable.
+source: vibe-generated
+tags:
+- test
+pads:
+  1: KIK test one-shot
+  2: SNR test one-shot
+  3: HAT test one-shot
+  4: CLP test one-shot
+  5: BRK test loop
+  6: BAS test loop
+  7: SYN synth test loop
+  8: BAS bass test loop
+  9: PAD test loop
+  10: FX test one-shot
+  11: BRK test loop
+  12: VOX test chop-ready
