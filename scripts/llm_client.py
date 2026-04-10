@@ -2,10 +2,6 @@
 
 Single source of truth for calling local LLM endpoints (Ollama, llama.cpp, etc.).
 Handles retries, JSON repair, markdown stripping, and structured failures.
-
-Replaces:
-  - smart_retag._call_llm() (custom requests + retry + JSON repair)
-  - integration_runtime.call_json_endpoint() (urllib wrapper)
 """
 
 from __future__ import annotations
@@ -34,10 +30,7 @@ class LLMError(RuntimeError):
 
 
 def call_json_endpoint(url, payload, *, timeout, headers=None):
-    """Low-level POST returning parsed JSON. Raises LLMError on failure.
-
-    Backward-compat shim for integration_runtime.call_json_endpoint.
-    """
+    """Low-level POST returning parsed JSON. Raises LLMError on failure."""
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),

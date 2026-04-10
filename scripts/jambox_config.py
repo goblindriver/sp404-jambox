@@ -274,10 +274,6 @@ def load_settings(repo_dir):
         "WEB_DEBUG": _read_bool("SP404_WEB_DEBUG", default=False),
         "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
         "LLM_MODEL": _read_command("SP404_LLM_MODEL", "qwen3.5:9b"),
-        "SMART_RETAG_LLM_MODEL": _read_command("SP404_SMART_RETAG_LLM_MODEL", "qwen3.5:9b"),
-        "SMART_RETAG_DURATION_SPLIT_SEC": _read_int(
-            "SP404_SMART_RETAG_DURATION_SPLIT_SEC", 60, minimum=0
-        ),
         "SMART_RETAG_SKIP_ABOVE_SECONDS": _read_optional_int(
             "SP404_SMART_RETAG_SKIP_ABOVE_SECONDS", default=None, minimum=1
         ),

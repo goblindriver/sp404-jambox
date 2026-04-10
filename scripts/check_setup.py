@@ -122,13 +122,11 @@ def run_checks():
     else:
         messages.append(f"  {_integration_status(True, 'Vibe parser mode', mode_detail)}")
 
-    split_sec = settings.get("SMART_RETAG_DURATION_SPLIT_SEC", 60)
-    long_m = (settings.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3.5:9b"
-    base_m = settings.get("LLM_MODEL", "qwen3")
+    retag_model = settings.get("LLM_MODEL", "qwen3.5:9b")
     skip_v = settings.get("SMART_RETAG_SKIP_ABOVE_SECONDS")
     skip_part = f"; skip LLM if duration >= {skip_v}s" if skip_v else ""
-    retag_detail = f"<={split_sec}s: {base_m}; >{split_sec}s: {long_m}{skip_part}"
-    messages.append(f"  {_integration_status(True, 'Smart retag LLM routing', retag_detail)}")
+    retag_detail = f"{retag_model}{skip_part}"
+    messages.append(f"  {_integration_status(True, 'Smart retag LLM', retag_detail)}")
 
     messages.append("")
     messages.append("Configured paths:")

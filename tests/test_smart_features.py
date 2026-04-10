@@ -25,6 +25,7 @@ import deduplicate_samples
 import daily_bank
 import generate_patterns
 from integration_runtime import IntegrationFailure
+from llm_client import LLMError
 import jambox_config
 import vibe_generate
 
@@ -355,7 +356,7 @@ class VibeGenerateTests(unittest.TestCase):
         self.assertEqual(result["bank_suggestions"], [])
 
     def test_generate_vibe_suggestions_falls_back_when_llm_unavailable(self):
-        with patch("vibe_generate._call_llm", side_effect=IntegrationFailure("connection_error", "LLM unavailable")), patch("vibe_generate.fetch_samples.rank_library_matches", return_value=[]), patch("vibe_generate._load_bank_config", return_value={}):
+        with patch("vibe_generate._call_llm", side_effect=LLMError("connection_error", "LLM unavailable")), patch("vibe_generate.fetch_samples.rank_library_matches", return_value=[]), patch("vibe_generate._load_bank_config", return_value={}):
             result = vibe_generate.generate_vibe_suggestions({"prompt": "dusty funk loop"})
 
         self.assertTrue(result["fallback_used"])
@@ -367,7 +368,7 @@ class VibeGenerateTests(unittest.TestCase):
         )
 
     def test_generate_vibe_suggestions_uses_type_alias_in_keyword_fallback(self):
-        with patch("vibe_generate._call_llm", side_effect=IntegrationFailure("connection_error", "LLM unavailable")), patch("vibe_generate.fetch_samples.rank_library_matches", return_value=[]), patch("vibe_generate._load_bank_config", return_value={}), patch.object(vibe_generate, "_TYPE_KEYWORD_ALIASES", {"kick": "KIK"}):
+        with patch("vibe_generate._call_llm", side_effect=LLMError("connection_error", "LLM unavailable")), patch("vibe_generate.fetch_samples.rank_library_matches", return_value=[]), patch("vibe_generate._load_bank_config", return_value={}), patch.object(vibe_generate, "_TYPE_KEYWORD_ALIASES", {"kick": "KIK"}):
             result = vibe_generate.generate_vibe_suggestions({"prompt": "dusty kick loop"})
 
         self.assertEqual(result["parsed"]["type_code"], "KIK")
@@ -580,31 +581,25 @@ class DedupeTests(unittest.TestCase):
             self.assertNotIn("dupe.wav", persisted)
 
     def test_llm_tag_filename_returns_tags_from_chat_response(self):
-        fake_payload = {
-            "choices": [{"message": {"content": '{"tags": ["kick", "808"]}'}}],
-        }
-        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_json_endpoint", return_value=fake_payload):
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_llm_chat", return_value={"tags": ["kick", "808"]}):
             tags = deduplicate_samples._llm_tag_filename("Drums/kick_fat.wav")
 
         self.assertEqual(tags, ["kick", "808"])
 
-    def test_llm_tag_filename_strips_code_fences(self):
-        fake_payload = {
-            "choices": [{"message": {"content": '```json\n{"tags": ["snare", "crisp"]}\n```'}}],
-        }
-        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_json_endpoint", return_value=fake_payload):
+    def test_llm_tag_filename_returns_empty_on_non_dict_response(self):
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_llm_chat", return_value=None):
             tags = deduplicate_samples._llm_tag_filename("Drums/snr.wav")
 
-        self.assertEqual(tags, ["snare", "crisp"])
+        self.assertEqual(tags, [])
 
     def test_llm_tag_filename_returns_empty_when_llm_unreachable(self):
-        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_json_endpoint", side_effect=IntegrationFailure("connection_error", "refused")):
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_llm_chat", side_effect=LLMError("connection_error", "refused")):
             tags = deduplicate_samples._llm_tag_filename("x.wav")
 
         self.assertEqual(tags, [])
 
     def test_llm_tag_filename_returns_empty_without_endpoint(self):
-        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "", "LLM_MODEL": "llama3"}, clear=False), patch("deduplicate_samples.call_json_endpoint") as call_mock:
+        with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "", "LLM_MODEL": "llama3"}, clear=False), patch("deduplicate_samples.call_llm_chat") as call_mock:
             tags = deduplicate_samples._llm_tag_filename("x.wav")
 
         self.assertEqual(tags, [])

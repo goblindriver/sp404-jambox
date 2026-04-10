@@ -1,15 +1,22 @@
-"""Shared wrappers for external integrations and structured failures.
+"""Subprocess integration helpers with structured failures.
 
-LLM call helpers live in llm_client.py — this module re-exports them for
-backward compatibility and adds subprocess helpers for non-LLM integrations.
+Used by non-LLM integrations that shell out to external binaries (Magenta,
+fpcalc, etc.). For LLM calls see `llm_client.py` (LLMError, call_llm_chat).
 """
 
 from __future__ import annotations
 
 import subprocess
 
-from llm_client import LLMError as IntegrationFailure  # noqa: F401 — re-export
-from llm_client import call_json_endpoint  # noqa: F401 — re-export
+
+class IntegrationFailure(RuntimeError):
+    """Structured failure from a subprocess integration (Magenta, fpcalc, ...)."""
+
+    def __init__(self, code, message, *, detail=None):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.detail = detail or ""
 
 
 def run_command(command, *, cwd, timeout, settings=None, env=None):

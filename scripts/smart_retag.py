@@ -14,8 +14,6 @@ Usage:
 
 Env:
     SP404_LLM_MODEL — Ollama model (default: qwen3.5:9b).
-    SP404_SMART_RETAG_DURATION_SPLIT_SEC — seconds; longer audio uses the fast retag model (default 60).
-    SP404_SMART_RETAG_LLM_MODEL — model for long clips (default: qwen3.5:9b).
     SP404_SMART_RETAG_SKIP_ABOVE_SECONDS — if set, skip LLM entirely when duration >= this (features only).
     SP404_SMART_RETAG_WORKERS — concurrent workers (default 3, max SP404_SMART_RETAG_WORKERS_MAX). Ollama manages model memory; tune workers if the server queues or OOMs.
 """
@@ -50,10 +48,8 @@ SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 LLM_ENDPOINT = SETTINGS.get("LLM_ENDPOINT", "")
-# Default to qwen3.5:9b — newer MoE arch, faster inference, /no_think suppresses reasoning blocks.
-PRIMARY_LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3.5:9b")
-LONG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3.5:9b"
-SMART_RETAG_DURATION_SPLIT_SEC = int(SETTINGS.get("SMART_RETAG_DURATION_SPLIT_SEC", 60))
+# Default to qwen3.5:9b — newer MoE arch, faster inference than qwen3:32b.
+LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3.5:9b")
 SMART_RETAG_SKIP_ABOVE_SECONDS = SETTINGS.get("SMART_RETAG_SKIP_ABOVE_SECONDS")
 SMART_RETAG_WORKERS_CAP = int(SETTINGS.get("SMART_RETAG_WORKERS_MAX", 16))
 SMART_RETAG_WORKERS_DEFAULT = max(
@@ -159,10 +155,6 @@ def _build_prompt(filepath, features):
     if features.get('chroma'):
         lines.append("Chroma: %s" % json.dumps(features['chroma']))
 
-    # Suppress qwen3 reasoning to save tokens and get direct JSON
-    lines.append("")
-    lines.append("/no_think")
-
     return "\n".join(lines)
 
 
@@ -205,17 +197,6 @@ def _skip_llm_for_duration(duration_sec):
     if duration_sec is None:
         return False
     return float(duration_sec) >= float(SMART_RETAG_SKIP_ABOVE_SECONDS)
-
-
-def _llm_model_for_duration(duration_sec):
-    """Pick Ollama model: short clips use primary, long use fast (configurable via env)."""
-    if SMART_RETAG_DURATION_SPLIT_SEC == 0:
-        return LONG_LLM_MODEL
-    if duration_sec is None:
-        return PRIMARY_LLM_MODEL
-    if float(duration_sec) <= float(SMART_RETAG_DURATION_SPLIT_SEC):
-        return PRIMARY_LLM_MODEL
-    return LONG_LLM_MODEL
 
 
 def _call_llm(prompt, model, retries=None):
@@ -268,7 +249,7 @@ def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):
                 float(dur), SMART_RETAG_SKIP_ABOVE_SECONDS, fname), flush=True)
         return {}, None, True
 
-    model = _llm_model_for_duration(dur)
+    model = LLM_MODEL
     prompt = _build_prompt(full_path, features)
     raw = _call_llm(prompt, model=model)
     validated = _validate_llm_tags(raw) if raw else {}
@@ -951,12 +932,9 @@ def run(args):
         )
         workers_note = " | workers=%d" % workers if workers > 1 else ""
         print(
-            "LLM: <=%ds -> %s | >%ds -> %s%s | read timeout %ds | up to %d attempts/file%s"
+            "LLM: %s%s | read timeout %ds | up to %d attempts/file%s"
             % (
-                SMART_RETAG_DURATION_SPLIT_SEC,
-                PRIMARY_LLM_MODEL,
-                SMART_RETAG_DURATION_SPLIT_SEC,
-                LONG_LLM_MODEL,
+                LLM_MODEL,
                 skip_note,
                 _retag_llm_read_timeout_seconds(),
                 _retag_llm_retries() + 1,
@@ -1072,12 +1050,9 @@ def run_revibe(args):
 
     print("Re-vibing %d files with updated production prompt...\n" % len(candidates))
     print(
-        "LLM: <=%ds -> %s | >%ds -> %s | read timeout %ds | up to %d attempts/file"
+        "LLM: %s | read timeout %ds | up to %d attempts/file"
         % (
-            SMART_RETAG_DURATION_SPLIT_SEC,
-            PRIMARY_LLM_MODEL,
-            SMART_RETAG_DURATION_SPLIT_SEC,
-            LONG_LLM_MODEL,
+            LLM_MODEL,
             _retag_llm_read_timeout_seconds(),
             _retag_llm_retries() + 1,
         ),
@@ -1213,15 +1188,7 @@ def run_retry_llm_failures(args):
         print("No rows need full enrichment (or no on-disk files match).")
         return
 
-    print(
-        "LLM routing: <=%ds %s | >%ds %s"
-        % (
-            SMART_RETAG_DURATION_SPLIT_SEC,
-            PRIMARY_LLM_MODEL,
-            SMART_RETAG_DURATION_SPLIT_SEC,
-            LONG_LLM_MODEL,
-        )
-    )
+    print("LLM: %s" % LLM_MODEL)
     print("Retrying LLM on %d files...\n" % len(candidates))
 
     success = errors = 0

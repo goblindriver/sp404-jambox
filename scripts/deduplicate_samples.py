@@ -10,15 +10,14 @@ import argparse
 import difflib
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime
 
-from integration_runtime import IntegrationFailure, call_json_endpoint
 from jambox_cache import file_marker, get_cached_fingerprint, load_fingerprint_cache, put_cached_fingerprint, save_fingerprint_cache
 from jambox_config import build_subprocess_env, load_settings_for_script
+from llm_client import LLMError, call_llm_chat
 import dedup_library
 
 
@@ -143,61 +142,33 @@ def _pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints, 
     return similarity(rel_python, compare_python) or 0.0
 
 
-def _llm_strip_code_fences(text):
-    text = (text or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    return text.strip()
-
-
-def _llm_extract_message_content(payload):
-    if isinstance(payload, dict):
-        if payload.get("choices"):
-            message = payload["choices"][0].get("message", {})
-            content = message.get("content", "")
-            if isinstance(content, list):
-                return "".join(part.get("text", "") for part in content if isinstance(part, dict))
-            return content
-        if "message" in payload and isinstance(payload["message"], dict):
-            return payload["message"].get("content", "")
-        if "response" in payload:
-            return payload["response"]
-    return ""
-
-
 def _llm_tag_filename(rel_path):
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
     if not endpoint:
         return []
 
     try:
-        payload = call_json_endpoint(
+        parsed = call_llm_chat(
             endpoint,
-            {
-                "model": SETTINGS.get("LLM_MODEL", "qwen3"),
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": 'Suggest up to 5 lower-case descriptive sample tags as JSON: {"tags":[...]}',
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps({"filename": rel_path, "directory": os.path.dirname(rel_path)}),
-                    },
-                ],
-                "temperature": 0.2,
-            },
+            SETTINGS.get("LLM_MODEL", "qwen3.5:9b"),
+            [
+                {
+                    "role": "system",
+                    "content": 'Suggest up to 5 lower-case descriptive sample tags as JSON: {"tags":[...]}',
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps({"filename": rel_path, "directory": os.path.dirname(rel_path)}),
+                },
+            ],
             timeout=SETTINGS.get("LLM_TIMEOUT", 30),
+            temperature=0.2,
+            json_mode=True,
+            max_tokens=200,
         )
-    except IntegrationFailure:
+    except LLMError:
         return []
 
-    content = _llm_strip_code_fences(_llm_extract_message_content(payload))
-    try:
-        parsed = json.loads(content or "{}")
-    except json.JSONDecodeError:
-        return []
     if not isinstance(parsed, dict):
         return []
     return [str(tag).lower() for tag in parsed.get("tags", []) if str(tag).strip()]

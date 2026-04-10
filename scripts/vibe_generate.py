@@ -13,8 +13,7 @@ import sys
 import yaml
 
 from jambox_config import ConfigError, load_settings_for_script, load_vibe_mappings
-from integration_runtime import IntegrationFailure
-from llm_client import call_llm_chat
+from llm_client import LLMError, call_llm_chat
 from taste_engine import get_system_prompt
 from vibe_retrieval import build_retrieval_context
 import fetch_samples
@@ -76,14 +75,14 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
     runtime = _parser_runtime()
     endpoint = runtime["endpoint"]
     if not endpoint:
-        raise IntegrationFailure("llm_not_configured", "SP404_LLM_ENDPOINT is required for vibe generation")
+        raise LLMError("llm_not_configured", "SP404_LLM_ENDPOINT is required for vibe generation")
 
     system_prompt = get_system_prompt(
         "You convert creative music prompts into SP-404 sample search tags. "
         "Return JSON only with keys: keywords, type_code, playability, vibe, genre, texture, energy, rationale. "
         "keywords should be a short list of lower-case search terms. "
         "type_code and playability should be strings or null. "
-        "Use any retrieval context as examples, not hard rules.\n\n/no_think"
+        "Use any retrieval context as examples, not hard rules."
     )
     user_prompt = {
         "prompt": prompt,
@@ -108,7 +107,7 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
         max_tokens=400,  # Vibe tags only need ~200-300 tokens; cap to bound latency.
     )
     if not parsed:
-        raise IntegrationFailure("empty_response", "LLM response did not include usable content")
+        raise LLMError("empty_response", "LLM response did not include usable content")
 
     def _to_list(val):
         """Normalize LLM output to a list of strings.
@@ -176,7 +175,7 @@ def parse_vibe_prompt(prompt, bpm=None, key=None):
             "model_label": runtime["model"],
             "retrieval_context": retrieval_context,
         }
-    except IntegrationFailure as exc:
+    except LLMError as exc:
         fallback = _fallback_tags(prompt, failure=exc)
         fallback["model_mode"] = runtime["mode"]
         fallback["model_label"] = runtime["model"]
@@ -430,7 +429,7 @@ def inspire_bank_metadata(seed_genre=None):
         "a short evocative description (1-2 sentences), a BPM (integer 60-180), "
         "and a musical key (e.g. Am, Dm, F, Gm). "
         "Return ONLY a JSON object with keys: name, notes, bpm, key. "
-        "No markdown, no explanation.\n\n/no_think"
+        "No markdown, no explanation."
     )
     user_msg = {"task": "inspire_bank"}
     if seed_genre:
@@ -459,7 +458,7 @@ def inspire_bank_metadata(seed_genre=None):
             "bpm": _coerce_int(parsed.get("bpm"), 120, minimum=40),
             "key": str(parsed.get("key") or "Am").strip()[:4],
         }
-    except (IntegrationFailure, json.JSONDecodeError, OSError, Exception):
+    except (LLMError, json.JSONDecodeError, OSError, Exception):
         return _inspire_fallback(seed_genre)
 
 
@@ -490,7 +489,7 @@ def main():
     except (ConfigError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc), "error_code": "invalid_input"}))
         raise SystemExit(1)
-    except IntegrationFailure as exc:
+    except LLMError as exc:
         print(json.dumps({"ok": False, "error": exc.message, "error_code": exc.code}))
         raise SystemExit(1)
     except Exception as exc:
