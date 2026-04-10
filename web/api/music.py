@@ -11,6 +11,8 @@ import threading
 import uuid
 from flask import Blueprint, jsonify, request, send_file, Response, current_app
 
+from api._helpers import json_object_body as _json_object_body
+
 music_bp = Blueprint('music', __name__)
 
 # Add scripts dir to path for plex_client
@@ -31,13 +33,6 @@ def _index_file():
 
 def _stems_dir():
     return current_app.config['STEMS_DIR']
-
-
-def _json_object_body():
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        raise ValueError('Request body must be a JSON object')
-    return data
 
 
 def _parse_track_id(value):

@@ -9,6 +9,11 @@ import uuid
 
 from flask import Blueprint, current_app, jsonify, request
 
+from api._helpers import (
+    json_object_body as _json_object_body,
+    parse_script_json as _parse_script_json,
+    script_error_payload as _script_error_payload,
+)
 from jambox_config import build_subprocess_env
 import vibe_training_store as vts
 
@@ -32,13 +37,6 @@ def _get_vibe_job(job_id):
     with _vibe_lock:
         job = _vibe_jobs.get(job_id)
         return dict(job) if isinstance(job, dict) else None
-
-
-def _json_object_body():
-    payload = request.get_json(silent=True) or {}
-    if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
-    return payload
 
 
 def _normalize_prompt(payload):
@@ -155,34 +153,6 @@ def _normalize_reviewed_parsed(payload):
     rationale = reviewed.get("rationale", "")
     normalized["rationale"] = str(rationale).strip() if rationale is not None else ""
     return normalized
-
-
-def _parse_script_json(stdout):
-    payload = json.loads((stdout or "").strip())
-    if not isinstance(payload, dict):
-        raise ValueError("Script output must be a JSON object")
-    return payload
-
-
-def _script_error_payload(result, default_message):
-    try:
-        payload = _parse_script_json(result.stdout)
-    except (json.JSONDecodeError, ValueError):
-        payload = {}
-
-    error_message = payload.get("error")
-    if not isinstance(error_message, str) or not error_message.strip():
-        error_message = (result.stderr or result.stdout or default_message).strip()
-
-    response = {
-        "ok": False,
-        "error": error_message,
-    }
-    if payload.get("error_code"):
-        response["error_code"] = payload["error_code"]
-    if payload.get("detail"):
-        response["detail"] = payload["detail"]
-    return response
 
 
 @vibe_bp.route("/vibe/generate", methods=["POST"])

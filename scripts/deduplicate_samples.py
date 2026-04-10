@@ -164,7 +164,7 @@ def _llm_tag_filename(rel_path):
             timeout=SETTINGS.get("LLM_TIMEOUT", 30),
             temperature=0.2,
             json_mode=True,
-            max_tokens=200,
+            max_tokens=SETTINGS.get("DEDUP_TAG_MAX_TOKENS", 200),
         )
     except LLMError:
         return []

@@ -4,6 +4,8 @@ import sys
 from flask import Blueprint, send_file, current_app, request, jsonify
 from werkzeug.exceptions import HTTPException
 
+from api._helpers import json_object_body as _json_object_body
+
 audio_bp = Blueprint('audio', __name__)
 
 
@@ -13,13 +15,6 @@ def _library_root():
 
 def _ffmpeg_bin():
     return current_app.config['FFMPEG_BIN']
-
-
-def _json_object_body():
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        raise ValueError('Request body must be a JSON object')
-    return data
 
 
 def _normalize_bank(value):

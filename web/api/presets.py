@@ -3,6 +3,8 @@ import os
 import sys
 from flask import Blueprint, jsonify, request
 
+from api._helpers import json_object_body as _json_object_body
+
 presets_bp = Blueprint('presets', __name__)
 
 # Add scripts dir for preset_utils
@@ -12,13 +14,6 @@ sys.path.insert(0, os.path.abspath(_scripts_dir))
 
 import preset_utils as pu
 import daily_bank as db
-
-
-def _json_object_body():
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        raise ValueError('Request body must be a JSON object')
-    return data
 
 
 def _normalize_string_field(data, field_name):

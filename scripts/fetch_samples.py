@@ -34,8 +34,6 @@ from discogs_fetch_bridge import discogs_keyword_tokens
 from scoring_engine import (
     score_sample as _unified_score,
     bpm_score as _bpm_score_smooth,
-    normalize_key as _normalize_key_se,
-    keys_compatible as _keys_compatible_se,
 )
 
 # Lazy-initialized module globals. These exist at the module level so tests
@@ -386,38 +384,6 @@ def score_from_tags(entry, parsed_query, bank_config):
     # Scale unified 0-1 score to legacy ~0-30 range for backward compatibility
     # with min_score thresholds and cache consumers
     return round(unified * 30, 2)
-
-
-# Normalize sharp/flat enharmonic spellings to a canonical form
-_ENHARMONIC = {
-    "Gs": "Ab", "As": "Bb", "Cs": "Db", "Ds": "Eb", "Fs": "Gb",
-    "Gsm": "Abm", "Asm": "Bbm", "Csm": "Dbm", "Dsm": "Ebm", "Fsm": "Gbm",
-    "G#": "Ab", "A#": "Bb", "C#": "Db", "D#": "Eb", "F#": "Gb",
-    "G#m": "Abm", "A#m": "Bbm", "C#m": "Dbm", "D#m": "Ebm", "F#m": "Gbm",
-}
-
-def _normalize_key(key):
-    """Normalize sharp-notation keys to flat equivalents for consistent lookup."""
-    if not key:
-        return key
-    return _ENHARMONIC.get(key, key)
-
-_KEY_RELATIVES = {
-    "Am": "C", "C": "Am", "Dm": "F", "F": "Dm",
-    "Em": "G", "G": "Em", "Bm": "D", "D": "Bm",
-    "Abm": "B", "B": "Abm", "Bbm": "Db", "Db": "Bbm",
-    "Dbm": "E", "E": "Dbm", "Ebm": "Gb", "Gb": "Ebm",
-    "Gbm": "A", "A": "Gbm",
-    "Fm": "Ab", "Ab": "Fm", "Gm": "Bb", "Bb": "Gm",
-    "Cm": "Eb", "Eb": "Cm",
-}
-
-
-def _keys_compatible(key_a, key_b):
-    """Check if two keys are relative major/minor (enharmonic-aware)."""
-    a = _normalize_key(key_a)
-    b = _normalize_key(key_b)
-    return _KEY_RELATIVES.get(a) == b or _KEY_RELATIVES.get(b) == a
 
 
 # ═══════════════════════════════════════════════════════════

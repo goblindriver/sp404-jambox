@@ -227,7 +227,7 @@ def _call_llm(prompt, model, retries=None):
             retries=retries,
             json_mode=True,
             temperature=0.3,
-            max_tokens=2048,
+            max_tokens=SETTINGS.get("SMART_RETAG_MAX_TOKENS", 2048),
             on_stat=_bump_llm_stat,
         )
     except LLMError as exc:

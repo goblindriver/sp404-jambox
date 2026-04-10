@@ -278,6 +278,12 @@ def load_settings(repo_dir):
             "SP404_SMART_RETAG_SKIP_ABOVE_SECONDS", default=None, minimum=1
         ),
         "LLM_TIMEOUT": _read_int("SP404_LLM_TIMEOUT", DEFAULT_LLM_TIMEOUT, minimum=1),
+        # Per-call max_tokens caps. Smaller caps = lower latency; LLM outputs for
+        # these tasks are bounded (vibe tags ~200-300 tok, bank metadata <100 tok).
+        "VIBE_PARSE_MAX_TOKENS": _read_int("SP404_VIBE_PARSE_MAX_TOKENS", 400, minimum=50),
+        "VIBE_INSPIRE_MAX_TOKENS": _read_int("SP404_VIBE_INSPIRE_MAX_TOKENS", 200, minimum=50),
+        "DEDUP_TAG_MAX_TOKENS": _read_int("SP404_DEDUP_TAG_MAX_TOKENS", 200, minimum=50),
+        "SMART_RETAG_MAX_TOKENS": _read_int("SP404_SMART_RETAG_MAX_TOKENS", 2048, minimum=256),
         # smart_retag only: longer HTTP read than vibe UI; unset = script default floor
         "SMART_RETAG_LLM_TIMEOUT": _read_optional_int(
             "SP404_SMART_RETAG_LLM_TIMEOUT", default=None, minimum=60

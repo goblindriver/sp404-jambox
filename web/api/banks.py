@@ -3,6 +3,8 @@ import os
 from flask import Blueprint, jsonify, request, current_app
 from jambox_config import atomic_write_yaml, load_bank_config
 
+from api._helpers import json_object_body as _json_object_body
+
 banks_bp = Blueprint('banks', __name__)
 
 
@@ -16,13 +18,6 @@ def _smpl_dir():
 
 def _load_config():
     return load_bank_config(_config_path(), strict=False)
-
-
-def _json_object_body():
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        raise ValueError('Request body must be a JSON object')
-    return data
 
 
 def _normalize_letter(letter):

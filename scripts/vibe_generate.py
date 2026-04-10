@@ -104,7 +104,7 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
         timeout=timeout,
         temperature=0.3,
         json_mode=True,
-        max_tokens=400,  # Vibe tags only need ~200-300 tokens; cap to bound latency.
+        max_tokens=SETTINGS.get("VIBE_PARSE_MAX_TOKENS", 400),
     )
     if not parsed:
         raise LLMError("empty_response", "LLM response did not include usable content")
@@ -447,7 +447,7 @@ def inspire_bank_metadata(seed_genre=None):
             timeout=timeout,
             temperature=0.7,
             json_mode=True,
-            max_tokens=200,  # Bank metadata is tiny; tight cap keeps it snappy.
+            max_tokens=SETTINGS.get("VIBE_INSPIRE_MAX_TOKENS", 200),
         )
         if not parsed:
             return _inspire_fallback(seed_genre)
