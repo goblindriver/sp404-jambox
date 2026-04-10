@@ -15,7 +15,7 @@ if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
 import fetch_samples
-import ingest_downloads
+import ingest
 from ingest import _state as ingest_state
 import jambox_config
 import low_rank_audit
@@ -252,7 +252,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             output = io.StringIO()
 
             with patch.object(ingest_state, "DOWNLOADS", downloads), patch.object(ingest_state, "LIBRARY", library), patch.object(ingest_state, "RAW_ARCHIVE", archive), redirect_stdout(output):
-                result = ingest_downloads.one_shot_ingest()
+                result = ingest.one_shot_ingest()
 
         self.assertEqual(result, 0)
         self.assertIn("Downloads path not found", output.getvalue())
@@ -263,7 +263,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             output = io.StringIO()
 
             with patch.object(ingest_state, "DOWNLOADS", downloads), redirect_stdout(output):
-                freed, removed = ingest_downloads.cleanup_downloads()
+                freed, removed = ingest.cleanup_downloads()
 
         self.assertEqual((freed, removed), (0, 0))
         self.assertIn("Downloads path not found", output.getvalue())
@@ -275,7 +275,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
                 handle.write(b"PK")
 
             with patch("ingest.archive.subprocess.run", side_effect=FileNotFoundError):
-                result = ingest_downloads.extract_archive(archive_path, os.path.join(tempdir, "out"))
+                result = ingest.extract_archive(archive_path, os.path.join(tempdir, "out"))
 
         self.assertFalse(result)
 
@@ -285,7 +285,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             output = io.StringIO()
 
             with patch.object(ingest_state, "DOWNLOADS", downloads), redirect_stdout(output):
-                result = ingest_downloads.start_watcher()
+                result = ingest.start_watcher()
 
         self.assertFalse(result)
         self.assertIn("downloads path not found", output.getvalue().lower())
@@ -299,7 +299,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             os.makedirs(library, exist_ok=True)
 
             with patch.object(ingest_state, "DOWNLOADS", downloads), patch.object(ingest_state, "RAW_ARCHIVE", archive), patch.object(ingest_state, "LIBRARY", library):
-                report = ingest_downloads.disk_usage_report()
+                report = ingest.disk_usage_report()
 
         self.assertEqual(report["downloads_size"], 0)
         self.assertEqual(report["cleanable_count"], 0)

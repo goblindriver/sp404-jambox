@@ -261,7 +261,7 @@ def watcher_start():
         scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
-        import ingest_downloads as ingest
+        import ingest
 
         if ingest.get_watcher_state()['running']:
             return jsonify({'ok': True, 'message': 'Watcher already running'})
@@ -299,7 +299,7 @@ def watcher_stop():
         scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
-        import ingest_downloads as ingest
+        import ingest
 
         ingest.stop_watcher()
         return jsonify({'ok': True, 'message': 'Watcher stopped'})
@@ -314,7 +314,7 @@ def watcher_status():
         scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
-        import ingest_downloads as ingest
+        import ingest
 
         state = ingest.get_watcher_state()
 
@@ -346,7 +346,7 @@ def disk_report():
         scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
-        import ingest_downloads as ingest
+        import ingest
         return jsonify(ingest.disk_usage_report())
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -359,7 +359,7 @@ def cleanup():
         scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
-        import ingest_downloads as ingest
+        import ingest
 
         data = request.get_json(silent=True) or {}
         purge_archive = data.get('purge_archive', False)
@@ -423,7 +423,7 @@ def server_status():
             features['librosa'] = False
 
         try:
-            import ingest_downloads as ingest
+            import ingest
             features['watcher'] = ingest.get_watcher_state()['running']
         except Exception:
             features['watcher'] = False

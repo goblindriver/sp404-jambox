@@ -2,7 +2,7 @@
 """
 Ingest sample packs from ~/Downloads into the SP-404 sample library.
 
-Thin facade over the ingest package. All logic lives in scripts/ingest/.
+CLI entry point. All logic lives in scripts/ingest/.
 
 Modes:
     python scripts/ingest_downloads.py              # one-shot: process everything now
@@ -18,27 +18,11 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-# Re-export public API from the ingest package
 from ingest import (
-    AUDIO_EXTENSIONS, ARCHIVE_EXTENSIONS,
-    _watcher_state, _watcher_lock,
-    get_watcher_state, set_downloads_path, _human_size,
-    extract_archive,
-    ingest_doc_deliverables,
-    one_shot_ingest, ingest_single_file, ingest_pack, ingest_archive_file,
-    start_watcher, stop_watcher,
+    _state, set_downloads_path,
+    one_shot_ingest, start_watcher, stop_watcher,
     cleanup_downloads, purge_raw_archive, disk_usage_report,
 )
-from ingest import _state as _ingest_state
-
-# Path constants are re-assignable at runtime (set_downloads_path), so
-# delegate attribute access to _state to avoid stale local bindings.
-_DELEGATED_ATTRS = frozenset(('DOWNLOADS', 'LIBRARY', 'RAW_ARCHIVE', 'INGEST_LOG', 'SETTINGS'))
-
-def __getattr__(name):
-    if name in _DELEGATED_ATTRS:
-        return getattr(_ingest_state, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def main():
@@ -55,8 +39,8 @@ def main():
     if args.downloads_path:
         set_downloads_path(args.downloads_path)
 
-    os.makedirs(_ingest_state.LIBRARY, exist_ok=True)
-    os.makedirs(_ingest_state.RAW_ARCHIVE, exist_ok=True)
+    os.makedirs(_state.LIBRARY, exist_ok=True)
+    os.makedirs(_state.RAW_ARCHIVE, exist_ok=True)
 
     if args.disk_report:
         report = disk_usage_report()
