@@ -14,10 +14,11 @@ def cleanup_downloads(dry_run=False):
     doc_copied, doc_skipped = ingest_doc_deliverables(dry_run=dry_run)
     removed += doc_copied + doc_skipped
 
-    print(f"Scanning {_state.DOWNLOADS} for already-ingested items...")
     if not os.path.isdir(_state.DOWNLOADS):
         print("Downloads path not found.")
-        return 0, 0
+        return freed, removed
+
+    print(f"Scanning {_state.DOWNLOADS} for already-ingested items...")
 
     for item in _state._download_entries():
         full_path = os.path.join(_state.DOWNLOADS, item)

@@ -23,9 +23,10 @@ def start_watcher(dedupe=False):
         print("ERROR: watchdog not installed. Run: pip install watchdog")
         return False
 
-    if _state._watcher_state.get('_observer_active'):
-        print("Watcher already running")
-        return True
+    with _state._watcher_lock:
+        if _state._watcher_state.get('_observer_active'):
+            print("Watcher already running")
+            return True
 
     _state._watcher_stop.clear()
 

@@ -135,7 +135,7 @@ class PipelineApiTests(unittest.TestCase):
 
     def test_downloads_path_get_returns_ok_and_path(self):
         fake_ingest = SimpleNamespace(DOWNLOADS="/tmp/downloads")
-        with patch.dict("sys.modules", {"ingest_downloads": fake_ingest}):
+        with patch.dict("sys.modules", {"ingest": fake_ingest}):
             response = self.client.get("/api/pipeline/downloads-path")
 
         self.assertEqual(response.status_code, 200)

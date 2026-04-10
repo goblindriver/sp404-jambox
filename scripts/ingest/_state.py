@@ -74,6 +74,7 @@ _stem_futures = []
 
 # Recent fingerprints for fast inline dedup (capped)
 _recent_fingerprints = {}
+_fingerprint_lock = threading.Lock()
 _RECENT_FP_CAP = 1000
 
 # Patterns that identify sample pack folders (vs. music albums)

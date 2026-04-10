@@ -389,7 +389,7 @@ def downloads_path():
     scripts_dir = os.path.join(current_app.config['REPO_DIR'], 'scripts')
     if scripts_dir not in sys.path:
         sys.path.insert(0, scripts_dir)
-    import ingest_downloads as ingest
+    import ingest
 
     if request.method == 'GET':
         return jsonify({'ok': True, 'path': ingest.DOWNLOADS})

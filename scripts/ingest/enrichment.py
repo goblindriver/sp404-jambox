@@ -73,20 +73,21 @@ def _route_and_process(library_path, rel_path):
         from deduplicate_samples import compute_fingerprint, similarity
         fp = compute_fingerprint(library_path)
         if fp:
-            for other_path, other_fp in _state._recent_fingerprints.items():
-                if other_path == rel_path:
-                    continue
-                sim = similarity(fp, other_fp)
-                if sim is not None and sim >= 0.95:
-                    print(f"  [ROUTE] Duplicate detected ({sim:.2f}): {rel_path}")
-                    print(f"          Matches: {other_path}")
-                    is_dup = True
-                    break
+            with _state._fingerprint_lock:
+                for other_path, other_fp in list(_state._recent_fingerprints.items()):
+                    if other_path == rel_path:
+                        continue
+                    sim = similarity(fp, other_fp)
+                    if sim is not None and sim >= 0.95:
+                        print(f"  [ROUTE] Duplicate detected ({sim:.2f}): {rel_path}")
+                        print(f"          Matches: {other_path}")
+                        is_dup = True
+                        break
 
-            if len(_state._recent_fingerprints) >= _state._RECENT_FP_CAP:
-                oldest = next(iter(_state._recent_fingerprints))
-                del _state._recent_fingerprints[oldest]
-            _state._recent_fingerprints[rel_path] = fp
+                if len(_state._recent_fingerprints) >= _state._RECENT_FP_CAP:
+                    oldest = next(iter(_state._recent_fingerprints))
+                    del _state._recent_fingerprints[oldest]
+                _state._recent_fingerprints[rel_path] = fp
     except Exception as e:
         print(f"  [ROUTE] Fingerprint skipped: {e}")
 
