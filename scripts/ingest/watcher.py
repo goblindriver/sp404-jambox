@@ -105,8 +105,8 @@ def start_watcher(dedupe=False):
                         os.makedirs(processed_dir, exist_ok=True)
                         try:
                             shutil.move(filepath, os.path.join(processed_dir, fname))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"[WATCHER] Could not move to _PROCESSED: {e}")
                     else:
                         count = 0
                 elif ext in _state.ARCHIVE_EXTENSIONS:
@@ -149,8 +149,7 @@ def start_watcher(dedupe=False):
         with _state._watcher_lock:
             _state._watcher_state['running'] = True
             _state._watcher_state['_observer_active'] = True
-            if not _state._watcher_state['stats'].get('since'):
-                _state._watcher_state['stats']['since'] = datetime.now().isoformat()
+            _state._watcher_state['stats'] = {'files': 0, 'packs': 0, 'since': datetime.now().isoformat()}
         print(f"[WATCHER] Monitoring {_state.DOWNLOADS} for new samples...")
 
         try:

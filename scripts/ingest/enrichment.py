@@ -40,8 +40,10 @@ def _route_and_process(library_path, rel_path):
             q = entry.get('quality_score', '?')
             tc = entry.get('type_code', '?')
             print(f"  [ROUTE] Smart tagged: {tc} q={q} \u2014 {os.path.basename(rel_path)}")
+    except ImportError:
+        pass  # LLM not available
     except Exception as e:
-        pass
+        print(f"  [ROUTE] Smart retag failed: {e}")
 
     # Step 1.7: CLAP audio embedding (if engine available)
     try:
@@ -50,8 +52,10 @@ def _route_and_process(library_path, rel_path):
         emb = embed_audio_file(library_path)
         store.add(rel_path, emb)
         store.save()
-    except Exception:
-        pass
+    except ImportError:
+        pass  # CLAP not installed
+    except Exception as e:
+        print(f"  [ROUTE] CLAP embedding failed: {e}")
 
     # Step 1.8: Discogs genre classification (if engine available)
     try:
@@ -64,8 +68,10 @@ def _route_and_process(library_path, rel_path):
             entry["danceability"] = result["danceability"]
             tags_db[rel_path] = entry
             save_tags(tags_db)
-    except Exception:
-        pass
+    except ImportError:
+        pass  # Discogs model not available
+    except Exception as e:
+        print(f"  [ROUTE] Discogs classification failed: {e}")
 
     # Step 2: Fingerprint and inline dedup check
     is_dup = False
