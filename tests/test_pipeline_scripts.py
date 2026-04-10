@@ -16,6 +16,7 @@ if SCRIPTS_DIR not in sys.path:
 
 import fetch_samples
 import ingest_downloads
+from ingest import _state as ingest_state
 import jambox_config
 import low_rank_audit
 import tag_hygiene
@@ -250,7 +251,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             archive = os.path.join(tempdir, "archive")
             output = io.StringIO()
 
-            with patch.object(ingest_downloads, "DOWNLOADS", downloads), patch.object(ingest_downloads, "LIBRARY", library), patch.object(ingest_downloads, "RAW_ARCHIVE", archive), redirect_stdout(output):
+            with patch.object(ingest_state, "DOWNLOADS", downloads), patch.object(ingest_state, "LIBRARY", library), patch.object(ingest_state, "RAW_ARCHIVE", archive), redirect_stdout(output):
                 result = ingest_downloads.one_shot_ingest()
 
         self.assertEqual(result, 0)
@@ -261,7 +262,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             downloads = os.path.join(tempdir, "missing-downloads")
             output = io.StringIO()
 
-            with patch.object(ingest_downloads, "DOWNLOADS", downloads), redirect_stdout(output):
+            with patch.object(ingest_state, "DOWNLOADS", downloads), redirect_stdout(output):
                 freed, removed = ingest_downloads.cleanup_downloads()
 
         self.assertEqual((freed, removed), (0, 0))
@@ -273,7 +274,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             with open(archive_path, "wb") as handle:
                 handle.write(b"PK")
 
-            with patch("ingest_downloads.subprocess.run", side_effect=FileNotFoundError):
+            with patch("ingest.archive.subprocess.run", side_effect=FileNotFoundError):
                 result = ingest_downloads.extract_archive(archive_path, os.path.join(tempdir, "out"))
 
         self.assertFalse(result)
@@ -283,7 +284,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             downloads = os.path.join(tempdir, "missing-downloads")
             output = io.StringIO()
 
-            with patch.object(ingest_downloads, "DOWNLOADS", downloads), redirect_stdout(output):
+            with patch.object(ingest_state, "DOWNLOADS", downloads), redirect_stdout(output):
                 result = ingest_downloads.start_watcher()
 
         self.assertFalse(result)
@@ -297,7 +298,7 @@ class IngestDownloadsScriptTests(unittest.TestCase):
             os.makedirs(archive, exist_ok=True)
             os.makedirs(library, exist_ok=True)
 
-            with patch.object(ingest_downloads, "DOWNLOADS", downloads), patch.object(ingest_downloads, "RAW_ARCHIVE", archive), patch.object(ingest_downloads, "LIBRARY", library):
+            with patch.object(ingest_state, "DOWNLOADS", downloads), patch.object(ingest_state, "RAW_ARCHIVE", archive), patch.object(ingest_state, "LIBRARY", library):
                 report = ingest_downloads.disk_usage_report()
 
         self.assertEqual(report["downloads_size"], 0)

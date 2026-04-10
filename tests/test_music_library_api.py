@@ -25,10 +25,10 @@ from api.library import library_bp
 
 class MusicLibraryApiTests(unittest.TestCase):
     def setUp(self):
-        music_api._split_jobs.clear()
-        library_api._retag_jobs.clear()
-        self.addCleanup(music_api._split_jobs.clear)
-        self.addCleanup(library_api._retag_jobs.clear)
+        music_api._split_tracker.clear()
+        library_api._retag_tracker.clear()
+        self.addCleanup(music_api._split_tracker.clear)
+        self.addCleanup(library_api._retag_tracker.clear)
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
 
