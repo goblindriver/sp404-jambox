@@ -1,25 +1,26 @@
 name: Daily Bank 2026-04-09
 slug: daily-2026-04-09
 author: jambox
-bpm: 134
+bpm: 123
 key: null
 vibe: Auto-curated from recent library additions
 notes: Generated on 2026-04-09 using source=recent.
 source: daily-bank
 tags:
+- aggressive
 - electronic
-- house
-- tense
+- hiphop
+- hype
 pads:
-  1: PRC loop
-  2: SFX house electronic tense bitcrushed
-  3: KEY clean one-shot
-  4: VOX loop
-  5: VOX loop
-  6: SYN loop
-  7: KIK one-shot
-  8: BRK raw loop
-  9: HAT loop
-  10: VOX loop
-  11: PRC loop
-  12: BRK raw loop
+  1: SYN one-shot
+  2: SYN loop
+  3: SYN loop
+  4: BRK raw one-shot
+  5: BAS loop
+  6: SNR chop-ready
+  7: GTR one-shot
+  8: SFX transition
+  9: SNR electronic hiphop hype aggressive
+  10: PRC loop
+  11: KEY clean one-shot
+  12: BRK raw one-shot
