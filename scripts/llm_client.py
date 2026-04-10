@@ -134,7 +134,7 @@ def call_llm_chat(
 
     Args:
         endpoint: Full URL to chat completions endpoint
-        model: Model name (e.g. 'qwen3:8b')
+        model: Model name (e.g. 'qwen3.5:9b')
         messages: List of {role, content} dicts
         timeout: HTTP read timeout in seconds (or tuple of (connect, read))
         retries: Extra attempts after first failure (0 = no retry)
@@ -152,25 +152,57 @@ def call_llm_chat(
     if not endpoint:
         return None
 
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+    # Auto-route Ollama OpenAI-compat URLs to the native /api/chat endpoint.
+    # The native endpoint honors `think: false` cleanly (no reasoning tokens),
+    # while the OpenAI compat layer still generates them and tags them in a
+    # separate `reasoning` field, dramatically increasing latency.
+    use_ollama_native = False
+    call_endpoint = endpoint
+    if "/v1/chat/completions" in endpoint:
+        use_ollama_native = True
+        call_endpoint = endpoint.replace("/v1/chat/completions", "/api/chat")
+    elif endpoint.endswith("/api/chat"):
+        use_ollama_native = True
+
+    if use_ollama_native:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "think": False,  # Disable reasoning for qwen3/qwen3.5/qwq/deepseek-r1
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+        if json_mode:
+            payload["format"] = "json"
+    else:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
     last_error = None
     for attempt in range(retries + 1):
         if on_stat:
             on_stat("calls")
         try:
-            data = call_json_endpoint(endpoint, payload, timeout=timeout)
+            data = call_json_endpoint(call_endpoint, payload, timeout=timeout)
             content = ""
-            choices = data.get("choices", [])
-            if choices:
-                content = choices[0].get("message", {}).get("content", "")
+            if use_ollama_native:
+                # Native Ollama shape: {message: {content: "..."}}
+                message = data.get("message") or {}
+                content = message.get("content", "")
+            else:
+                # OpenAI shape: {choices: [{message: {content: "..."}}]}
+                choices = data.get("choices", [])
+                if choices:
+                    content = choices[0].get("message", {}).get("content", "")
             if not content:
                 if on_stat:
                     on_stat("empty")

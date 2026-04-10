@@ -13,7 +13,8 @@ import sys
 import yaml
 
 from jambox_config import ConfigError, load_settings_for_script, load_vibe_mappings
-from integration_runtime import IntegrationFailure, call_json_endpoint
+from integration_runtime import IntegrationFailure
+from llm_client import call_llm_chat
 from taste_engine import get_system_prompt
 from vibe_retrieval import build_retrieval_context
 import fetch_samples
@@ -34,29 +35,6 @@ def _read_input():
     if not data.get("prompt"):
         raise ValueError("prompt is required")
     return data
-
-
-def _strip_code_fences(text):
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```\w*\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    return text.strip()
-
-
-def _extract_content(payload):
-    if isinstance(payload, dict):
-        if "choices" in payload and payload["choices"]:
-            message = payload["choices"][0].get("message", {})
-            content = message.get("content", "")
-            if isinstance(content, list):
-                return "".join(part.get("text", "") for part in content if isinstance(part, dict))
-            return content
-        if "message" in payload and isinstance(payload["message"], dict):
-            return payload["message"].get("content", "")
-        if "response" in payload:
-            return payload["response"]
-    return ""
 
 
 def _coerce_int(value, default, *, minimum=None):
@@ -82,7 +60,7 @@ def _load_bank_config():
 def _parser_runtime():
     mode = SETTINGS.get("VIBE_PARSER_MODE", "base")
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
-    model = SETTINGS.get("LLM_MODEL", "qwen3:8b")
+    model = SETTINGS.get("LLM_MODEL", "qwen3.5:9b")
     if mode == "fine_tuned":
         endpoint = SETTINGS.get("FINE_TUNED_LLM_ENDPOINT", "").strip() or endpoint
         model = SETTINGS.get("FINE_TUNED_LLM_MODEL", "").strip() or model
@@ -105,7 +83,7 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
         "Return JSON only with keys: keywords, type_code, playability, vibe, genre, texture, energy, rationale. "
         "keywords should be a short list of lower-case search terms. "
         "type_code and playability should be strings or null. "
-        "Use any retrieval context as examples, not hard rules."
+        "Use any retrieval context as examples, not hard rules.\n\n/no_think"
     )
     user_prompt = {
         "prompt": prompt,
@@ -117,27 +95,20 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
     if retrieval_context:
         user_prompt["retrieval_context"] = retrieval_context
     timeout = SETTINGS.get("LLM_TIMEOUT", 30)
-    payload = call_json_endpoint(
+    parsed = call_llm_chat(
         endpoint,
-        {
-            "model": runtime["model"],
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps(user_prompt)},
-            ],
-            "temperature": 0.3,
-        },
+        runtime["model"],
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_prompt)},
+        ],
         timeout=timeout,
+        temperature=0.3,
+        json_mode=True,
+        max_tokens=400,  # Vibe tags only need ~200-300 tokens; cap to bound latency.
     )
-
-    content = _strip_code_fences(_extract_content(payload))
-    if not content:
+    if not parsed:
         raise IntegrationFailure("empty_response", "LLM response did not include usable content")
-
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise IntegrationFailure("invalid_json", f"LLM response was not valid JSON: {content[:200]}") from exc
 
     def _to_list(val):
         """Normalize LLM output to a list of strings.
@@ -393,7 +364,7 @@ def build_bank_from_vibe(prompt_data):
         "fallback_reason": llm_result["fallback_reason"],
         "fallback_code": llm_result["fallback_code"],
         "model_mode": llm_result.get("model_mode", SETTINGS.get("VIBE_PARSER_MODE", "base")),
-        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3:8b")),
+        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3.5:9b")),
         "retrieval_context": llm_result.get("retrieval_context"),
     }
 
@@ -436,7 +407,7 @@ def generate_vibe_suggestions(prompt_data):
         "fallback_reason": llm_result["fallback_reason"],
         "fallback_code": llm_result["fallback_code"],
         "model_mode": llm_result.get("model_mode", SETTINGS.get("VIBE_PARSER_MODE", "base")),
-        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3:8b")),
+        "model_label": llm_result.get("model_label", SETTINGS.get("LLM_MODEL", "qwen3.5:9b")),
         "retrieval_context": llm_result.get("retrieval_context"),
     }
 
@@ -459,7 +430,7 @@ def inspire_bank_metadata(seed_genre=None):
         "a short evocative description (1-2 sentences), a BPM (integer 60-180), "
         "and a musical key (e.g. Am, Dm, F, Gm). "
         "Return ONLY a JSON object with keys: name, notes, bpm, key. "
-        "No markdown, no explanation."
+        "No markdown, no explanation.\n\n/no_think"
     )
     user_msg = {"task": "inspire_bank"}
     if seed_genre:
@@ -467,23 +438,21 @@ def inspire_bank_metadata(seed_genre=None):
 
     timeout = SETTINGS.get("LLM_TIMEOUT", 30)
     try:
-        payload = call_json_endpoint(
+        parsed = call_llm_chat(
             endpoint,
-            {
-                "model": runtime["model"],
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_msg)},
-                ],
-                "temperature": 0.7,
-            },
+            runtime["model"],
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_msg)},
+            ],
             timeout=timeout,
+            temperature=0.7,
+            json_mode=True,
+            max_tokens=200,  # Bank metadata is tiny; tight cap keeps it snappy.
         )
-        content = _strip_code_fences(_extract_content(payload))
-        if not content:
+        if not parsed:
             return _inspire_fallback(seed_genre)
 
-        parsed = json.loads(content)
         return {
             "name": str(parsed.get("name") or "Untitled Bank").strip()[:60],
             "notes": str(parsed.get("notes") or "").strip()[:200],

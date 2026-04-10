@@ -13,9 +13,9 @@ Usage:
     python scripts/smart_retag.py --dry-run --limit 10      # feature extraction only
 
 Env:
-    SP404_LLM_MODEL — Ollama model (default: qwen3:8b).
+    SP404_LLM_MODEL — Ollama model (default: qwen3.5:9b).
     SP404_SMART_RETAG_DURATION_SPLIT_SEC — seconds; longer audio uses the fast retag model (default 60).
-    SP404_SMART_RETAG_LLM_MODEL — model for long clips (default: qwen3:8b).
+    SP404_SMART_RETAG_LLM_MODEL — model for long clips (default: qwen3.5:9b).
     SP404_SMART_RETAG_SKIP_ABOVE_SECONDS — if set, skip LLM entirely when duration >= this (features only).
     SP404_SMART_RETAG_WORKERS — concurrent workers (default 3, max SP404_SMART_RETAG_WORKERS_MAX). Ollama manages model memory; tune workers if the server queues or OOMs.
 """
@@ -50,9 +50,9 @@ SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
 LLM_ENDPOINT = SETTINGS.get("LLM_ENDPOINT", "")
-# All clips use qwen3:8b. Larger models deferred until DB is in shape.
-PRIMARY_LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3:8b")
-LONG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3:8b"
+# Default to qwen3.5:9b — newer MoE arch, faster inference, /no_think suppresses reasoning blocks.
+PRIMARY_LLM_MODEL = SETTINGS.get("LLM_MODEL", "qwen3.5:9b")
+LONG_LLM_MODEL = (SETTINGS.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3.5:9b"
 SMART_RETAG_DURATION_SPLIT_SEC = int(SETTINGS.get("SMART_RETAG_DURATION_SPLIT_SEC", 60))
 SMART_RETAG_SKIP_ABOVE_SECONDS = SETTINGS.get("SMART_RETAG_SKIP_ABOVE_SECONDS")
 SMART_RETAG_WORKERS_CAP = int(SETTINGS.get("SMART_RETAG_WORKERS_MAX", 16))
@@ -167,7 +167,8 @@ def _build_prompt(filepath, features):
 
 
 _llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
-              'empty': 0, 'parse_fail': 0, 'exception': 0, 'incomplete': 0}
+              'empty': 0, 'parse_fail': 0, 'incomplete': 0,
+              'connection_error': 0, 'invalid_json': 0}
 _llm_stats_lock = threading.Lock()
 
 
@@ -184,30 +185,8 @@ def _llm_stats_snapshot():
 # Aliases imported from tag_vocab — single source of truth for variant spellings.
 
 
-def _extract_json_object(text):
-    """Best-effort: find first balanced {...} in model output."""
-    if not text:
-        return None
-    start = text.find('{')
-    if start < 0:
-        return None
-    depth = 0
-    for i, c in enumerate(text[start:], start):
-        if c == '{':
-            depth += 1
-        elif c == '}':
-            depth -= 1
-            if depth == 0:
-                chunk = text[start:i + 1]
-                try:
-                    return json.loads(chunk)
-                except json.JSONDecodeError:
-                    return None
-    return None
-
-
 def _retag_llm_read_timeout_seconds():
-    """HTTP read timeout for Ollama completion (32B + librosa contention needs headroom)."""
+    """HTTP read timeout for Ollama completion (qwen3.5 + librosa contention needs headroom)."""
     if SMART_RETAG_LLM_TIMEOUT is not None:
         return int(SMART_RETAG_LLM_TIMEOUT)
     return max(int(LLM_TIMEOUT), 420)
@@ -229,7 +208,7 @@ def _skip_llm_for_duration(duration_sec):
 
 
 def _llm_model_for_duration(duration_sec):
-    """Pick Ollama model: short clips use primary (e.g. 32b), long use fast (e.g. 8b)."""
+    """Pick Ollama model: short clips use primary, long use fast (configurable via env)."""
     if SMART_RETAG_DURATION_SPLIT_SEC == 0:
         return LONG_LLM_MODEL
     if duration_sec is None:
@@ -250,7 +229,7 @@ def _call_llm(prompt, model, retries=None):
 
     if retries is None:
         retries = _retag_llm_retries()
-    # Use long read timeout for retag (32B models + librosa contention)
+    # Use long read timeout for retag (model latency + librosa contention)
     timeout = _retag_llm_read_timeout_seconds()
 
     messages = [

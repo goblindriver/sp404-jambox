@@ -123,7 +123,7 @@ def run_checks():
         messages.append(f"  {_integration_status(True, 'Vibe parser mode', mode_detail)}")
 
     split_sec = settings.get("SMART_RETAG_DURATION_SPLIT_SEC", 60)
-    long_m = (settings.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3:8b"
+    long_m = (settings.get("SMART_RETAG_LLM_MODEL") or "").strip() or "qwen3.5:9b"
     base_m = settings.get("LLM_MODEL", "qwen3")
     skip_v = settings.get("SMART_RETAG_SKIP_ABOVE_SECONDS")
     skip_part = f"; skip LLM if duration >= {skip_v}s" if skip_v else ""

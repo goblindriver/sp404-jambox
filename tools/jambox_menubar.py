@@ -34,7 +34,7 @@ SERVER_ENV = {
     "SP404_LLM_ENDPOINT": os.environ.get(
         "SP404_LLM_ENDPOINT", "http://localhost:11434/v1/chat/completions"
     ),
-    "SP404_LLM_MODEL": os.environ.get("SP404_LLM_MODEL", "qwen3:8b"),
+    "SP404_LLM_MODEL": os.environ.get("SP404_LLM_MODEL", "qwen3.5:9b"),
     "SP404_LLM_TIMEOUT": os.environ.get("SP404_LLM_TIMEOUT", "90"),
 }
 
