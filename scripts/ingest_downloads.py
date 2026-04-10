@@ -20,7 +20,6 @@ if SCRIPTS_DIR not in sys.path:
 
 # Re-export public API from the ingest package
 from ingest import (
-    DOWNLOADS, LIBRARY, RAW_ARCHIVE, INGEST_LOG, SETTINGS,
     AUDIO_EXTENSIONS, ARCHIVE_EXTENSIONS,
     _watcher_state, _watcher_lock,
     get_watcher_state, set_downloads_path, _human_size,
@@ -30,6 +29,16 @@ from ingest import (
     start_watcher, stop_watcher,
     cleanup_downloads, purge_raw_archive, disk_usage_report,
 )
+from ingest import _state as _ingest_state
+
+# Path constants are re-assignable at runtime (set_downloads_path), so
+# delegate attribute access to _state to avoid stale local bindings.
+_DELEGATED_ATTRS = frozenset(('DOWNLOADS', 'LIBRARY', 'RAW_ARCHIVE', 'INGEST_LOG', 'SETTINGS'))
+
+def __getattr__(name):
+    if name in _DELEGATED_ATTRS:
+        return getattr(_ingest_state, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def main():
@@ -46,8 +55,8 @@ def main():
     if args.downloads_path:
         set_downloads_path(args.downloads_path)
 
-    os.makedirs(LIBRARY, exist_ok=True)
-    os.makedirs(RAW_ARCHIVE, exist_ok=True)
+    os.makedirs(_ingest_state.LIBRARY, exist_ok=True)
+    os.makedirs(_ingest_state.RAW_ARCHIVE, exist_ok=True)
 
     if args.disk_report:
         report = disk_usage_report()
