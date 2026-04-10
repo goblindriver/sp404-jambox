@@ -1146,83 +1146,6 @@ def find_sample_packs():
     return packs
 
 
-def run_auto_tag():
-    """Run tag_library.py --update on new files."""
-    tag_script = os.path.join(SCRIPTS_DIR, 'tag_library.py')
-    if not os.path.exists(tag_script):
-        print("  tag_library.py not found, skipping auto-tag")
-        return
-    print("  Auto-tagging new files...")
-    try:
-        result = subprocess.run(
-            [sys.executable, tag_script, '--update'],
-            capture_output=True, text=True, timeout=120,
-            env=build_subprocess_env(SETTINGS),
-        )
-        if result.returncode == 0:
-            # Count tagged
-            for line in result.stdout.split('\n'):
-                if 'tagged' in line.lower() or 'updated' in line.lower():
-                    print(f"  {line.strip()}")
-        else:
-            print(f"  Tag update warning: {result.stderr[:200]}")
-    except subprocess.TimeoutExpired:
-        print("  Tag update timed out (2min)")
-    except Exception as e:
-        print(f"  Tag update error: {e}")
-
-
-def run_auto_dedupe(clean=False):
-    """Run duplicate analysis after tagging so _tags.json is up to date."""
-    dedupe_script = os.path.join(SCRIPTS_DIR, 'deduplicate_samples.py')
-    if not os.path.exists(dedupe_script):
-        print("  deduplicate_samples.py not found, skipping dedupe")
-        return
-
-    print("  Running duplicate analysis...")
-    command = [sys.executable, dedupe_script, '--report-json']
-    if clean:
-        command.append('--clean')
-
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=180,
-            env=build_subprocess_env(SETTINGS),
-        )
-        if result.returncode == 0:
-            print("  Duplicate analysis complete")
-        else:
-            print(f"  Dedupe warning: {(result.stderr or result.stdout)[:200]}")
-    except subprocess.TimeoutExpired:
-        print("  Dedupe timed out (3min)")
-    except Exception as e:
-        print(f"  Dedupe error: {e}")
-
-
-def wait_for_stable(filepath, poll_interval=2.0, stable_count=3):
-    """Wait for a file to stop growing (download complete)."""
-    last_size = -1
-    stable = 0
-    for _ in range(60):  # Max ~2 minutes
-        try:
-            size = os.path.getsize(filepath)
-        except OSError:
-            return False  # File disappeared
-
-        if size == last_size and size > 0:
-            stable += 1
-            if stable >= stable_count:
-                return True
-        else:
-            stable = 0
-        last_size = size
-        time.sleep(poll_interval)
-    return False
-
-
 def should_ignore(filepath):
     """Check if a file should be ignored."""
     fname = os.path.basename(filepath)
@@ -1496,9 +1419,7 @@ def one_shot_ingest(dry_run=False, dedupe=False):
         print(f"Library: {LIBRARY}")
 
         # Note: tagging, fingerprinting, and dedup now happen inline
-        # via _route_and_process() during ingest. run_auto_tag() and
-        # run_auto_dedupe() are kept for standalone/CLI use but are
-        # no longer needed in the ingest pipeline.
+        # via _route_and_process() during ingest.
 
     return total
 
