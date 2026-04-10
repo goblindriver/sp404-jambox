@@ -5,11 +5,11 @@ import os
 import subprocess
 import sys
 import threading
-import uuid
 
 from flask import Blueprint, current_app, jsonify, request
 
 from api._helpers import (
+    JobTracker,
     json_object_body as _json_object_body,
     parse_script_json as _parse_script_json,
     script_error_payload as _script_error_payload,
@@ -20,23 +20,15 @@ import vibe_training_store as vts
 
 vibe_bp = Blueprint("vibe", __name__)
 
-# Job tracking for populate-bank (shared with pipeline.py pattern)
-_vibe_jobs = {}
-_vibe_lock = threading.RLock()  # RLock: _create_vibe_job is called within _vibe_lock scope
+_vibe_tracker = JobTracker(use_rlock=True, max_age=None, max_count=50)
 
 
 def _update_vibe_job(job_id, **fields):
-    with _vibe_lock:
-        job = _vibe_jobs.get(job_id)
-        if not job:
-            return
-        job.update(fields)
+    _vibe_tracker.update(job_id, **fields)
 
 
 def _get_vibe_job(job_id):
-    with _vibe_lock:
-        job = _vibe_jobs.get(job_id)
-        return dict(job) if isinstance(job, dict) else None
+    return _vibe_tracker.get(job_id)
 
 
 def _normalize_prompt(payload):
@@ -264,34 +256,18 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, settings, preset_override=
             vts.fail_apply(session_id, str(e))
 
 
-_MAX_JOBS = 50
-
-
-def _prune_finished_jobs():
-    """Remove oldest finished jobs when over the limit. Call inside _vibe_lock."""
-    finished = [(jid, j) for jid, j in _vibe_jobs.items() if j.get("status") in ("done", "error")]
-    if len(finished) > _MAX_JOBS:
-        for jid, _ in finished[:len(finished) - _MAX_JOBS]:
-            _vibe_jobs.pop(jid, None)
-
-
 def _create_vibe_job(bank, prompt):
-    with _vibe_lock:
-        _prune_finished_jobs()
-        job_id = str(uuid.uuid4())[:8]
-        _vibe_jobs[job_id] = {
-            "id": job_id,
-            "status": "starting",
-            "progress": "",
-            "prompt": prompt,
-            "bank": bank,
-            "session_id": None,
-            "preset_ref": None,
-            "fetched": None,
-            "fallback_used": False,
-            "fallback_reason": "",
-        }
-        return job_id
+    return _vibe_tracker.create(
+        status="starting",
+        progress="",
+        prompt=prompt,
+        bank=bank,
+        session_id=None,
+        preset_ref=None,
+        fetched=None,
+        fallback_used=False,
+        fallback_reason="",
+    )
 
 
 @vibe_bp.route("/vibe/inspire-bank", methods=["POST"])
@@ -333,11 +309,9 @@ def populate_bank():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    with _vibe_lock:
-        for j in _vibe_jobs.values():
-            if j.get("status") in ("starting", "generating", "saving", "loading", "fetching"):
-                return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
-        job_id = _create_vibe_job(bank, payload["prompt"])
+    if _vibe_tracker.has_active("starting", "generating", "saving", "loading", "fetching"):
+        return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
+    job_id = _create_vibe_job(bank, payload["prompt"])
 
     prompt = str(payload["prompt"]).strip()
     if not prompt:
@@ -381,12 +355,10 @@ def generate_fetch_bank():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    with _vibe_lock:
-        for job in _vibe_jobs.values():
-            if job.get("status") in ("starting", "generating", "reviewed", "saving", "loading", "fetching"):
-                return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
-        prompt_for_job = str(payload.get("prompt") or "").strip() or f"Bank {bank.upper()} metadata"
-        job_id = _create_vibe_job(bank, prompt_for_job)
+    if _vibe_tracker.has_active("starting", "generating", "reviewed", "saving", "loading", "fetching"):
+        return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
+    prompt_for_job = str(payload.get("prompt") or "").strip() or f"Bank {bank.upper()} metadata"
+    job_id = _create_vibe_job(bank, prompt_for_job)
 
     repo_dir = current_app.config["REPO_DIR"]
     prompt = str(payload.get("prompt") or "").strip()
@@ -448,11 +420,9 @@ def apply_bank():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    with _vibe_lock:
-        for j in _vibe_jobs.values():
-            if j.get("status") in ("starting", "generating", "reviewed", "saving", "loading", "fetching"):
-                return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
-        job_id = _create_vibe_job(bank, preset.get("vibe", ""))
+    if _vibe_tracker.has_active("starting", "generating", "reviewed", "saving", "loading", "fetching"):
+        return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
+    job_id = _create_vibe_job(bank, preset.get("vibe", ""))
 
     repo_dir = current_app.config["REPO_DIR"]
     prompt_data = {

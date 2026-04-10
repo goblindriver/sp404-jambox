@@ -23,23 +23,16 @@ _plex_media_last_error = None
 _RETRY_SECONDS = 60
 
 # Background extraction jobs
-_extract_jobs = {}
-_extract_lock = threading.Lock()
-_EXTRACT_JOB_MAX_AGE = 600
+from api._helpers import JobTracker
+_extract_tracker = JobTracker(max_age=600)
 
 
 def _update_extract_job(job_id, **fields):
-    with _extract_lock:
-        job = _extract_jobs.get(job_id)
-        if not job:
-            return
-        job.update(fields)
+    _extract_tracker.update(job_id, **fields)
 
 
 def _get_extract_job(job_id):
-    with _extract_lock:
-        job = _extract_jobs.get(job_id)
-        return dict(job) if isinstance(job, dict) else None
+    return _extract_tracker.get(job_id)
 
 
 def _get_media_db():
@@ -223,22 +216,12 @@ def extract_clips():
 
     import uuid
 
-    with _extract_lock:
-        # Prune finished jobs older than 10 minutes
-        now = time.time()
-        stale = [jid for jid, j in _extract_jobs.items()
-                 if j['status'] in ('complete', 'error')
-                 and now - j.get('finished_at', 0) > _EXTRACT_JOB_MAX_AGE]
-        for jid in stale:
-            del _extract_jobs[jid]
-
-        job_id = str(uuid.uuid4())[:8]
-        _extract_jobs[job_id] = {
-            'status': 'running',
-            'sources': len(sources),
-            'clips': 0,
-            'started': now,
-        }
+    job_id = _extract_tracker.create(
+        status='running',
+        sources=len(sources),
+        clips=0,
+        started=time.time(),
+    )
 
     def _run_extract():
         try:

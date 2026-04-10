@@ -1,14 +1,83 @@
-"""Shared helpers for Flask API blueprints.
-
-Home for tiny utility functions that were previously copy-pasted across
-multiple blueprints. Only zero-risk extractions live here — anything with
-per-blueprint variation (job trackers, subprocess runners, lazy clients)
-stays in its own blueprint to keep cross-blueprint coupling low.
-"""
+"""Shared helpers for Flask API blueprints."""
 
 import json
+import threading
+import time
+import uuid
 
 from flask import request
+
+
+# ═══════════════════════════════════════════════════════════
+# Background job tracking
+# ═══════════════════════════════════════════════════════════
+
+
+class JobTracker:
+    """Thread-safe in-memory job store with auto-pruning.
+
+    Replaces the copy-pasted dict+lock+update/get/prune pattern found in
+    pipeline, library, media, music, and vibe blueprints.
+
+    Args:
+        use_rlock: Use RLock instead of Lock (for nested calls within lock scope).
+        max_age: Prune finished jobs older than this many seconds (None to disable).
+        max_count: Keep at most this many finished jobs (None to disable).
+    """
+
+    _TERMINAL = frozenset(("done", "complete", "error"))
+
+    def __init__(self, *, use_rlock=False, max_age=600, max_count=None):
+        self._jobs = {}
+        self._lock = threading.RLock() if use_rlock else threading.Lock()
+        self._max_age = max_age
+        self._max_count = max_count
+
+    def create(self, **initial_fields):
+        """Create a job with a unique ID. Returns the job_id."""
+        job_id = str(uuid.uuid4())[:8]
+        with self._lock:
+            self.prune()
+            initial_fields["id"] = job_id
+            self._jobs[job_id] = initial_fields
+        return job_id
+
+    def update(self, job_id, **fields):
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job:
+                job.update(fields)
+
+    def get(self, job_id):
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return dict(job) if isinstance(job, dict) else None
+
+    def prune(self):
+        """Remove stale finished jobs. Call inside lock or from create()."""
+        if self._max_age is not None:
+            now = time.time()
+            stale = [jid for jid, j in self._jobs.items()
+                     if j.get("status") in self._TERMINAL
+                     and now - j.get("finished_at", 0) > self._max_age]
+            for jid in stale:
+                del self._jobs[jid]
+        if self._max_count is not None:
+            finished = [(jid, j) for jid, j in self._jobs.items()
+                        if j.get("status") in self._TERMINAL]
+            if len(finished) > self._max_count:
+                for jid, _ in finished[:len(finished) - self._max_count]:
+                    self._jobs.pop(jid, None)
+
+    def clear(self):
+        """Remove all jobs (for tests)."""
+        with self._lock:
+            self._jobs.clear()
+
+    def has_active(self, *statuses):
+        """Check if any job has one of the given statuses."""
+        with self._lock:
+            return any(j.get("status") in statuses for j in self._jobs.values())
 
 
 def json_object_body():

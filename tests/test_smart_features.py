@@ -32,8 +32,8 @@ import vibe_generate
 
 class SmartFeatureApiTests(unittest.TestCase):
     def setUp(self):
-        from api.vibe import _vibe_jobs
-        _vibe_jobs.clear()
+        from api.vibe import _vibe_tracker
+        _vibe_tracker.clear()
         self.app = Flask(__name__)
         self.app.config.update(
             REPO_DIR=REPO_ROOT,
@@ -229,8 +229,8 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertEqual(response.get_json()["error"], "prompt must be a non-empty string")
 
     def test_vibe_populate_bank_rejects_when_job_already_running(self):
-        from api.vibe import _vibe_jobs
-        _vibe_jobs["abcd1234"] = {"status": "fetching"}
+        from api.vibe import _vibe_tracker
+        _vibe_tracker._jobs["abcd1234"] = {"status": "fetching"}
         response = self.client.post("/api/vibe/populate-bank", json={"prompt": "dusty funk", "bank": "a"})
 
         self.assertEqual(response.status_code, 409)

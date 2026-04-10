@@ -390,35 +390,16 @@ def preview_track(track_id):
 
 # ── Stem splitting ──
 
-_split_jobs = {}
-_split_lock = threading.Lock()
-_SPLIT_JOB_MAX_AGE = 600  # 10 minutes
+from api._helpers import JobTracker
+_split_tracker = JobTracker(max_age=600)
 
 
 def _update_split_job(job_id, **fields):
-    with _split_lock:
-        job = _split_jobs.get(job_id)
-        if not job:
-            return
-        job.update(fields)
+    _split_tracker.update(job_id, **fields)
 
 
 def _get_split_job(job_id):
-    with _split_lock:
-        job = _split_jobs.get(job_id)
-        return dict(job) if isinstance(job, dict) else None
-
-
-def _prune_finished_splits():
-    """Remove completed/errored split jobs older than _SPLIT_JOB_MAX_AGE seconds."""
-    import time
-    now = time.time()
-    with _split_lock:
-        stale = [jid for jid, j in _split_jobs.items()
-                 if j['status'] in ('done', 'error')
-                 and now - j.get('finished_at', 0) > _SPLIT_JOB_MAX_AGE]
-        for jid in stale:
-            del _split_jobs[jid]
+    return _split_tracker.get(job_id)
 
 
 def _run_split(job_id, track_data):
@@ -578,20 +559,14 @@ def split_track():
     if not track_data.get('file_path') or not os.path.isfile(track_data['file_path']):
         return jsonify({'ok': False, 'error': 'Track file not accessible'}), 404
 
-    _prune_finished_splits()
-    with _split_lock:
-        for j in _split_jobs.values():
-            if j['status'] in {'starting', 'splitting'} and j.get('track_id') == track_id:
-                return jsonify({'ok': False, 'error': 'Already splitting', 'job_id': j['id']}), 409
-
-        job_id = str(uuid.uuid4())[:8]
-        _split_jobs[job_id] = {
-            'id': job_id,
-            'status': 'starting',
-            'track_id': track_id,
-            'track': f"{track_data.get('artist', '?')} — {track_data.get('title', '?')}",
-            'result': None,
-        }
+    if _split_tracker.has_active('starting', 'splitting'):
+        return jsonify({'ok': False, 'error': 'Already splitting'}), 409
+    job_id = _split_tracker.create(
+        status='starting',
+        track_id=track_id,
+        track=f"{track_data.get('artist', '?')} — {track_data.get('title', '?')}",
+        result=None,
+    )
 
     t = threading.Thread(target=_run_split, args=(job_id, track_data))
     t.daemon = True

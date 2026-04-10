@@ -461,22 +461,16 @@ def by_tag():
 # Smart Retag (LLM-powered tag enrichment)
 # ═══════════════════════════════════════════════════════════
 
-_retag_jobs = {}
-_retag_lock = threading.Lock()
+from api._helpers import JobTracker
+_retag_tracker = JobTracker(max_age=600)
 
 
 def _update_retag_job(job_id, **fields):
-    with _retag_lock:
-        job = _retag_jobs.get(job_id)
-        if not job:
-            return
-        job.update(fields)
+    _retag_tracker.update(job_id, **fields)
 
 
 def _get_retag_job(job_id):
-    with _retag_lock:
-        job = _retag_jobs.get(job_id)
-        return dict(job) if isinstance(job, dict) else None
+    return _retag_tracker.get(job_id)
 
 
 def _terminate_retag_pid(pid, *, graceful_timeout=5):
@@ -617,28 +611,9 @@ def smart_retag():
         except (TypeError, ValueError):
             args_list += ["--workers", str(max(1, min(3, cap)))]
 
-    import uuid, time as _time
-    with _retag_lock:
-        for j in _retag_jobs.values():
-            if j.get("status") in ("starting", "running"):
-                return jsonify({"ok": False, "error": "A smart retag is already running"}), 409
-
-        # Prune finished jobs older than 10 minutes
-        now = _time.time()
-        stale = [jid for jid, j in _retag_jobs.items()
-                 if j["status"] in ("done", "error")
-                 and now - j.get("finished_at", 0) > 600]
-        for jid in stale:
-            del _retag_jobs[jid]
-
-        job_id = str(uuid.uuid4())[:8]
-        _retag_jobs[job_id] = {
-            "id": job_id,
-            "status": "starting",
-            "stdout": "",
-            "stderr": "",
-            "pid": None,
-        }
+    if _retag_tracker.has_active("starting", "running"):
+        return jsonify({"ok": False, "error": "A smart retag is already running"}), 409
+    job_id = _retag_tracker.create(status="starting", stdout="", stderr="", pid=None)
 
     repo_dir = current_app.config["REPO_DIR"]
     settings = dict(current_app.config)
@@ -661,14 +636,13 @@ def smart_retag_status(job_id):
 @library_bp.route('/library/smart-retag/<job_id>/stop', methods=['POST'])
 def smart_retag_stop(job_id):
     """Stop a running smart-retag job and verify process termination."""
-    with _retag_lock:
-        job = _retag_jobs.get(job_id)
-        if not isinstance(job, dict):
-            return jsonify({"ok": False, "error": "Job not found"}), 404
-        status = job.get("status")
-        pid = job.get("pid")
-        if status not in ("starting", "running"):
-            return jsonify({"ok": True, "already_stopped": True, "status": status})
+    job = _retag_tracker.get(job_id)
+    if not job:
+        return jsonify({"ok": False, "error": "Job not found"}), 404
+    status = job.get("status")
+    pid = job.get("pid")
+    if status not in ("starting", "running"):
+        return jsonify({"ok": True, "already_stopped": True, "status": status})
 
     stopped = _terminate_retag_pid(pid)
     import time as _time

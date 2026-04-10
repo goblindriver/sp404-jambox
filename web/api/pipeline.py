@@ -1,46 +1,20 @@
 """Pipeline control API — fetch, build, deploy, watcher."""
-import os, sys, time as _time, threading, subprocess, uuid, json
+import os, sys, time as _time, threading, subprocess, json
 from flask import Blueprint, jsonify, request, current_app
 from jambox_config import build_subprocess_env, load_tag_db
 
+from api._helpers import JobTracker
+
 pipeline_bp = Blueprint('pipeline', __name__)
 
-# In-memory job tracking
-_jobs = {}
-_job_lock = threading.Lock()
-_JOB_MAX_AGE = 600
+_tracker = JobTracker(max_age=600)
 PADINFO_TIMEOUT = 120
 PATTERN_BUILD_TIMEOUT = 180
 DEPLOY_TIMEOUT = 180
 
 
-def _prune_finished_jobs():
-    """Remove completed/errored pipeline jobs older than _JOB_MAX_AGE."""
-    now = _time.time()
-    with _job_lock:
-        stale = [jid for jid, j in _jobs.items()
-                 if j['status'] in ('done', 'error')
-                 and now - j.get('finished_at', 0) > _JOB_MAX_AGE]
-        for jid in stale:
-            del _jobs[jid]
-
-
 def _settings():
     return current_app.config
-
-
-def _update_job(job_id, **fields):
-    with _job_lock:
-        job = _jobs.get(job_id)
-        if not job:
-            return
-        job.update(fields)
-
-
-def _get_job(job_id):
-    with _job_lock:
-        job = _jobs.get(job_id)
-        return dict(job) if isinstance(job, dict) else None
 
 
 def _clear_staging_wavs(staging_dir):
@@ -193,15 +167,15 @@ def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
 def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
     """Run fetch_samples in a background thread."""
     try:
-        _update_job(job_id, status='running')
+        _tracker.update(job_id, status='running')
         summary = execute_fetch_scope(
             settings,
             bank=bank,
             pad=pad,
-            progress_callback=lambda progress, percent: _update_job(job_id, progress=progress, percent=percent),
+            progress_callback=lambda progress, percent: _tracker.update(job_id, progress=progress, percent=percent),
         )
 
-        _update_job(
+        _tracker.update(
             job_id,
             status='done',
             result=f"{summary['total_fetched']}/{summary['total_pads']} pads filled",
@@ -209,7 +183,7 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
         )
 
     except Exception as e:
-        _update_job(job_id, status='error', result=str(e), finished_at=_time.time())
+        _tracker.update(job_id, status='error', result=str(e), finished_at=_time.time())
 
 
 @pipeline_bp.route('/pipeline/fetch', methods=['POST'])
@@ -221,20 +195,9 @@ def fetch():
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
 
-    _prune_finished_jobs()
-    with _job_lock:
-        for j in _jobs.values():
-            if j['type'] == 'fetch' and j['status'] in {'starting', 'running'}:
-                return jsonify({'ok': False, 'error': 'Fetch already running'}), 409
-
-        job_id = str(uuid.uuid4())[:8]
-        _jobs[job_id] = {
-            'id': job_id,
-            'type': 'fetch',
-            'status': 'starting',
-            'progress': '',
-            'result': '',
-        }
+    if _tracker.has_active('starting', 'running'):
+        return jsonify({'ok': False, 'error': 'Fetch already running'}), 409
+    job_id = _tracker.create(type='fetch', status='starting', progress='', result='')
 
     repo_dir = current_app.config['REPO_DIR']
     settings = dict(current_app.config)
@@ -247,7 +210,7 @@ def fetch():
 
 @pipeline_bp.route('/pipeline/status/<job_id>')
 def job_status(job_id):
-    job = _get_job(job_id)
+    job = _tracker.get(job_id)
     if not job:
         return jsonify({'ok': False, 'error': 'Job not found'}), 404
     return jsonify(job)

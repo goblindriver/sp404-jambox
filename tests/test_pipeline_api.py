@@ -24,8 +24,8 @@ import fetch_samples
 
 class PipelineApiTests(unittest.TestCase):
     def setUp(self):
-        pipeline_api._jobs.clear()
-        self.addCleanup(pipeline_api._jobs.clear)
+        pipeline_api._tracker.clear()
+        self.addCleanup(pipeline_api._tracker.clear)
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
 
