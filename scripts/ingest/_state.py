@@ -22,8 +22,6 @@ RAW_ARCHIVE = SETTINGS["RAW_ARCHIVE"]
 INGEST_LOG = SETTINGS["INGEST_LOG"]
 FFMPEG = SETTINGS["FFMPEG_BIN"]
 
-REPO_DIR = os.path.dirname(SCRIPTS_DIR)
-
 # File extensions we care about
 AUDIO_EXTENSIONS = {'.wav', '.mp3', '.aiff', '.aif', '.flac', '.ogg'}
 ARCHIVE_EXTENSIONS = {'.zip', '.rar', '.7z'}
@@ -36,37 +34,8 @@ IGNORE_EXTENSIONS = {
     '.mp4', '.mov', '.avi', '.mkv',                    # video
     '.torrent', '.crdownload', '.part',                # incomplete
     '.ds_store',
+    '.pdf', '.doc', '.docx', '.md', '.txt',            # documents
 }
-
-# Document extensions that get routed to docs/ (not ignored)
-DOC_EXTENSIONS = {'.pdf', '.doc', '.docx', '.md', '.txt'}
-
-# Doc deliverable patterns -- Chat/Cowork drop these in ~/Downloads for Code to pick up
-DOC_DELIVERABLE_PATTERNS = {
-    'CODE_BRIEF_':      'docs/briefs',
-    'COWORK_BRIEF_':    'docs/briefs',
-    'CHAT_RESPONSE_':   'docs/briefs',
-    'HANDOFF_SESSION':  'docs/handoffs',
-    'HANDOFF_':         'docs/handoffs',
-    'BUG_HUNT_':        'docs/handoffs',
-    '_SOURCE':          'docs/sources',
-    '_SOURCES':         'docs/sources',
-    'SOURCES_':         'docs/sources',
-    '_REFERENCE':       'docs/references',
-    '_Reference':       'docs/references',
-    '_Research':        'docs/research',
-    'Research_':        'docs/research',
-    '_RESEARCH':        'docs/research',
-    '_PITCH':           'docs/briefs',
-    'PIPELINE_':        'docs/briefs',
-    '_SPEC':            'docs',
-    'WEBAPP_':          'docs',
-    'Playlist_Mining':  'docs/research',
-    'Sample_Pack_':     'docs/research',
-}
-
-# Special doc files that go to repo root instead of docs/
-DOC_ROOT_FILES = {'CLAUDE.md'}
 
 # Background stem splitting -- single worker to avoid overwhelming the system
 _stem_executor = ThreadPoolExecutor(max_workers=1)

@@ -6,7 +6,6 @@ import subprocess
 import zipfile
 
 from . import _state
-from .docs import _is_doc_deliverable
 
 
 def extract_archive(filepath, dest):
@@ -245,9 +244,6 @@ def should_ignore(filepath):
 
     if ext in _state.IGNORE_EXTENSIONS:
         return True
-
-    if ext in _state.DOC_EXTENSIONS:
-        return _is_doc_deliverable(fname) is None
 
     if ext not in _state.ALLOWED_EXTENSIONS:
         return True

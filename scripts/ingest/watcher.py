@@ -1,13 +1,11 @@
 """File watcher daemon for auto-ingesting new downloads."""
 import os
-import shutil
 import time
 import threading
 from datetime import datetime
 
 from . import _state
 from .archive import should_ignore, archive_has_audio
-from .docs import _is_doc_deliverable, _ingest_doc_zip, check_chat_delivery, handle_chat_delivery
 from .orchestration import ingest_single_file, ingest_archive_file
 
 
@@ -87,44 +85,13 @@ def start_watcher(dedupe=False):
                 ext = os.path.splitext(fname)[1].lower()
                 print(f"\n[WATCHER] New file ready: {fname}")
 
-                if ext in _state.DOC_EXTENSIONS:
-                    dest_dir = _is_doc_deliverable(fname)
-                    if dest_dir:
-                        dest_path = os.path.join(dest_dir, fname)
-                        if not os.path.exists(dest_path):
-                            os.makedirs(dest_dir, exist_ok=True)
-                            shutil.copy2(filepath, dest_path)
-                            rel_dest = os.path.relpath(dest_path, _state.REPO_DIR)
-                            print(f"[WATCHER] Doc routed: {fname} \u2192 {rel_dest}")
-                            _state._log_ingest(fname, 1, {'docs': 1}, source_type='doc-delivery')
-                            count = 1
-                        else:
-                            print(f"[WATCHER] Doc already exists: {fname}")
-                            count = 0
-                        processed_dir = os.path.join(_state.DOWNLOADS, '_PROCESSED')
-                        os.makedirs(processed_dir, exist_ok=True)
-                        try:
-                            shutil.move(filepath, os.path.join(processed_dir, fname))
-                        except Exception as e:
-                            print(f"[WATCHER] Could not move to _PROCESSED: {e}")
-                    else:
-                        count = 0
-                elif ext in _state.ARCHIVE_EXTENSIONS:
-                    delivery = check_chat_delivery(filepath)
-                    if delivery:
-                        count = handle_chat_delivery(filepath, delivery)
-                    elif not archive_has_audio(filepath):
-                        doc_count = _ingest_doc_zip(filepath)
-                        if doc_count > 0:
-                            count = doc_count
-                            print(f"[WATCHER] Doc delivery: {doc_count} files from {fname}")
-                        else:
-                            print(f"[WATCHER] Skipping {fname} \u2014 no audio or docs inside")
+                if ext in _state.ARCHIVE_EXTENSIONS:
+                    if not archive_has_audio(filepath):
+                        print(f"[WATCHER] Skipping {fname} \u2014 no audio inside")
                         self._processed.add(filepath)
                         to_remove.append(filepath)
                         continue
-                    else:
-                        count = ingest_archive_file(filepath)
+                    count = ingest_archive_file(filepath)
                 elif ext in _state.AUDIO_EXTENSIONS:
                     count = ingest_single_file(filepath)
                 else:

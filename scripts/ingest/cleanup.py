@@ -3,16 +3,12 @@ import os
 import shutil
 
 from . import _state
-from .docs import ingest_doc_deliverables
 
 
 def cleanup_downloads(dry_run=False):
-    """Remove already-ingested packs, archives, and doc deliverables from ~/Downloads."""
+    """Remove already-ingested packs and archives from ~/Downloads."""
     freed = 0
     removed = 0
-
-    doc_copied, doc_skipped = ingest_doc_deliverables(dry_run=dry_run)
-    removed += doc_copied + doc_skipped
 
     if not os.path.isdir(_state.DOWNLOADS):
         print("Downloads path not found.")

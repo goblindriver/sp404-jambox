@@ -10,10 +10,6 @@ from .archive import (
     is_sample_pack, should_ignore, archive_has_audio,
 )
 from .enrichment import _route_and_process
-from .docs import (
-    ingest_doc_deliverables, _ingest_doc_zip,
-    check_chat_delivery, handle_chat_delivery,
-)
 
 
 def _store_source_context(wav_path, context):
@@ -278,10 +274,6 @@ def one_shot_ingest(dry_run=False, dedupe=False):
         print(f"Downloads path not found: {_state.DOWNLOADS}")
         return 0
 
-    doc_copied, doc_skipped = ingest_doc_deliverables(dry_run=dry_run)
-    if doc_copied or doc_skipped:
-        print(f"Docs: {doc_copied} copied to repo, {doc_skipped} already present (cleaned)")
-
     packs = find_sample_packs()
     total = 0
     pack_count = 0
@@ -301,18 +293,10 @@ def one_shot_ingest(dry_run=False, dedupe=False):
             continue
 
         ext = os.path.splitext(item)[1].lower()
-        if ext in _state.DOC_EXTENSIONS:
-            continue
-        elif ext in _state.ARCHIVE_EXTENSIONS:
-            delivery = check_chat_delivery(filepath)
-            if delivery:
-                total += handle_chat_delivery(filepath, delivery)
-            elif not dry_run and not archive_has_audio(filepath):
-                doc_count = _ingest_doc_zip(filepath)
-                if doc_count > 0:
-                    total += doc_count
-            else:
-                total += ingest_archive_file(filepath, dry_run=dry_run)
+        if ext in _state.ARCHIVE_EXTENSIONS:
+            if not archive_has_audio(filepath):
+                continue
+            total += ingest_archive_file(filepath, dry_run=dry_run)
             pack_count += 1
         elif ext in _state.AUDIO_EXTENSIONS:
             total += ingest_single_file(filepath, dry_run=dry_run)

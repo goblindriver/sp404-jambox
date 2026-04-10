@@ -19,7 +19,6 @@ def __getattr__(name):
         return getattr(_state, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 from .archive import extract_archive
-from .docs import ingest_doc_deliverables
 from .orchestration import (
     one_shot_ingest, ingest_single_file, ingest_pack, ingest_archive_file,
 )
