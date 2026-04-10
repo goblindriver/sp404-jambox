@@ -54,7 +54,7 @@ class SmartFeatureApiTests(unittest.TestCase):
             "sample_suggestions": [],
             "fallback_used": False,
         }
-        with patch("api.vibe.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(script_output), stderr="")):
+        with patch("api._helpers.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(script_output), stderr="")):
             response = self.client.post("/api/vibe/generate", json={"prompt": "dusty funk drums"})
 
         self.assertEqual(response.status_code, 200)
@@ -68,7 +68,7 @@ class SmartFeatureApiTests(unittest.TestCase):
             stdout=json.dumps({"ok": False, "error": "LLM unavailable", "error_code": "connection_error"}),
             stderr="",
         )
-        with patch("api.vibe.subprocess.run", return_value=failed):
+        with patch("api._helpers.subprocess.run", return_value=failed):
             response = self.client.post("/api/vibe/generate", json={"prompt": "dusty funk drums"})
 
         self.assertEqual(response.status_code, 500)
@@ -81,7 +81,7 @@ class SmartFeatureApiTests(unittest.TestCase):
             stdout=json.dumps({"ok": False, "error": "checkpoint missing", "error_code": "invalid_input"}),
             stderr="",
         )
-        with patch("api.pattern.subprocess.run", return_value=failed):
+        with patch("api._helpers.subprocess.run", return_value=failed):
             response = self.client.post("/api/pattern/generate", json={"variant": "drum"})
 
         self.assertEqual(response.status_code, 500)
@@ -95,7 +95,7 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertEqual(response.get_json()["error"], "Request body must be a JSON object")
 
     def test_pattern_route_rejects_non_object_script_output(self):
-        with patch("api.pattern.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout='["not","an","object"]', stderr="")):
+        with patch("api._helpers.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout='["not","an","object"]', stderr="")):
             response = self.client.post("/api/pattern/generate", json={"variant": "drum"})
 
         self.assertEqual(response.status_code, 500)
@@ -175,7 +175,7 @@ class SmartFeatureApiTests(unittest.TestCase):
         self.assertEqual(response.get_json()["error"], "prompt is required")
 
     def test_vibe_route_rejects_non_object_script_output(self):
-        with patch("api.vibe.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout='["not","an","object"]', stderr="")):
+        with patch("api._helpers.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout='["not","an","object"]', stderr="")):
             response = self.client.post("/api/vibe/generate", json={"prompt": "dusty funk drums"})
 
         self.assertEqual(response.status_code, 500)

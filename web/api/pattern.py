@@ -1,19 +1,15 @@
 """Pattern generation API — Magenta-based and scale-mapped algorithmic patterns."""
 
 import json
-import os
 import subprocess
-import sys
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify
 
 from api._helpers import (
     json_object_body as _json_object_body,
-    parse_script_json as _parse_script_json,
-    script_error_payload as _script_error_payload,
+    run_json_script,
+    ScriptError,
 )
-from jambox_config import build_subprocess_env
-
 
 pattern_bp = Blueprint("pattern", __name__)
 
@@ -24,21 +20,12 @@ def generate_pattern():
         payload = _json_object_body()
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    repo_dir = current_app.config["REPO_DIR"]
-    script = os.path.join(repo_dir, "scripts", "generate_patterns.py")
     try:
-        result = subprocess.run(
-            [sys.executable, script],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=repo_dir,
-            env=build_subprocess_env(current_app.config),
-            timeout=90,
-        )
-        if result.returncode != 0:
-            return jsonify(_script_error_payload(result, "Pattern generation failed")), 500
-        return jsonify(_parse_script_json(result.stdout))
+        result = run_json_script("generate_patterns.py", payload,
+                                 timeout=90, config=current_app.config)
+        return jsonify(result)
+    except ScriptError as exc:
+        return jsonify(exc.payload), 500
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Pattern generation timed out"}), 500
     except (json.JSONDecodeError, ValueError) as exc:
@@ -54,21 +41,13 @@ def scale_generate():
         payload = _json_object_body()
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    repo_dir = current_app.config["REPO_DIR"]
-    script = os.path.join(repo_dir, "scripts", "scale_pattern.py")
     try:
-        result = subprocess.run(
-            [sys.executable, script, "--json"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=repo_dir,
-            env=build_subprocess_env(current_app.config),
-            timeout=90,
-        )
-        if result.returncode != 0:
-            return jsonify(_script_error_payload(result, "Scale pattern generation failed")), 500
-        return jsonify(_parse_script_json(result.stdout))
+        result = run_json_script("scale_pattern.py", payload,
+                                 timeout=90, config=current_app.config,
+                                 extra_args=["--json"])
+        return jsonify(result)
+    except ScriptError as exc:
+        return jsonify(exc.payload), 500
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Scale pattern generation timed out"}), 500
     except (json.JSONDecodeError, ValueError) as exc:

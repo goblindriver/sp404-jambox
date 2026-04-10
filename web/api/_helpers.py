@@ -1,6 +1,9 @@
 """Shared helpers for Flask API blueprints."""
 
 import json
+import os
+import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -91,6 +94,61 @@ def json_object_body():
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
     return payload
+
+
+# ═══════════════════════════════════════════════════════════
+# Subprocess script runner
+# ═══════════════════════════════════════════════════════════
+
+
+class ScriptError(Exception):
+    """Raised by run_json_script when the subprocess exits non-zero."""
+
+    def __init__(self, payload):
+        self.payload = payload
+        super().__init__(payload.get("error", "Script failed"))
+
+
+def run_json_script(script_name, payload, *, timeout, config, extra_args=()):
+    """Run a scripts/ Python file with JSON on stdin, return parsed JSON stdout.
+
+    Args:
+        script_name: Filename inside scripts/ (e.g. 'vibe_generate.py')
+        payload: Dict sent as JSON on stdin
+        timeout: Subprocess timeout in seconds
+        config: Flask app.config dict (for REPO_DIR and build_subprocess_env)
+        extra_args: Additional CLI args after the script path
+
+    Returns:
+        Parsed dict from script stdout.
+
+    Raises:
+        ScriptError: On non-zero exit (payload has structured error fields).
+        subprocess.TimeoutExpired: On timeout.
+        OSError: If the script can't start.
+    """
+    from jambox_config import build_subprocess_env
+
+    repo_dir = config["REPO_DIR"]
+    script = os.path.join(repo_dir, "scripts", script_name)
+    cmd = [sys.executable, script] + list(extra_args)
+    result = subprocess.run(
+        cmd,
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        cwd=repo_dir,
+        env=build_subprocess_env(config),
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise ScriptError(script_error_payload(result, f"{script_name} failed"))
+    return parse_script_json(result.stdout)
+
+
+# ═══════════════════════════════════════════════════════════
+# Response helpers
+# ═══════════════════════════════════════════════════════════
 
 
 def parse_script_json(stdout):

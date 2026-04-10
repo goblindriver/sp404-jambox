@@ -132,7 +132,7 @@ class PersonalizedApiTests(unittest.TestCase):
 
     def test_generate_vibe_returns_session_id(self):
         script_output = {"prompt": "dusty", "parsed": {"keywords": ["dusty"]}, "draft_preset": {"pads": {1: "KIK dusty one-shot"}}}
-        with patch("api.vibe.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(script_output), stderr="")), patch("api.vibe.vts.create_session", return_value="session-123"):
+        with patch("api._helpers.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(script_output), stderr="")), patch("api.vibe.vts.create_session", return_value="session-123"):
             response = self.client.post("/api/vibe/generate", json={"prompt": "dusty"})
 
         self.assertEqual(response.status_code, 200)

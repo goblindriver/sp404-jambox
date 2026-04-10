@@ -10,11 +10,10 @@ from flask import Blueprint, current_app, jsonify, request
 
 from api._helpers import (
     JobTracker,
+    ScriptError,
     json_object_body as _json_object_body,
-    parse_script_json as _parse_script_json,
-    script_error_payload as _script_error_payload,
+    run_json_script,
 )
-from jambox_config import build_subprocess_env
 import vibe_training_store as vts
 
 
@@ -154,23 +153,14 @@ def generate_vibe():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    repo_dir = current_app.config["REPO_DIR"]
-    script = os.path.join(repo_dir, "scripts", "vibe_generate.py")
     try:
-        result = subprocess.run(
-            [sys.executable, script],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=repo_dir,
-            env=build_subprocess_env(current_app.config),
-            timeout=current_app.config.get("LLM_TIMEOUT", 30) + 5,
-        )
-        if result.returncode != 0:
-            return jsonify(_script_error_payload(result, "Vibe generation failed")), 500
-        result_payload = _parse_script_json(result.stdout)
+        timeout = current_app.config.get("LLM_TIMEOUT", 30) + 5
+        result_payload = run_json_script("vibe_generate.py", payload,
+                                         timeout=timeout, config=current_app.config)
         session_id = vts.create_session(payload, result_payload, current_app.config)
         return jsonify({"ok": True, "session_id": session_id, "result": result_payload})
+    except ScriptError as exc:
+        return jsonify(exc.payload), 500
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Vibe generation timed out"}), 500
     except (json.JSONDecodeError, ValueError) as exc:
