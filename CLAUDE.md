@@ -24,7 +24,7 @@ This project is worked on by multiple Claude agents coordinated by the user:
 - After ingesting new samples, re-tag: `python scripts/tag_library.py --update`
 
 ## Key Paths
-- **Repo**: `/Users/jasongronvold/Desktop/SP-404SX/sp404-jambox/`
+- **Repo**: `/Users/jasongronvold/Projects/SP-404SX/sp404-jambox/`
 - **SD card mount**: `/Volumes/SP-404SX`
 - **Sample library**: `~/Music/SP404-Sample-Library/` (~30,700 FLACs)
 - **Tag database**: `~/Music/SP404-Sample-Library/_tags.json`
@@ -490,6 +490,55 @@ These should feed the RAG corpus and/or synthetic training examples:
 - LofiAndy, CremaSound, SPVIDZ — paid pack creators whose bank architectures inform Jambox's structure
 
 Ecosystem research docs: see `docs/SP404_ECOSYSTEM_RESEARCH.md` (index) and `docs/research/` (individual reports)
+
+## Creative Tools & External Integrations
+
+Full reference with code snippets: `docs/CREATIVE_TOOLS_REFERENCE.md`
+
+### Installed CLI Tools
+| Tool | Path | Purpose |
+|------|------|---------|
+| ffmpeg | `/opt/homebrew/bin/ffmpeg` | Audio/video conversion (core pipeline) |
+| sox | `/opt/homebrew/bin/sox` | Audio batch processing (normalize, trim, fade, stats) |
+| fpcalc | `/opt/homebrew/bin/fpcalc` | Chromaprint audio fingerprinting |
+| hs | `/opt/homebrew/bin/hs` | Hammerspoon CLI |
+
+### Installed Python Packages (Jambox venv)
+| Package | Purpose |
+|---------|---------|
+| `python-osc` | OSC bridge to Ableton, TouchDesigner, SuperCollider, Reaper |
+| `python-reapy` | External Reaper DAW control (TCP bridge on localhost:2306) |
+| `pylive` | Pythonic Ableton Live control (requires AbletonOSC Remote Script) |
+| `librosa` | Audio analysis (BPM, key, loudness) |
+| `demucs` | Stem splitting |
+
+### Installed Applications
+| App | Path | Hook Type |
+|-----|------|-----------|
+| Blender 5.1 | `/Applications/Blender.app` | Python `bpy` API, headless CLI (`--background --python`) |
+| REAPER | `/Applications/REAPER.app` | ReaScript Python/Lua, CLI batch render (`-renderproject`) |
+| SuperCollider | `/Applications/SuperCollider.app` | Native OSC server (port 57110), sclang scripting |
+| TouchDesigner | `/Applications/TouchDesigner.app` | Embedded Python 3.11, OSC/MIDI input, GLSL shaders |
+| Hammerspoon | `/Applications/Hammerspoon.app` | Lua scripting, pathwatcher, HTTP server on :5405 |
+| Keyboard Maestro | `/Applications/Keyboard Maestro.app` | USB/folder/hotkey triggers, shell script execution |
+| After Effects 2026 | `/Applications/Adobe After Effects 2026/` | `aerender` CLI (headless), ExtendScript |
+| Photoshop 2025 | `/Applications/Adobe Photoshop 2025/` | ExtendScript via `osascript` bridge |
+| Premiere Pro 2025 | `/Applications/Adobe Premiere Pro 2025/` | ExtendScript (limited) |
+| DaVinci Resolve 20 | `/Applications/DaVinci Resolve/DaVinci Resolve.app` | Python/Lua scripting API, Fusion nodes |
+| VCV Rack 2 | `/Applications/VCV Rack 2 Free.app` | Virtual modular synth, MIDI I/O |
+| Topaz Gigapixel AI | `/Applications/Topaz Gigapixel AI.app` | AI image upscaling |
+| Topaz Photo AI | `/Applications/Topaz Photo AI.app` | AI photo enhancement |
+| Topaz Video AI | `/Applications/Topaz Video AI.app` | AI video upscaling/interpolation |
+
+### Key Integration Paths
+- **python-osc** is the universal bridge: one library talks to Ableton, TouchDesigner, SuperCollider, Reaper
+- **Hammerspoon** config at `~/.hammerspoon/init.lua`: SD card mount watcher, download watcher, workspace layout (Cmd+Shift+J), audio device switcher (Cmd+Shift+A), HTTP server on port 5405
+- **SoX** integrates via subprocess: `sox input.flac output.flac gain -n` (normalize), `silence 1 0.01 -50d` (trim)
+- **Blender headless**: `/Applications/Blender.app/Contents/MacOS/Blender --background --python script.py`
+- **aerender headless**: `"/Applications/Adobe After Effects 2026/aerender" -project file.aep -comp "Main" -output out.mov`
+- **scsynth**: `/Applications/SuperCollider.app/Contents/Resources/scsynth` (OSC on port 57110)
+- **DaVinci Resolve scripting**: API at `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules/DaVinciResolveScript.py`
+- **Topaz suite**: AI upscaling for album art (Gigapixel), video content (Video AI), photo cleanup (Photo AI)
 
 ## Important Notes
 - The SP-404A (original, non-SX) is more restrictive — always use 44.1kHz/16-bit/mono
