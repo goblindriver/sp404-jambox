@@ -26,7 +26,7 @@ This project is worked on by multiple Claude agents coordinated by the user:
 ## Key Paths
 - **Repo**: `/Users/jasongronvold/Projects/SP-404SX/sp404-jambox/`
 - **SD card mount**: `/Volumes/SP-404SX`
-- **Sample library**: `~/Music/SP404-Sample-Library/` (~30,700 FLACs)
+- **Sample library**: `~/Music/SP404-Sample-Library/` (~26,720 FLACs after dedup + curation)
 - **Tag database**: `~/Music/SP404-Sample-Library/_tags.json`
 - **Raw downloads archive**: `~/Music/SP404-Sample-Library/_RAW-DOWNLOADS/`
 - **Bank config**: `bank_config.yaml` (defines all banks, pads, BPM, key)
@@ -365,17 +365,32 @@ Bank configurations are standalone YAML files in `presets/`, organized by catego
 
 Local-first creative tools. Status shown in the Power Button UI dashboard.
 
-### Smart Retag (LLM-Powered Library Intelligence) — NEXT PRIORITY
-Runs every file through librosa feature extraction + Ollama LLM tagging to generate real dimensional tags (vibe, texture, genre, energy, instrument_hint, quality_score). Currently ~700 of ~30,700 files have dimensional tags — this is the #1 blocker for fetch quality.
+### Smart Retag (LLM-Powered Library Intelligence) — RUNNING
+Runs every file through librosa feature extraction + Ollama LLM tagging to generate real dimensional tags (`sonic_description`, `quality_score`, `type_code`, `vibe`, `texture`, `genre`, `energy`, `instrument_hint`). Full library pass launched 2026-04-16 with qwen3.5:9b, 3 workers, ~17s/file, ~5-6 day wall-clock runtime.
+
+**Current dimensional coverage** (of 26,720 tag entries — measured 2026-04-16):
+
+| Dimension | Coverage | Notes |
+|-----------|----------|-------|
+| `energy` | 99% (26,656) | Covered by legacy tag pass + features |
+| `genre` | 36% (9,860) | Legacy multi-dim pass |
+| `texture` | 30% (8,082) | Legacy multi-dim pass |
+| `vibe` | 25% (6,775) | Legacy multi-dim pass |
+| `sonic_description` | 10% (2,691) | From `smart_retag_v1` tagger |
+| `quality_score` | 10% (2,691) | From `smart_retag_v1` tagger |
+| `instrument_hint` | 2% (617) | Legacy + early smart_retag |
+| CLAP embedding | 0% | Batch pass never run (Track A5) |
+
+Everything below 25% will be filled by the in-flight retag run. The April 2026 prompt rewrite restored full-dim LLM output so every file gets `vibe`/`texture`/`genre`/`energy`/`instrument_hint` in a single pass — vocabularies enforced against `scripts/tag_vocab.py`.
 
 **Architecture:** CLI batch tool (`scripts/smart_retag.py`) for bulk pass, inline in ingest pipeline for new files, webapp for monitoring + review only. Training stays standalone CLI.
 
 **See:** `docs/SMART_RETAG_SPEC.md` for full system prompt, quality rubric, trim policy, tag vocabulary, and processing order.
 
-**New type codes added:** GTR (guitar), HRN (horns/brass), KEY (keys/piano), STR (strings), RSR (riser/build)
+**Type codes:** KIK, SNR, HAT, CLP, CYM, RIM, PRC, BRK, DRM, BAS, GTR, KEY, SYN, PAD, STR, BRS, PLK, WND, VOX, FX, SFX, AMB, FLY, TPE, RSR, HRN
 
 ### Natural Language Vibe Prompts — LIVE
-Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Connected to Ollama Qwen3 8B. See "Personalized Vibe Intelligence" section above for full details.
+Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Connected to Ollama qwen3.5:9b. See "Personalized Vibe Intelligence" section above for full details.
 
 ### Audio Analysis — LIVE
 librosa-powered BPM, key, and loudness detection. Runs inline during ingest. Results stored in `_tags.json` with `bpm_source`, `key_source`, `loudness_db` fields. Module: `scripts/audio_analysis.py`.
@@ -405,14 +420,18 @@ All paths and service endpoints managed through `scripts/jambox_config.py` with 
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `SP404_LLM_ENDPOINT` | Local LLM endpoint for vibe prompts | (disabled) |
-| `SP404_LLM_MODEL` | LLM model name | `qwen3` |
+| `SP404_LLM_MODEL` | LLM model name | `qwen3.5:9b` |
 | `SP404_LLM_TIMEOUT` | LLM request timeout (seconds) | `30` |
 | `SP404_VIBE_PARSER_MODE` | Parser mode: base, rag, fine_tuned | `base` |
 | `SP404_FINE_TUNED_LLM_ENDPOINT` | Endpoint for fine-tuned model | (disabled) |
 | `SP404_FINE_TUNED_LLM_MODEL` | Fine-tuned model name | (disabled) |
 | `SP404_VIBE_RETRIEVAL_LIMIT` | Max retrieval examples per query | `4` |
-| `SP404_MUSICVAE_CHECKPOINT_DIR` | MusicVAE model checkpoints | (disabled) |
-| `SP404_MAGENTA_COMMAND` | Magenta pattern generation command | `music_vae_generate` |
+| `SP404_SMART_RETAG_WORKERS` | Concurrent workers for smart_retag (Ollama-bound) | `3` |
+| `SP404_SMART_RETAG_WORKERS_MAX` | Hard cap for worker count | `16` |
+| `SP404_SMART_RETAG_LLM_TIMEOUT` | Per-request LLM read timeout during retag | `420` |
+| `SP404_MUSICVAE_CHECKPOINT_DIR` | MusicVAE checkpoints (Magenta pattern gen — DORMANT) | (disabled) |
+| `SP404_MAGENTA_COMMAND` | Magenta CLI for pattern gen (DORMANT; B6 will replace with ACE-Step) | `music_vae_generate` |
+| `SP404_CRUNCH_REPO` | Second jambox clone the blackout dashboard monitors (optional) | (disabled) |
 | `SP404_FINGERPRINT_TOOL` | Audio fingerprint tool | `fpcalc` |
 | `SP404_DAILY_BANK_SOURCE` | Daily bank source (`recent` or `trending`) | `recent` |
 | `SP404_TRENDING_FILE` | Path to trending.json | `$REPO/trending.json` |

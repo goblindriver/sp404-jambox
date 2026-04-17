@@ -2866,6 +2866,7 @@ async function fetchServerStatus() {
         const features = sRes.value.features || {};
         const clap = sRes.value.clap || {};
         const discogs = sRes.value.discogs || {};
+        const aiStack = sRes.value.ai_stack || {};
         const feats = [
             ['LLM', features.llm],
             ['CLAP', features.clap],
@@ -2887,6 +2888,20 @@ async function fetchServerStatus() {
             lines.push(
                 `<div class="power-meta-line" title="Genre + danceability from Discogs-EffNet">Discogs ${discogs.classified} · ${discogs.coverage}% · dance ${discogs.danceable}</div>`
             );
+        }
+        // Session 8 AI stack — only render when at least one service is alive,
+        // otherwise the dashboard stays uncluttered.
+        if (Object.values(aiStack).some(Boolean)) {
+            const aiLines = [
+                ['Pinokio', aiStack.pinokio, ':42000'],
+                ['ComfyUI', aiStack.comfyui, ':8188'],
+                ['ACE-Step', aiStack.acestep, ':3001'],
+                ['Open WebUI', aiStack.open_webui, ':42003'],
+            ].map(([name, on, port]) =>
+                `<div class="feat ${on ? 'feat-on' : 'feat-off'}" title="${port}">${on ? '\u2713' : '\u2717'} ${name}</div>`
+            );
+            lines.push('<div class="power-meta-line">AI stack</div>');
+            lines.push(...aiLines);
         }
         container.innerHTML = lines.join('');
     } else {

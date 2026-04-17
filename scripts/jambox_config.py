@@ -293,6 +293,10 @@ def load_settings(repo_dir):
         ),
         "SMART_RETAG_WORKERS_MAX": smart_retag_workers_max,
         "SMART_RETAG_WORKERS": smart_retag_workers,
+        # Magenta pattern generation — DORMANT. Wired into scripts/generate_patterns.py
+        # via web/api/pattern.py but never run in practice. Leave in place until the
+        # Track B6 ACE-Step replacement lands (see .claude/plans/…). Both vars must
+        # be populated for pattern generation to work; ConfigError is raised otherwise.
         "MUSICVAE_CHECKPOINT_DIR": _read_optional_path(
             "SP404_MUSICVAE_CHECKPOINT_DIR", os.path.join(repo_dir, "models", "musicvae")
         ),
@@ -307,7 +311,12 @@ def load_settings(repo_dir):
         "FINE_TUNED_LLM_ENDPOINT": _read_command("SP404_FINE_TUNED_LLM_ENDPOINT", ""),
         "FINE_TUNED_LLM_MODEL": _read_command("SP404_FINE_TUNED_LLM_MODEL", ""),
         "VIBE_RETRIEVAL_LIMIT": _read_int("SP404_VIBE_RETRIEVAL_LIMIT", 4, minimum=0),
-        # Optional second clone: blackout "Live crunch" reads retag checkpoint + crunch logs here
+        # "Live crunch" — optional path to a second jambox clone used as a dedicated
+        # retag worker. The blackout dashboard (web/api/blackout.py) polls that
+        # clone's data/retag_checkpoint.json + data/crunch_retag.log so the main
+        # UI can monitor a long-running retag pass happening on another machine
+        # or clone without interfering with its checkpoint. Leave empty to monitor
+        # only the current repo's retag state.
         "CRUNCH_REPO": _read_optional_path("SP404_CRUNCH_REPO", ""),
         "MULTITRACK_SESSIONS_ROOT": _read_required_path(
             "SP404_MULTITRACK_SESSIONS_ROOT",
