@@ -262,6 +262,11 @@ def load_settings(repo_dir):
         "TAGS_FILE": os.path.join(sample_library, "_tags.json"),
         "MUSIC_INDEX_FILE": os.path.join(sample_library, "_music_index.json"),
         "STEMS_DIR": os.path.join(sample_library, "Stems"),
+        # Karaoke packages live OUTSIDE the sample library on purpose: full-length
+        # instrumentals in _tags.json would pollute fetch scoring.
+        "KARAOKE_DIR": _read_required_path(
+            "SP404_KARAOKE_DIR", os.path.join(os.path.dirname(sample_library), "Karaoke")
+        ),
         "STAGING_DIR": os.path.join(repo_dir, "_CARD_STAGING"),
         "SMPL_DIR": os.path.join(repo_dir, "sd-card-template", "ROLAND", "SP-404SX", "SMPL"),
         "CONFIG_PATH": os.path.join(repo_dir, "bank_config.yaml"),
