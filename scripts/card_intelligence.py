@@ -32,12 +32,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-from jambox_config import load_settings_for_script
+from jambox_config import find_sd_card, load_settings_for_script, sd_smpl_dir
 from wav_utils import wav_identity
 
 SETTINGS = load_settings_for_script(__file__)
-SD_CARD = SETTINGS["SD_CARD"]
-SD_SMPL_DIR = SETTINGS["SD_SMPL_DIR"]
+SD_CARD = find_sd_card(SETTINGS) or ""
+SD_SMPL_DIR = sd_smpl_dir(SD_CARD)
 SESSIONS_DIR = os.path.join(REPO_DIR, "data", "card_sessions")
 
 BANKS = "ABCDEFGHIJ"

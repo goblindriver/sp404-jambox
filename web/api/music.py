@@ -12,6 +12,7 @@ import uuid
 from flask import Blueprint, jsonify, request, send_file, Response, current_app
 
 from api._helpers import json_object_body as _json_object_body
+from jambox_config import plex_data_dir
 
 music_bp = Blueprint('music', __name__)
 
@@ -281,9 +282,9 @@ def album_art():
 
     try:
         import sqlite3
-        blobs_db = os.path.expanduser(
-            "~/Library/Application Support/Plex Media Server/"
-            "Plug-in Support/Databases/com.plexapp.plugins.library.blobs.db"
+        blobs_db = os.path.join(
+            current_app.config.get('PLEX_DATA_DIR') or plex_data_dir(),
+            "Plug-in Support", "Databases", "com.plexapp.plugins.library.blobs.db",
         )
         if not os.path.exists(blobs_db):
             return jsonify({'error': 'Plex blobs database not found'}), 404
@@ -322,8 +323,8 @@ def album_art():
 
     # Fallback: try Plex metadata filesystem
     try:
-        meta_base = os.path.realpath(os.path.expanduser(
-            "~/Library/Application Support/Plex Media Server/Metadata"
+        meta_base = os.path.realpath(os.path.join(
+            current_app.config.get('PLEX_DATA_DIR') or plex_data_dir(), "Metadata"
         ))
         # The hash is in the URL — sanitize to alphanumeric only
         if 'posters/' in thumb:

@@ -1,19 +1,21 @@
 """SD card status, scan, and Bank A sync API."""
-import os, shutil, struct, subprocess
+import os, shutil, struct, subprocess, sys
 from flask import Blueprint, jsonify, request, current_app
 from wav_utils import wav_identity as _wav_identity
 
 from api._helpers import normalize_bank, normalize_pad
+from jambox_config import find_sd_card, sd_smpl_dir
 
 sdcard_bp = Blueprint('sdcard', __name__)
 
 
 def _sd_card():
-    return current_app.config['SD_CARD']
+    """Mounted card root ('' when none): SP404_SD_CARD, else auto-detected."""
+    return find_sd_card(current_app.config) or ''
 
 
 def _sd_smpl_dir():
-    return current_app.config['SD_SMPL_DIR']
+    return sd_smpl_dir(_sd_card())
 
 
 def _gold_dir():
@@ -534,15 +536,27 @@ def gold_sessions():
 
 
 @sdcard_bp.route('/sdcard/eject', methods=['POST'])
+def _eject_command(sd_card):
+    if sys.platform == 'darwin':
+        return ['diskutil', 'eject', sd_card]
+    if os.name == 'nt':
+        drive = os.path.splitdrive(os.path.abspath(sd_card))[0]  # 'E:'
+        script = (f"(New-Object -ComObject Shell.Application).Namespace(17)"
+                  f".ParseName('{drive}').InvokeVerb('Eject')")
+        return ['powershell', '-NoProfile', '-NonInteractive', '-Command', script]
+    return ['udisksctl', 'unmount', '--block-device',
+            next((p.device for p in __import__('psutil').disk_partitions() if p.mountpoint == sd_card), sd_card)]
+
+
 def eject_card():
-    """Eject the SD card volume (macOS only)."""
+    """Eject the SD card volume (diskutil / Explorer's Eject verb / udisksctl)."""
     sd_card = _sd_card()
-    if not os.path.isdir(sd_card):
+    if not sd_card or not os.path.isdir(sd_card):
         return jsonify({'ok': False, 'error': 'SD card is not mounted'}), 400
 
     try:
         result = subprocess.run(
-            ['diskutil', 'eject', sd_card],
+            _eject_command(sd_card),
             capture_output=True, text=True, timeout=15,
         )
         if result.returncode == 0:
@@ -551,8 +565,8 @@ def eject_card():
             'ok': False,
             'error': result.stderr.strip() or result.stdout.strip() or 'Eject failed',
         }), 500
-    except FileNotFoundError:
-        return jsonify({'ok': False, 'error': 'diskutil not found (macOS only)'}), 500
+    except FileNotFoundError as exc:
+        return jsonify({'ok': False, 'error': f'Eject tool not found: {exc.filename}'}), 500
     except subprocess.TimeoutExpired:
         return jsonify({'ok': False, 'error': 'Eject timed out'}), 500
     except OSError as exc:

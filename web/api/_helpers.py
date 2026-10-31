@@ -11,6 +11,51 @@ import uuid
 from flask import request
 
 
+def new_process_group_kwargs():
+    """Popen kwargs that start a child in its own process group (any OS)."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def pid_alive(pid):
+    """True if *pid* is a running (non-zombie) process."""
+    import psutil
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.Error:
+        return False
+
+
+def kill_process_tree(pid, timeout=5):
+    """Terminate *pid* and its children, killing any still alive after *timeout*.
+
+    Works the same on every OS (os.killpg doesn't exist on Windows, and
+    os.kill(pid, 0) there terminates instead of probing). True once all are gone.
+    """
+    import psutil
+    if not pid:
+        return False
+    try:
+        parent = psutil.Process(pid)
+        procs = parent.children(recursive=True) + [parent]
+    except psutil.NoSuchProcess:
+        return True
+    for proc in procs:
+        try:
+            proc.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _gone, alive = psutil.wait_procs(procs, timeout=timeout)
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
+    _gone, alive = psutil.wait_procs(alive, timeout=2)
+    return not alive
+
+
 def normalize_bank(value):
     """Validate a bank letter from a request; returns it lowercase (A-J only)."""
     bank = str(value or '').strip().lower()

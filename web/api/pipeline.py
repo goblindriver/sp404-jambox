@@ -1,7 +1,7 @@
 """Pipeline control API — fetch, build, deploy, watcher."""
 import os, sys, time as _time, threading, subprocess, json
 from flask import Blueprint, jsonify, request, current_app
-from jambox_config import build_subprocess_env, load_tag_db
+from jambox_config import build_subprocess_env, find_sd_card, load_tag_db
 
 from api._helpers import JobTracker, normalize_bank, normalize_pad
 
@@ -10,7 +10,6 @@ pipeline_bp = Blueprint('pipeline', __name__)
 _tracker = JobTracker(max_age=600)
 PADINFO_TIMEOUT = 120
 PATTERN_BUILD_TIMEOUT = 180
-DEPLOY_TIMEOUT = 180
 
 
 def _settings():
@@ -478,29 +477,49 @@ def server_status():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+# Waits for the old server to exit (so the port is free), then starts web/app.py.
+_RESTART_HELPER = (
+    "import subprocess, sys\n"
+    "import psutil\n"
+    "try:\n"
+    "    psutil.Process(int(sys.argv[1])).wait(timeout=30)\n"
+    "except Exception:\n"
+    "    pass\n"
+    "subprocess.Popen([sys.executable, sys.argv[2]], cwd=sys.argv[3])\n"
+)
+
+
+def restart_helper_argv(python_bin, pid, app_py, web_dir):
+    return [python_bin, "-c", _RESTART_HELPER, str(pid), app_py, web_dir]
+
+
 @pipeline_bp.route('/pipeline/server/restart', methods=['POST'])
 def server_restart():
-    """Gracefully restart Flask by launching replacement then terminating self."""
+    """Restart Flask: a detached helper relaunches app.py once this process exits."""
     import signal
     settings = dict(current_app.config)
     repo_dir = settings.get('REPO_DIR', current_app.config['REPO_DIR'])
     web_dir = os.path.join(repo_dir, 'web')
     app_py = os.path.join(web_dir, 'app.py')
-    python_bin = os.path.abspath(sys.executable or "python3")
+    python_bin = os.path.abspath(sys.executable)
     env = build_subprocess_env(settings)
 
     def _restart():
-        """Launch replacement server process, then terminate this process."""
+        """Launch the relaunch helper, then terminate this process."""
         import time
-        launch = f"sleep 0.35; exec \"{python_bin}\" \"{app_py}\""
+        if os.name == 'nt':
+            detach = {'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        else:
+            detach = {'start_new_session': True}
         try:
             subprocess.Popen(
-                ["/bin/sh", "-c", launch],
+                restart_helper_argv(python_bin, os.getpid(), app_py, web_dir),
                 cwd=web_dir,
                 env=env,
-                start_new_session=True,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                **detach,
             )
         except Exception:
             pass
@@ -515,20 +534,14 @@ def server_restart():
 
 @pipeline_bp.route('/pipeline/deploy', methods=['POST'])
 def deploy():
-    repo_dir = _settings()['REPO_DIR']
-    script = os.path.join(repo_dir, 'scripts', 'copy_to_sd.sh')
-    if not os.path.isdir(_settings()['SD_CARD']):
+    card = find_sd_card(_settings())
+    if not card or not os.path.isdir(card):
         return jsonify({'ok': False, 'error': 'SD card not mounted'}), 400
     try:
-        result = subprocess.run(
-            ['bash', script], capture_output=True, text=True, cwd=repo_dir,
-            env=build_subprocess_env(_settings()),
-            timeout=DEPLOY_TIMEOUT,
-        )
-        if result.returncode != 0:
-            return jsonify(_command_error_payload(result)), 500
-        return jsonify({'ok': True, 'output': result.stdout})
-    except subprocess.TimeoutExpired:
-        return jsonify({'ok': False, 'error': 'Deploy timed out'}), 500
+        import deploy_sd
+        report = deploy_sd.deploy(card)
+        return jsonify({'ok': True, 'output': deploy_sd.format_report(report), 'report': report})
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500

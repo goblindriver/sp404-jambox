@@ -109,16 +109,16 @@ def _pattern_readiness(repo_dir: str, checkpoint_dir: str) -> dict:
 
 def _pgrep_script_running(fragment: str) -> bool:
     """True if a local process command line contains the fragment (e.g. scripts/smart_retag.py)."""
-    try:
-        proc = subprocess.run(
-            ["pgrep", "-f", fragment],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        return proc.returncode == 0 and bool((proc.stdout or "").strip())
-    except (subprocess.TimeoutExpired, OSError):
-        return False
+    import psutil
+    needles = {fragment, fragment.replace("/", os.sep)}
+    for proc in psutil.process_iter(["cmdline"]):
+        try:
+            cmdline = " ".join(proc.info.get("cmdline") or ())
+        except (psutil.Error, TypeError):
+            continue
+        if any(n in cmdline for n in needles):
+            return True
+    return False
 
 
 def _retag_checkpoint_summary(repo_root: str) -> dict | None:

@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 
 import yaml
@@ -43,10 +44,68 @@ _load_dotenv()
 
 DEFAULT_SAMPLE_LIBRARY = "~/Music/SP404-Sample-Library"
 DEFAULT_DOWNLOADS = "~/Downloads"
-DEFAULT_SD_CARD = "/Volumes/SP-404SX"
+IS_MACOS = sys.platform == "darwin"
+# macOS mounts the card at a fixed path; elsewhere it is auto-detected
+# (find_sd_card) unless SP404_SD_CARD is set.
+DEFAULT_SD_CARD = "/Volumes/SP-404SX" if IS_MACOS else ""
 DEFAULT_QNAP_ROOT = "/Volumes/Temp QNAP"
 DEFAULT_DROBO_ROOT = "/Volumes/Jansen's FL Drobo"
-DEFAULT_TOOL_PATH_PREFIX = "/opt/homebrew/bin"
+# Homebrew's bin isn't always on PATH for GUI-launched apps on macOS; other
+# platforms find tools on PATH.
+DEFAULT_TOOL_PATH_PREFIX = "/opt/homebrew/bin" if IS_MACOS else ""
+SD_SMPL_PARTS = ("ROLAND", "SP-404SX", "SMPL")
+
+
+def default_plex_data_dir():
+    """Plex Media Server's data folder for this OS (holds the library DB and art)."""
+    if IS_MACOS:
+        return "~/Library/Application Support/Plex Media Server"
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
+        return os.path.join(local, "Plex Media Server")
+    return "/var/lib/plexmediaserver/Library/Application Support/Plex Media Server"
+
+
+def plex_data_dir():
+    """SP404_PLEX_DATA_DIR, or the OS default Plex data folder."""
+    return os.path.abspath(os.path.expanduser(
+        os.environ.get("SP404_PLEX_DATA_DIR") or default_plex_data_dir()
+    ))
+
+
+def find_sd_card(settings):
+    """Root of the mounted SP-404 card, or None.
+
+    An explicit SP404_SD_CARD (or the macOS default) wins. Otherwise look for
+    a mounted volume holding ROLAND/SP-404SX (drive letters on Windows,
+    /media and /run/media mounts on Linux).
+    """
+    configured = (settings or {}).get("SD_CARD")
+    if configured:
+        return configured
+    try:
+        import psutil
+        mounts = [p.mountpoint for p in psutil.disk_partitions(all=False)]
+    except Exception:
+        mounts = []
+    for mount in mounts:
+        if os.path.isdir(os.path.join(mount, "ROLAND", "SP-404SX")):
+            return mount
+    return None
+
+
+def sd_smpl_dir(card_root):
+    """SMPL folder on a card root ('' when no card)."""
+    return os.path.join(card_root, *SD_SMPL_PARTS) if card_root else ""
+
+
+def _tool_default(name, prefix):
+    """Tool path under the configured prefix when it exists there, else the bare name (PATH lookup)."""
+    if prefix:
+        for candidate in (os.path.join(prefix, name), os.path.join(prefix, name + ".exe")):
+            if os.path.isfile(candidate):
+                return candidate
+    return name
 DEFAULT_LLM_TIMEOUT = 30
 
 # Raw/long material lives here until chopped; excluded from pad fetch and bulk library walks.
@@ -301,7 +360,7 @@ def load_settings(repo_dir):
     repo_dir = _normalize_path(repo_dir)
     sample_library = _read_required_path("SP404_SAMPLE_LIBRARY", DEFAULT_SAMPLE_LIBRARY)
     downloads_path = _read_required_path("SP404_DOWNLOADS", DEFAULT_DOWNLOADS)
-    sd_card = _read_required_path("SP404_SD_CARD", DEFAULT_SD_CARD)
+    sd_card = _read_optional_path("SP404_SD_CARD", DEFAULT_SD_CARD)
     qnap_root = _read_required_path("SP404_QNAP_ROOT", DEFAULT_QNAP_ROOT)
     drobo_root = _read_required_path("SP404_DROBO_ROOT", DEFAULT_DROBO_ROOT)
     tool_path_prefix = _read_optional_path("SP404_TOOL_PATH_PREFIX", DEFAULT_TOOL_PATH_PREFIX)
@@ -319,7 +378,9 @@ def load_settings(repo_dir):
         "SD_CARD": sd_card,
         "QNAP_ROOT": qnap_root,
         "DROBO_ROOT": drobo_root,
-        "SD_SMPL_DIR": os.path.join(sd_card, "ROLAND", "SP-404SX", "SMPL"),
+        "SD_SMPL_DIR": sd_smpl_dir(sd_card),
+        "PLEX_DATA_DIR": plex_data_dir(),
+        "WEB_PORT": _read_int("SP404_WEB_PORT", 5404, minimum=1),
         "GOLD_BANK_A_DIR": os.path.join(sample_library, "_GOLD", "Bank-A"),
         "INGEST_LOG": os.path.join(sample_library, "_ingest_log.json"),
         "RAW_ARCHIVE": os.path.join(sample_library, "_RAW-DOWNLOADS"),
@@ -333,9 +394,9 @@ def load_settings(repo_dir):
         "CONFIG_PATH": os.path.join(repo_dir, "bank_config.yaml"),
         "VIBE_MAPPINGS_PATH": os.path.join(repo_dir, "config", "vibe_mappings.yaml"),
         "SCORING_CONFIG_PATH": os.path.join(repo_dir, "config", "scoring.yaml"),
-        "FFMPEG_BIN": _read_command("SP404_FFMPEG", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "ffmpeg")),
-        "FFPROBE_BIN": _read_command("SP404_FFPROBE", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "ffprobe")),
-        "UNAR_BIN": _read_command("SP404_UNAR", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "unar")),
+        "FFMPEG_BIN": _read_command("SP404_FFMPEG", _tool_default("ffmpeg", tool_path_prefix)),
+        "FFPROBE_BIN": _read_command("SP404_FFPROBE", _tool_default("ffprobe", tool_path_prefix)),
+        "UNAR_BIN": _read_command("SP404_UNAR", _tool_default("unar", tool_path_prefix)),
         "TOOL_PATH_PREFIX": tool_path_prefix,
         "WEB_DEBUG": _read_bool("SP404_WEB_DEBUG", default=False),
         "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
@@ -363,7 +424,7 @@ def load_settings(repo_dir):
             "SP404_MUSICVAE_CHECKPOINT_DIR", os.path.join(repo_dir, "models", "musicvae")
         ),
         "MAGENTA_COMMAND": _read_command("SP404_MAGENTA_COMMAND", "music_vae_generate"),
-        "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "fpcalc")),
+        "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", _tool_default("fpcalc", tool_path_prefix)),
         "DAILY_BANK_SOURCE": _read_choice("SP404_DAILY_BANK_SOURCE", "recent", {"recent", "trending"}),
         "TRENDING_FILE": _read_optional_path("SP404_TRENDING_FILE", os.path.join(repo_dir, "trending.json")),
         "VIBE_DATA_DIR": os.path.join(repo_dir, "data"),
@@ -685,7 +746,7 @@ def build_subprocess_env(settings, base_env=None):
         return env
 
     current_path = env.get("PATH", "")
-    env["PATH"] = f"{path_prefix}:{current_path}" if current_path else path_prefix
+    env["PATH"] = f"{path_prefix}{os.pathsep}{current_path}" if current_path else path_prefix
     return env
 
 

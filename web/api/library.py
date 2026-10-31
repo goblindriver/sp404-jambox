@@ -2,7 +2,6 @@
 import json
 import os
 import re
-import signal
 import subprocess
 import sys
 import threading
@@ -456,7 +455,7 @@ def by_tag():
 # Smart Retag (LLM-powered tag enrichment)
 # ═══════════════════════════════════════════════════════════
 
-from api._helpers import JobTracker
+from api._helpers import JobTracker, kill_process_tree, new_process_group_kwargs
 _retag_tracker = JobTracker(max_age=600)
 
 
@@ -469,45 +468,8 @@ def _get_retag_job(job_id):
 
 
 def _terminate_retag_pid(pid, *, graceful_timeout=5):
-    """Terminate a smart-retag process group and ensure it exits."""
-    if not pid:
-        return False
-    try:
-        os.killpg(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return True
-    except OSError:
-        return False
-
-    # Wait briefly for graceful shutdown.
-    for _ in range(max(1, int(graceful_timeout * 10))):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return True
-        import time as _time
-        _time.sleep(0.1)
-
-    # Force kill if still alive.
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return True
-    except OSError:
-        return False
-
-    for _ in range(20):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return True
-        import time as _time
-        _time.sleep(0.1)
-    return False
+    """Terminate a smart-retag process and its children; True once gone."""
+    return kill_process_tree(pid, timeout=graceful_timeout)
 
 
 def _run_smart_retag(job_id, repo_dir, settings, args_list):
@@ -525,7 +487,7 @@ def _run_smart_retag(job_id, repo_dir, settings, args_list):
             text=True,
             cwd=repo_dir,
             env=build_subprocess_env(settings),
-            start_new_session=True,
+            **new_process_group_kwargs(),
         )
         _update_retag_job(job_id, pid=proc.pid)
 
