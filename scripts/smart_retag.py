@@ -914,7 +914,16 @@ def run(args):
         else:
             print("Resume: no checkpoint file yet — queue from tag DB only.")
     processed_files = []
-    if args.path:
+    if getattr(args, 'file', None):
+        full = os.path.expanduser(args.file)
+        if not os.path.isabs(full):
+            full = os.path.join(LIBRARY, full)
+        rel = library_rel_path(full, LIBRARY)
+        if not rel or not os.path.isfile(full):
+            print("ERROR: not a file in the library: %s" % args.file)
+            sys.exit(1)
+        files = [(rel, full)]
+    elif args.path:
         path = os.path.expanduser(args.path)
         if not os.path.isabs(path):
             path = os.path.join(LIBRARY, path)
@@ -924,8 +933,13 @@ def run(args):
         files = _walk_library()
         print("Library: %d files" % len(files))
 
-    # Skip rows that already have full enrichment unless --force
-    if not args.force:
+    if getattr(args, 'type', None):
+        type_code = args.type.upper()
+        files = [(r, f) for r, f in files if (tag_db.get(r) or {}).get('type_code') == type_code]
+        print("Type %s: %d files" % (type_code, len(files)))
+
+    # Skip rows that already have full enrichment unless --force (or one named --file)
+    if not args.force and not getattr(args, 'file', None):
         before = len(files)
         files = [(r, f) for r, f in files if _entry_needs_smart_retag(tag_db.get(r, {}))]
         skipped = before - len(files)
@@ -1347,6 +1361,8 @@ def main():
     parser.add_argument('--validate', action='store_true',
                         help='Stratified validation: process N files per type code, print quality summary')
     parser.add_argument('--path', type=str, help='Process specific directory')
+    parser.add_argument('--file', type=str, help='Retag one file (library-relative or absolute path)')
+    parser.add_argument('--type', type=str, help='Only files with this type code (e.g. FX, KIK)')
     parser.add_argument('--limit', type=int, help='Max files to process')
     parser.add_argument('--dry-run', action='store_true', help='Feature extraction only')
     parser.add_argument('--force', action='store_true', help='Retag already tagged files')
@@ -1378,7 +1394,7 @@ def main():
         run_validate(args)
         return
 
-    if not any([args.all, args.resume, args.path, args.limit]):
+    if not any([args.all, args.resume, args.path, args.limit, args.file, args.type]):
         parser.print_help()
         sys.exit(0)
 

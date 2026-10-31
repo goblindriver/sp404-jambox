@@ -405,6 +405,8 @@ def _get_split_job(job_id):
 
 def _run_split(job_id, track_data):
     """Background thread: run demucs and tag stems with Plex metadata."""
+    import shutil
+    tmp_dir = None
     try:
         _update_split_job(job_id, status='splitting')
 
@@ -514,9 +516,6 @@ def _run_split(job_id, track_data):
 
         save_stem_rows(stem_rows)
 
-        import shutil
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-
         import time as _time
         _update_split_job(
             job_id,
@@ -532,6 +531,9 @@ def _run_split(job_id, track_data):
     except Exception as e:
         import time as _time
         _update_split_job(job_id, status='error', finished_at=_time.time(), result=str(e))
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @music_bp.route('/music/split', methods=['POST'])
@@ -560,18 +562,17 @@ def split_track():
     if not track_data.get('file_path') or not os.path.isfile(track_data['file_path']):
         return jsonify({'ok': False, 'error': 'Track file not accessible'}), 404
 
-    if _split_tracker.has_active('starting', 'splitting'):
-        return jsonify({'ok': False, 'error': 'Already splitting'}), 409
-    job_id = _split_tracker.create(
+    job_id = _split_tracker.start_exclusive(
+        ('starting', 'splitting'),
         status='starting',
         track_id=track_id,
         track=f"{track_data.get('artist', '?')} — {track_data.get('title', '?')}",
         result=None,
     )
+    if not job_id:
+        return jsonify({'ok': False, 'error': 'Already splitting'}), 409
 
-    t = threading.Thread(target=_run_split, args=(job_id, track_data))
-    t.daemon = True
-    t.start()
+    _split_tracker.start_thread(job_id, _run_split, job_id, track_data, error_field='result')
 
     job = _get_split_job(job_id) or {}
     return jsonify({'ok': True, 'job_id': job_id, 'track': job.get('track')})

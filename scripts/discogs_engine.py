@@ -141,6 +141,11 @@ def _download_if_needed(url, dest):
         return dest
 
 
+def model_path():
+    """Where the Discogs-EffNet ONNX model lives once downloaded."""
+    return os.path.join(_models_dir(), "discogs-effnet-bsdynamic-1.onnx")
+
+
 def _get_model():
     """Load the ONNX model and class labels. Lazy singleton."""
     global _onnx_session, _class_labels
@@ -150,7 +155,7 @@ def _get_model():
     import onnxruntime as ort
 
     models = _models_dir()
-    onnx_path = _download_if_needed(MODEL_URL, os.path.join(models, "discogs-effnet-bsdynamic-1.onnx"))
+    onnx_path = _download_if_needed(MODEL_URL, model_path())
     meta_path = _download_if_needed(META_URL, os.path.join(models, "discogs-effnet.json"))
 
     with open(meta_path, encoding="utf-8") as f:

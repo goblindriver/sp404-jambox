@@ -123,7 +123,7 @@ class PipelineApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(seen["started"])
-        self.assertEqual(seen["args"][3:], ("b", 3))
+        self.assertEqual(seen["args"][-2:], ("b", 3))
 
     def test_job_status_returns_not_found_for_missing_job(self):
         response = self.client.get("/api/pipeline/status/missing-job")

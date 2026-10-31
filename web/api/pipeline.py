@@ -8,6 +8,17 @@ from api._helpers import JobTracker, normalize_bank, normalize_pad
 pipeline_bp = Blueprint('pipeline', __name__)
 
 _tracker = JobTracker(max_age=600)
+# execute_fetch_scope is shared by /pipeline/fetch and the vibe populate jobs;
+# two runs at once would race on _CARD_STAGING and the score cache.
+_FETCH_LOCK = threading.Lock()
+
+
+class FetchBusy(RuntimeError):
+    pass
+
+
+def fetch_running():
+    return _FETCH_LOCK.locked()
 PADINFO_TIMEOUT = 120
 PATTERN_BUILD_TIMEOUT = 180
 
@@ -62,7 +73,19 @@ def _run_script(script_name, timeout=None):
 
 
 def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
-    """Execute fetch_samples for a bank/pad scope and return run summary."""
+    """Execute fetch_samples for a bank/pad scope and return run summary.
+
+    Raises FetchBusy if another fetch is running.
+    """
+    if not _FETCH_LOCK.acquire(blocking=False):
+        raise FetchBusy("A fetch is already running")
+    try:
+        return _execute_fetch_scope(settings, bank, pad, progress_callback)
+    finally:
+        _FETCH_LOCK.release()
+
+
+def _execute_fetch_scope(settings, bank, pad, progress_callback):
     repo_dir = settings['REPO_DIR']
     scripts_dir = os.path.join(repo_dir, 'scripts')
     if scripts_dir not in sys.path:
@@ -176,15 +199,14 @@ def fetch():
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
 
-    if _tracker.has_active('starting', 'running'):
+    job_id = None if fetch_running() else _tracker.start_exclusive(
+        ('starting', 'running'), type='fetch', status='starting', progress='', result='')
+    if not job_id:
         return jsonify({'ok': False, 'error': 'Fetch already running'}), 409
-    job_id = _tracker.create(type='fetch', status='starting', progress='', result='')
 
     repo_dir = current_app.config['REPO_DIR']
     settings = dict(current_app.config)
-    t = threading.Thread(target=_run_fetch, args=(job_id, repo_dir, settings, bank, pad))
-    t.daemon = True
-    t.start()
+    _tracker.start_thread(job_id, _run_fetch, job_id, repo_dir, settings, bank, pad, error_field='result')
 
     return jsonify({'ok': True, 'job_id': job_id})
 
@@ -452,8 +474,11 @@ def server_status():
 
         discogs_info = {'available': False, 'classified': 0, 'coverage': 0, 'danceable': 0}
         try:
-            from discogs_engine import _get_model
-            _get_model()
+            # Status only: never download or load the ONNX model inside a request.
+            import importlib.util
+            from discogs_engine import model_path as _discogs_model_path
+            if importlib.util.find_spec('onnxruntime') is None or not os.path.isfile(_discogs_model_path()):
+                raise FileNotFoundError(_discogs_model_path())
             discogs_info['available'] = True
             features['discogs'] = True
             if tag_db:

@@ -214,14 +214,15 @@ def extract_clips():
     if not sources:
         return jsonify({'ok': False, 'error': 'No sources found with accessible files'}), 404
 
-    import uuid
-
-    job_id = _extract_tracker.create(
+    job_id = _extract_tracker.start_exclusive(
+        ('running',),
         status='running',
         sources=len(sources),
         clips=0,
         started=time.time(),
     )
+    if not job_id:
+        return jsonify({'ok': False, 'error': 'An extraction is already running'}), 409
 
     def _run_extract():
         try:
