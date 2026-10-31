@@ -178,6 +178,37 @@ class TagLibraryScanTests(unittest.TestCase):
         self.assertIn("_QUARANTINE/Drums/bad.wav", db)
         self.assertNotIn("Drums/Kicks/gone.wav", db)
 
+    def test_a_walk_that_misses_folders_never_deletes_their_rows(self):
+        # Seen over a macOS SMB share from Windows: big folders fail to list
+        # ("Invalid Signature"), so the walk sees a fraction of the library.
+        upsert_tag_entries(self.tags, {
+            "Drums/Kicks/kick_120.wav": {"type_code": "KIK", "mtime": time.time() + 3600},
+            "Drums/Kicks/new_kick.wav": {"type_code": "KIK", "mtime": time.time() + 3600},
+        })
+        def failing_walk(top, onerror=None, **kw):
+            if onerror:
+                onerror(OSError(22, "Invalid Signature", os.path.join(top, "Drums")))
+            return iter(())
+
+        with patch("tag_library.os.walk", side_effect=failing_walk), \
+             patch("sys.stderr") as stderr:
+            db = self._scan()
+
+        self.assertEqual(set(db), {"Drums/Kicks/kick_120.wav", "Drums/Kicks/new_kick.wav"})
+        self.assertIn("could not list", "".join(str(c) for c in stderr.write.call_args_list))
+
+    def test_names_this_os_cannot_address_are_not_treated_as_missing(self):
+        with patch.object(tag_library.os, "name", "nt"):
+            self.assertTrue(tag_library._unrepresentable_here("Vocals/Who?.flac"))
+            self.assertFalse(tag_library._unrepresentable_here("Vocals/Who.flac"))
+        with patch.object(tag_library.os, "name", "posix"):
+            self.assertFalse(tag_library._unrepresentable_here("Vocals/Who?.flac"))
+
+        upsert_tag_entries(self.tags, {"Vocals/Who?.flac": {"type_code": "VOX"}})
+        with patch.object(tag_library, "_unrepresentable_here", lambda rel: "?" in rel):
+            db = self._scan()
+        self.assertIn("Vocals/Who?.flac", db)
+
     def test_unchanged_files_are_skipped(self):
         upsert_tag_entries(self.tags, {
             "Drums/Kicks/kick_120.wav": {"type_code": "SNR", "mtime": time.time() + 3600},
