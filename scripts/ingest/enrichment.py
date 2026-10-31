@@ -1,42 +1,86 @@
 """Post-ingest enrichment: tagging, fingerprinting, dedup, and stem splitting."""
 import os
-import sys
+import posixpath
 import shutil
 import subprocess
+import sys
 
 from . import _state
 from .archive import _copy_as_flac
 
 
-def _route_and_process(library_path, rel_path):
-    """Unified post-ingest processing: tag, fingerprint, dedup check, stem split.
+def _is_recent_duplicate(library_path, rel_path):
+    """Fingerprint the file and compare it against recently ingested ones."""
+    try:
+        from deduplicate_samples import compute_fingerprint, similarity
+        fp = compute_fingerprint(library_path)
+    except Exception as e:
+        print(f"  [ROUTE] Fingerprint skipped: {e}")
+        return False
+    if not fp:
+        return False
+    with _state._fingerprint_lock:
+        for other_path, other_fp in list(_state._recent_fingerprints.items()):
+            if other_path == rel_path:
+                continue
+            sim = similarity(fp, other_fp)
+            if sim is not None and sim >= 0.95:
+                print(f"  [ROUTE] Duplicate detected ({sim:.2f}): {rel_path}")
+                print(f"          Matches: {other_path}")
+                return True
+        if len(_state._recent_fingerprints) >= _state._RECENT_FP_CAP:
+            oldest = next(iter(_state._recent_fingerprints))
+            del _state._recent_fingerprints[oldest]
+        _state._recent_fingerprints[rel_path] = fp
+    return False
 
-    Called after a file has been copied into the library. Runs the full
-    enrichment pipeline inline (tag + fingerprint + dedup) and queues
-    background stem splitting for full tracks.
+
+def _unique_path(path):
+    """``path`` if free, else ``stem-2.ext``, ``stem-3.ext``, ..."""
+    if not os.path.exists(path):
+        return path
+    stem, ext = os.path.splitext(path)
+    n = 2
+    while os.path.exists(f"{stem}-{n}{ext}"):
+        n += 1
+    return f"{stem}-{n}{ext}"
+
+
+def _route_and_process(library_path, rel_path, source_context=None):
+    """Unified post-ingest processing: dedup check, tag, enrich, stem split.
+
+    Called after a file has been copied into the library. Duplicates are
+    caught first so they skip enrichment and never get a tag row; everything
+    else is built into one entry and written to the tag DB once (row-level,
+    so concurrent writers are never clobbered).
 
     Returns 'keep', 'duplicate', or 'stem-queued'.
     """
+    if _is_recent_duplicate(library_path, rel_path):
+        dupes_dir = os.path.join(_state.LIBRARY, "_DUPES")
+        os.makedirs(dupes_dir, exist_ok=True)
+        try:
+            shutil.move(library_path, _unique_path(os.path.join(dupes_dir, os.path.basename(library_path))))
+            return 'duplicate'
+        except Exception as exc:
+            print(f"  [ROUTE] Failed to move duplicate to _DUPES: {exc}")
+
     # Step 1: Tag the file (with librosa enrichment)
     try:
-        from tag_library import tag_file, load_existing_tags, save_tags
-        tags_db = load_existing_tags()
+        from tag_library import tag_file
         entry = tag_file(rel_path, library_path, get_dur=True, use_librosa=True)
-        tags_db[rel_path] = entry
-        save_tags(tags_db)
     except Exception as e:
         print(f"  [ROUTE] Tag failed for {rel_path}: {e}")
         entry = {'duration': 0, 'type_code': 'UNK'}
+    if source_context:
+        entry['cowork_source'] = source_context
 
-    # Step 1.5: Smart retag via LLM (if available)
+    # Step 2: Smart retag via LLM (if available)
     try:
         from smart_retag import retag_single
         enriched = retag_single(rel_path, library_path, existing_entry=entry)
         if enriched:
             entry = enriched
-            tags_db = load_existing_tags()
-            tags_db[rel_path] = entry
-            save_tags(tags_db)
             q = entry.get('quality_score', '?')
             tc = entry.get('type_code', '?')
             print(f"  [ROUTE] Smart tagged: {tc} q={q} \u2014 {os.path.basename(rel_path)}")
@@ -45,7 +89,7 @@ def _route_and_process(library_path, rel_path):
     except Exception as e:
         print(f"  [ROUTE] Smart retag failed: {e}")
 
-    # Step 1.7: CLAP audio embedding (if engine available)
+    # Step 3: CLAP audio embedding (if engine available)
     try:
         from clap_engine import embed_audio_file, EmbeddingStore
         store = EmbeddingStore(_state.LIBRARY)
@@ -57,58 +101,26 @@ def _route_and_process(library_path, rel_path):
     except Exception as e:
         print(f"  [ROUTE] CLAP embedding failed: {e}")
 
-    # Step 1.8: Discogs genre classification (if engine available)
+    # Step 4: Discogs genre classification (if engine available)
     try:
         from discogs_engine import classify_styles
         result = classify_styles(library_path)
         if result.get("styles"):
-            entry = tags_db.get(rel_path, {})
             entry["discogs_styles"] = result["styles"]
             entry["parent_genre"] = result["parent_genre"]
             entry["danceability"] = result["danceability"]
-            tags_db[rel_path] = entry
-            save_tags(tags_db)
     except ImportError:
         pass  # Discogs model not available
     except Exception as e:
         print(f"  [ROUTE] Discogs classification failed: {e}")
 
-    # Step 2: Fingerprint and inline dedup check
-    is_dup = False
     try:
-        from deduplicate_samples import compute_fingerprint, similarity
-        fp = compute_fingerprint(library_path)
-        if fp:
-            with _state._fingerprint_lock:
-                for other_path, other_fp in list(_state._recent_fingerprints.items()):
-                    if other_path == rel_path:
-                        continue
-                    sim = similarity(fp, other_fp)
-                    if sim is not None and sim >= 0.95:
-                        print(f"  [ROUTE] Duplicate detected ({sim:.2f}): {rel_path}")
-                        print(f"          Matches: {other_path}")
-                        is_dup = True
-                        break
-
-                if len(_state._recent_fingerprints) >= _state._RECENT_FP_CAP:
-                    oldest = next(iter(_state._recent_fingerprints))
-                    del _state._recent_fingerprints[oldest]
-                _state._recent_fingerprints[rel_path] = fp
+        from jambox_config import upsert_tag_entries
+        upsert_tag_entries(_state.TAGS_FILE, {rel_path: entry})
     except Exception as e:
-        print(f"  [ROUTE] Fingerprint skipped: {e}")
+        print(f"  [ROUTE] Tag DB write failed for {rel_path}: {e}")
 
-    if is_dup:
-        dupes_dir = os.path.join(_state.LIBRARY, "_DUPES")
-        os.makedirs(dupes_dir, exist_ok=True)
-        try:
-            dupe_dest = os.path.join(dupes_dir, os.path.basename(library_path))
-            shutil.move(library_path, dupe_dest)
-        except Exception as exc:
-            print(f"  [ROUTE] Failed to move duplicate to _DUPES: {exc}")
-            return 'keep'
-        return 'duplicate'
-
-    # Step 3: Duration-based routing
+    # Step 5: Duration-based routing
     duration = entry.get('duration', 0) or 0
     type_code = entry.get('type_code', 'UNK')
 
@@ -123,7 +135,19 @@ def _queue_stem_split(library_path, rel_path, tag_entry):
     """Submit a stem split job to the background executor."""
     future = _state._stem_executor.submit(_stem_split_task, library_path, rel_path, tag_entry)
     _state._stem_futures.append(future)
+    future.add_done_callback(_stem_task_done)
     print(f"  [ROUTE] Queued stem split: {os.path.basename(library_path)} ({tag_entry.get('duration', 0):.0f}s)")
+
+
+def _stem_task_done(future):
+    """Surface background stem-split failures instead of dropping them."""
+    try:
+        _state._stem_futures.remove(future)
+    except ValueError:
+        pass
+    exc = future.exception()
+    if exc is not None:
+        print(f"[STEMS] Split task failed: {exc}")
 
 
 def _stem_split_task(library_path, rel_path, parent_tags):
@@ -133,7 +157,7 @@ def _stem_split_task(library_path, rel_path, parent_tags):
     print(f"\n[STEMS] Starting split: {os.path.basename(library_path)}")
 
     try:
-        import demucs as _demucs_check  # noqa: F811
+        import demucs  # noqa: F401
     except ImportError:
         print("[STEMS] Demucs not installed \u2014 skipping stem split")
         return
@@ -162,8 +186,8 @@ def _stem_split_task(library_path, rel_path, parent_tags):
 
         stem_base = os.path.splitext(os.path.basename(library_path))[0]
         stem_dir = None
-        for root, dirs, files in os.walk(tmpdir):
-            if any(f.endswith('.wav') for f in files):
+        for root, _dirs, files in os.walk(tmpdir):
+            if any(f.lower().endswith('.wav') for f in files):
                 stem_dir = root
                 break
 
@@ -179,9 +203,10 @@ def _stem_split_task(library_path, rel_path, parent_tags):
             'no_drums': 'Loops/Instrument-Loops',
         }
 
-        ingested = 0
+        from tag_library import tag_file
+        stem_rows = {}
         for stem_file in os.listdir(stem_dir):
-            if not stem_file.endswith('.wav'):
+            if not stem_file.lower().endswith('.wav'):
                 continue
 
             stem_name = os.path.splitext(stem_file)[0].lower()
@@ -190,45 +215,36 @@ def _stem_split_task(library_path, rel_path, parent_tags):
             dest_dir = os.path.join(_state.LIBRARY, category)
             os.makedirs(dest_dir, exist_ok=True)
             dest_fname = "{}_stem-{}.flac".format(stem_base, stem_name)
-            dest_path = os.path.join(dest_dir, dest_fname)
-
-            if os.path.exists(dest_path):
+            if os.path.exists(os.path.join(dest_dir, dest_fname)):
                 continue
 
             src_path = os.path.join(stem_dir, stem_file)
-            _copy_as_flac(src_path, os.path.join(dest_dir, "{}_stem-{}.wav".format(stem_base, stem_name)))
-            ingested += 1
-
-        if ingested > 0:
-            print(f"[STEMS] Split {os.path.basename(library_path)} \u2192 {ingested} stems")
-
+            stem_full = _copy_as_flac(src_path, os.path.join(dest_dir, "{}_stem-{}.wav".format(stem_base, stem_name)))
+            stem_rel = posixpath.join(category, os.path.basename(stem_full))
             try:
-                from tag_library import tag_file, load_existing_tags, save_tags
-                tags_db = load_existing_tags()
-                for stem_file in os.listdir(stem_dir):
-                    if not stem_file.endswith('.wav'):
-                        continue
-                    stem_name = os.path.splitext(stem_file)[0].lower()
-                    category = stem_category_map.get(stem_name, 'Loops/Instrument-Loops')
-                    dest_fname = "{}_stem-{}.flac".format(stem_base, stem_name)
-                    stem_rel = os.path.join(category, dest_fname)
-                    stem_full = os.path.join(_state.LIBRARY, stem_rel)
-                    if os.path.exists(stem_full):
-                        stem_entry = tag_file(stem_rel, stem_full, get_dur=True, use_librosa=True)
-                        stem_entry['source'] = 'processed'
-                        stem_entry['parent'] = rel_path
-                        if parent_tags.get('genre'):
-                            stem_entry['genre'] = parent_tags['genre']
-                        if parent_tags.get('bpm'):
-                            stem_entry['bpm'] = parent_tags['bpm']
-                        tags_db[stem_rel] = stem_entry
-                save_tags(tags_db)
+                stem_entry = tag_file(stem_rel, stem_full, get_dur=True, use_librosa=True)
             except Exception as e:
-                print(f"[STEMS] Tag enrichment failed: {e}")
+                print(f"[STEMS] Tagging {stem_rel} failed: {e}")
+                stem_entry = {'type_code': 'UNK'}
+            stem_entry['source'] = 'processed'
+            stem_entry['parent'] = rel_path
+            if parent_tags.get('genre'):
+                stem_entry['genre'] = parent_tags['genre']
+            if parent_tags.get('bpm'):
+                stem_entry['bpm'] = parent_tags['bpm']
+            stem_rows[stem_rel] = stem_entry
+
+        if stem_rows:
+            print(f"[STEMS] Split {os.path.basename(library_path)} \u2192 {len(stem_rows)} stems")
+            try:
+                from jambox_config import upsert_tag_entries
+                upsert_tag_entries(_state.TAGS_FILE, stem_rows)
+            except Exception as e:
+                print(f"[STEMS] Tag DB write failed: {e}")
 
             _state._log_ingest(
                 "{} (stems)".format(os.path.basename(library_path)),
-                ingested,
-                {'stems': ingested},
+                len(stem_rows),
+                {'stems': len(stem_rows)},
                 source_type='stem-split',
             )

@@ -209,6 +209,7 @@ def main():
     print(f"{'='*60}")
 
     total_dupes = 0
+    moved = []
     total_bytes_reclaimable = 0
 
     for gi, group in enumerate(groups):
@@ -247,10 +248,11 @@ def main():
                     os.makedirs(os.path.dirname(dst), exist_ok=True)
                     shutil.move(src, dst)
                     db.pop(d, None)
+                    moved.append(d)
 
-    if args.clean and total_dupes > 0:
-        from jambox_config import save_tag_db
-        save_tag_db(TAGS_FILE, db)
+    if args.clean and moved:
+        from jambox_config import delete_tag_paths
+        delete_tag_paths(TAGS_FILE, moved)
         print(f"\nUpdated tag DB (removed {total_dupes} dupe entries)")
 
     if len(groups) > 30:

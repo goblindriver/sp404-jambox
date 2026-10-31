@@ -37,8 +37,11 @@ from jambox_config import (
     LIBRARY_SKIP_DIRS,
     LONG_HOLD_DIRNAME,
     delete_tag_paths,
+    export_tags_json,
     is_excluded_rel_path,
+    library_rel_path,
     load_settings_for_script,
+    merge_tag_fields,
     upsert_tag_entries,
 )
 from audio_analysis import extract_features, is_available as librosa_available
@@ -124,7 +127,7 @@ quality_score for SP-404 LIVE DANCE PERFORMANCE:
 
 def _build_prompt(filepath, features):
     """Build the user prompt with audio features for a single file."""
-    rel = os.path.relpath(filepath, LIBRARY)
+    rel = library_rel_path(filepath, LIBRARY) or os.path.basename(filepath)
     fname = os.path.basename(filepath)
     dirpath = os.path.dirname(rel)
 
@@ -462,16 +465,39 @@ def _save_checkpoint(cp):
         raise
 
 
-def _persist_tag_row(rel_path, entry):
-    """Write one row to tags SQLite so a crash mid-batch does not lose work."""
+def _json_safe(entry):
+    try:
+        return json.loads(json.dumps(entry, default=str))
+    except (TypeError, ValueError):
+        return dict(entry)
+
+
+def _changed_fields(before, after):
+    """Fields of *after* whose values differ from *before* (one row)."""
+    return {k: v for k, v in after.items() if before.get(k, _MISSING) != v}
+
+
+_MISSING = object()
+
+
+def _persist_tag_row(rel_path, entry, before=None):
+    """Write one row to the tag DB so a crash mid-batch does not lose work.
+
+    With *before* (the row as it was when this run read it), only the fields
+    this run changed are merged, so a long run never reverts what ingest,
+    Discogs or the UI wrote to the same row in the meantime. Rows with no
+    prior state are inserted whole.
+    """
     if not rel_path or not isinstance(entry, dict):
         return
-    try:
-        payload = json.loads(json.dumps(entry, default=str))
-    except (TypeError, ValueError):
-        payload = dict(entry)
+    payload = _json_safe(entry)
     with _persist_lock:
-        upsert_tag_entries(TAGS_FILE, {rel_path: payload})
+        if before:
+            fields = _changed_fields(before, payload)
+            if fields:
+                merge_tag_fields(TAGS_FILE, {rel_path: fields})
+        else:
+            upsert_tag_entries(TAGS_FILE, {rel_path: payload})
 
 
 def _save_slim_checkpoint(progress, meta):
@@ -496,17 +522,11 @@ def _load_tags():
     return load_tag_db(TAGS_FILE)
 
 
-def _save_tags(db):
-    from jambox_config import save_tag_db
-    save_tag_db(TAGS_FILE, db)
-    # Dual-write to normalized SQLite during transition
-    try:
-        from db import JamboxDB
-        jdb = JamboxDB()
-        jdb.import_from_tag_dict(db)
-        jdb.close()
-    except Exception:
-        pass  # non-fatal — JSON is still the primary
+def _save_changes(pending):
+    """Merge {rel_path: changed_fields} into the tag DB and clear *pending*."""
+    if pending:
+        merge_tag_fields(TAGS_FILE, pending)
+        pending.clear()
 
 
 def _walk_library(path_filter=None):
@@ -519,8 +539,9 @@ def _walk_library(path_filter=None):
                 continue
             if os.path.splitext(f)[1].lower() in AUDIO_EXTS:
                 full = os.path.join(dirpath, f)
-                rel = os.path.relpath(full, LIBRARY)
-                files.append((rel, full))
+                rel = library_rel_path(full, LIBRARY)
+                if rel:
+                    files.append((rel, full))
     return files
 
 
@@ -582,6 +603,7 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
     with _tag_db_lock:
         stored_features = _get_stored_features(tag_db, rel_path)
         existing = dict(tag_db.get(rel_path, {}))
+    before = _json_safe(existing)
 
     if stored_features and stored_features.get('spectral_centroid') is not None:
         features = stored_features
@@ -617,6 +639,7 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
         "rel_path": rel_path,
         "full_path": full_path,
         "entry": entry,
+        "before": before,
         "usable": usable,
         "skipped_long": skipped_long,
         "llm_tags": llm_tags,
@@ -736,7 +759,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                     try:
                         shutil.move(full_path, q_dest)
                         quarantined += 1
-                        q_rel = os.path.join("_QUARANTINE", rel_path)
+                        q_rel = "_QUARANTINE/" + rel_path
                         entry['path'] = q_rel
                         with _tag_db_lock:
                             tag_db.pop(rel_path, None)
@@ -756,7 +779,7 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
         with _tag_db_lock:
             tag_db[rel_path] = entry
         if not dry_run:
-            _persist_tag_row(rel_path, entry)
+            _persist_tag_row(rel_path, entry, before=r.get("before"))
 
         if status == "llm_fail":
             llm_failures += 1
@@ -984,9 +1007,8 @@ def run(args):
         total_incomplete += inc
         processed_files.extend(batch_done)
 
-        # Full JSON + JamboxDB sync each batch (SQLite already updated per file).
-        if not args.dry_run:
-            _save_tags(tag_db)
+    if not args.dry_run:
+        export_tags_json(TAGS_FILE)
 
     elapsed = time.time() - t0
     print("\n" + "=" * 60)
@@ -1064,9 +1086,11 @@ def run_revibe(args):
                      'sonic_description', 'instrument_hint')
 
     updated = errors = 0
+    pending = {}
     t0 = time.time()
 
     for i, (rel_path, full_path, entry) in enumerate(candidates):
+        before = _json_safe(entry)
         if i > 0 and i % BATCH_SIZE == 0:
             elapsed = time.time() - t0
             rate = i / elapsed if elapsed > 0 else 0
@@ -1078,7 +1102,7 @@ def run_revibe(args):
 
             # Save progress
             if not args.dry_run:
-                _save_tags(tag_db)
+                _save_changes(pending)
 
         # Reconstruct features dict from stored vectors + entry metadata
         features = dict(entry.get('features', {}))
@@ -1130,6 +1154,7 @@ def run_revibe(args):
         entry['tag_source'] = 'smart_retag_v2_revibe'
         entry['tagged_at'] = datetime.now().isoformat()
         tag_db[rel_path] = entry
+        pending[rel_path] = _changed_fields(before, _json_safe(entry))
         updated += 1
 
         if not args.quiet:
@@ -1142,7 +1167,8 @@ def run_revibe(args):
                 changed, q, tc, ','.join(old_vibe[:2]), new_vibe, fname))
 
     if not args.dry_run:
-        _save_tags(tag_db)
+        _save_changes(pending)
+        export_tags_json(TAGS_FILE)
 
     elapsed = time.time() - t0
     print("\n" + "=" * 60)
@@ -1192,6 +1218,7 @@ def run_retry_llm_failures(args):
     print("Retrying LLM on %d files...\n" % len(candidates))
 
     success = errors = 0
+    pending = {}
     t0 = time.time()
 
     for i, (rel_path, full_path, entry) in enumerate(candidates):
@@ -1202,7 +1229,7 @@ def run_retry_llm_failures(args):
             print("=== Retry %d/%d  |  %.0f/min  |  ETA %.0fm ===" % (
                 i, len(candidates), rate * 60, eta))
             if not args.dry_run:
-                _save_tags(tag_db)
+                _save_changes(pending)
 
         # Reconstruct features from stored data
         features = dict(entry.get('features', {}))
@@ -1228,6 +1255,7 @@ def run_retry_llm_failures(args):
         if usable:
             new_entry['retag_model'] = used_model
         tag_db[rel_path] = new_entry
+        pending[rel_path] = _changed_fields(_json_safe(existing), _json_safe(new_entry))
         entry = new_entry
 
         if usable:
@@ -1245,7 +1273,8 @@ def run_retry_llm_failures(args):
                 tag, entry.get('quality_score', '?'), tc, vibe_str, fname, desc))
 
     if not args.dry_run:
-        _save_tags(tag_db)
+        _save_changes(pending)
+        export_tags_json(TAGS_FILE)
 
     elapsed = time.time() - t0
     print("\n" + "=" * 60)
@@ -1288,8 +1317,6 @@ def run_validate(args):
     workers = getattr(args, 'workers', SMART_RETAG_WORKERS_DEFAULT) or SMART_RETAG_WORKERS_DEFAULT
     t, q, e, inc, _ = retag_batch(
         selected, tag_db, dry_run=args.dry_run, verbose=True, workers=workers)
-    if not args.dry_run:
-        _save_tags(tag_db)
 
     quality_scores = []
     for rel, _ in selected:

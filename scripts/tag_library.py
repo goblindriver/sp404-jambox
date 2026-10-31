@@ -28,7 +28,16 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script
+from jambox_config import (
+    LIBRARY_SKIP_DIRS,
+    LONG_HOLD_DIRNAME,
+    delete_tag_paths,
+    export_tags_json,
+    is_excluded_rel_path,
+    library_rel_path,
+    load_settings_for_script,
+    write_tag_changes,
+)
 
 try:
     from audio_analysis import analyze_audio, is_available as librosa_available
@@ -703,8 +712,9 @@ def walk_library(path_filter=None, skip_dirs=None):
             ext = os.path.splitext(f)[1].lower()
             if ext in AUDIO_EXTS:
                 full = os.path.join(root, f)
-                rel = os.path.relpath(full, LIBRARY)
-                files.append((rel, full))
+                rel = library_rel_path(full, LIBRARY)
+                if rel:
+                    files.append((rel, full))
     return files
 
 
@@ -714,15 +724,39 @@ def load_existing_tags():
     return load_tag_db(TAGS_FILE)
 
 
-def save_tags(db):
-    """Save tag database via jambox_config (SQLite + JSON).
+# Fields a rescan must not overwrite once smart retag has classified the row.
+_CLASSIFICATION_FIELDS = ("type_code", "vibe", "texture", "genre", "energy", "playability", "tags")
+_EMPTY = (None, "", [])
 
-    Uses allow_shrink=True because a full tag_library scan is the authoritative
-    source — stale entries from deleted/moved files should be cleaned up.
+
+def rescan_fields(old, new, *, rebuild=False):
+    """Fields to merge into an existing row when a file is re-tagged.
+
+    Enrichment fields (smart retag, Discogs, Plex, CLAP identity, ...) are
+    never in ``new`` and so always survive the merge.
+
+    - Audio changed (default): refresh every base field, drop stale features
+      and queue the row for smart retag.
+    - ``rebuild`` (audio unchanged, tagging rules changed): refresh base fields
+      but keep smart-retag classifications, analysis-derived BPM/key, and any
+      value the filename rules can't reproduce.
     """
-    from jambox_config import save_tag_db
-    save_tag_db(TAGS_FILE, db, allow_shrink=True)
-    print(f"Saved {len(db)} entries to tag DB")
+    fields = dict(new)
+    if not rebuild:
+        fields["features"] = None
+        fields["smart_retag_pending"] = True
+        return fields
+    if str(old.get("tag_source") or "").startswith("smart_retag"):
+        for name in _CLASSIFICATION_FIELDS:
+            fields.pop(name, None)
+    for name in ("bpm", "key"):
+        if old.get(f"{name}_source") not in (None, "filename"):
+            fields.pop(name, None)
+            fields.pop(f"{name}_source", None)
+    for name, value in list(fields.items()):
+        if value in _EMPTY and old.get(name) not in _EMPTY:
+            fields.pop(name)
+    return fields
 
 
 def print_summary(db):
@@ -792,7 +826,9 @@ def print_summary(db):
 def main():
     parser = argparse.ArgumentParser(description="Auto-tag the SP-404 sample library")
     parser.add_argument("--update", action="store_true",
-                        help="Only tag new or changed files")
+                        help="Only tag new or changed files (the default; kept for compatibility)")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Re-derive base tags for every file, keeping smart-retag and enrichment fields")
     parser.add_argument("--no-duration", action="store_true",
                         help="Skip ffprobe duration detection (faster)")
     parser.add_argument("--path", type=str,
@@ -820,29 +856,43 @@ def main():
     files = walk_library(path_filter=path_filter, skip_dirs=effective_skip)
     print(f"Found {len(files)} audio files")
 
-    db = load_existing_tags() if (args.update or args.path) else {}
+    existing = load_existing_tags()
+    upserts, merges = {}, {}
     skipped = 0
     tagged = 0
 
+    def flush():
+        if upserts or merges:
+            write_tag_changes(TAGS_FILE, upserts=upserts, merges=merges)
+            upserts.clear()
+            merges.clear()
+
     t0 = time.time()
     for i, (rel, full) in enumerate(files):
-        if args.update and rel in db:
+        old = existing.get(rel)
+        if old is not None and not args.rebuild:
             try:
                 mtime = os.path.getmtime(full)
-                if db[rel].get("mtime") and mtime <= db[rel]["mtime"]:
+                if old.get("mtime") and mtime <= old["mtime"]:
                     skipped += 1
                     continue
             except OSError:
                 pass
 
         entry = tag_file(rel, full, get_dur=not args.no_duration)
-        db[rel] = entry
+        if old is None:
+            upserts[rel] = entry
+        else:
+            merges[rel] = rescan_fields(old, entry, rebuild=args.rebuild)
         tagged += 1
+        if len(upserts) + len(merges) >= 500:
+            flush()
 
         if (i + 1) % 500 == 0:
             elapsed = time.time() - t0
             rate = (i + 1) / elapsed if elapsed > 0 else 0
             print(f"  [{i+1}/{len(files)}] {rate:.0f} files/sec — {rel[:60]}")
+    flush()
 
     elapsed = time.time() - t0
     print(f"\nTagged {tagged} files in {elapsed:.1f}s", end="")
@@ -851,22 +901,22 @@ def main():
     else:
         print()
 
-    # Remove stale entries — only for the scope we scanned.
-    # A --path run should not delete entries outside its target directory.
-    # Preserve entries under SKIP_DIRS (quarantine, dupes, etc.) since those
-    # directories are intentionally excluded from scanning.
-    if not args.path:
-        existing_rels = {rel for rel, _ in files}
-        skip_prefixes = tuple(d + "/" for d in SKIP_DIRS)
-        removed = [k for k in db
-                    if k not in existing_rels and not k.startswith(skip_prefixes)]
-        for k in removed:
-            del db[k]
-        if removed:
-            print(f"Removed {len(removed)} stale entries")
+    # Remove rows whose file is gone -- only inside the scanned scope, and
+    # never under SKIP_DIRS (quarantine, dupes, stems, ...), which this scan
+    # doesn't walk.
+    scope = (library_rel_path(path_filter, LIBRARY) or "") + "/" if path_filter else ""
+    stale = [
+        k for k in existing
+        if k.startswith(scope)
+        and not is_excluded_rel_path(k)
+        and not os.path.exists(os.path.join(LIBRARY, k))
+    ]
+    if stale:
+        delete_tag_paths(TAGS_FILE, stale)
+        print(f"Removed {len(stale)} entries whose files are gone")
 
-    save_tags(db)
-    print_summary(db)
+    export_tags_json(TAGS_FILE)
+    print_summary(load_existing_tags())
 
 
 if __name__ == "__main__":

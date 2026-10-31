@@ -10,22 +10,7 @@ from .archive import (
     is_sample_pack, should_ignore, archive_has_audio,
 )
 from .enrichment import _route_and_process
-
-
-def _store_source_context(wav_path, context):
-    """Store Cowork source context in tag DB for a file."""
-    from jambox_config import load_tag_db, save_tag_db
-    tags_path = os.path.join(_state.LIBRARY, '_tags.json')
-    try:
-        tags = load_tag_db(tags_path)
-        rel = os.path.relpath(wav_path, _state.LIBRARY)
-        if rel in tags:
-            tags[rel]['cowork_source'] = context
-        else:
-            tags[rel] = {'cowork_source': context}
-        save_tag_db(tags_path, tags)
-    except Exception:
-        pass
+from jambox_config import library_rel_path
 
 
 def ingest_single_file(filepath, dry_run=False):
@@ -55,11 +40,8 @@ def ingest_single_file(filepath, dry_run=False):
     actual_dest = _copy_as_flac(filepath, dest_path)
     print(f"  \u2192 {category}/{os.path.basename(actual_dest)}")
 
-    if source_context:
-        _store_source_context(actual_dest, source_context)
-
-    rel_path = os.path.relpath(actual_dest, _state.LIBRARY)
-    route_result = _route_and_process(actual_dest, rel_path)
+    rel_path = library_rel_path(actual_dest, _state.LIBRARY)
+    route_result = _route_and_process(actual_dest, rel_path, source_context)
     if route_result == 'duplicate':
         print(f"  Duplicate \u2014 moved to _DUPES")
         return 0
@@ -137,11 +119,8 @@ def ingest_pack(pack_dir, dry_run=False):
             actual = _copy_as_flac(wav, dest_path)
             counts[category] = counts.get(category, 0) + 1
 
-            if source_context:
-                _store_source_context(actual, source_context)
-
-            rel = os.path.relpath(actual, _state.LIBRARY)
-            route_result = _route_and_process(actual, rel)
+            rel = library_rel_path(actual, _state.LIBRARY)
+            route_result = _route_and_process(actual, rel, source_context)
             if route_result == 'duplicate':
                 counts[category] = counts.get(category, 0) - 1
 
@@ -224,11 +203,8 @@ def ingest_archive_file(filepath, dry_run=False):
             os.makedirs(dest_dir, exist_ok=True)
             actual = _copy_as_flac(wav, dest_path)
             counts[category] = counts.get(category, 0) + 1
-            if source_context:
-                _store_source_context(actual, source_context)
-
-            rel = os.path.relpath(actual, _state.LIBRARY)
-            route_result = _route_and_process(actual, rel)
+            rel = library_rel_path(actual, _state.LIBRARY)
+            route_result = _route_and_process(actual, rel, source_context)
             if route_result == 'duplicate':
                 counts[category] = counts.get(category, 0) - 1
 

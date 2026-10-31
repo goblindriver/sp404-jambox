@@ -27,7 +27,7 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from jambox_config import load_settings_for_script, load_tag_db, save_tag_db
+from jambox_config import load_settings_for_script, load_tag_db, upsert_tag_entries
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -93,7 +93,6 @@ TYPE_TO_CATEGORY = {
     'KEY': 'Melodic/Keys-Piano', 'SYN': 'Melodic/Synths-Pads', 'PAD': 'Melodic/Synths-Pads',
     'STR': 'Melodic/Keys-Piano', 'HRN': 'Melodic/Keys-Piano',
     'VOX': 'Vocals/Chops', 'FX': 'SFX/Stabs-Hits',
-    'BRK': 'Loops/Instrument-Loops',
 }
 
 # Known artist BPMs (approximate, for tagging)
@@ -255,7 +254,7 @@ def ingest_session(session, dry_run=False, merge_stereo=True):
 
         dest_dir = os.path.join(LIBRARY, category)
         dest_path = os.path.join(dest_dir, dest_name)
-        rel_path = os.path.relpath(dest_path, LIBRARY)
+        rel_path = os.path.relpath(dest_path, LIBRARY).replace(os.sep, "/")
 
         # Skip if already ingested
         if os.path.exists(dest_path) or rel_path in db:
@@ -332,12 +331,10 @@ def ingest_session(session, dry_run=False, merge_stereo=True):
         }
 
         db[rel_path] = entry
+        upsert_tag_entries(TAGS_FILE, {rel_path: entry})
         ingested += 1
 
         print(f"  [{type_code}] {dest_name} ({dur:.1f}s)")
-
-    if not dry_run and ingested > 0:
-        save_tag_db(TAGS_FILE, db)
 
     return ingested
 

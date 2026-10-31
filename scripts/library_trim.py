@@ -32,8 +32,9 @@ from jambox_config import (
     LIBRARY_SKIP_DIRS,
     is_excluded_rel_path,
     load_settings_for_script,
+    delete_tag_paths,
     load_tag_db,
-    save_tag_db,
+    merge_tag_fields,
 )
 from tag_library import AUDIO_EXTS, get_duration
 
@@ -200,6 +201,7 @@ def run_profile(args):
 
     # --- Duration distribution ---
     print("--- Duration Distribution ---")
+    stored = {k: v.get("duration") for k, v in db.items() if isinstance(v, dict)}
     durations = _batch_resolve_durations(db, set(active.keys()))
 
     bucket_counts = {label: [] for _, _, label in DURATION_BUCKETS}
@@ -223,7 +225,9 @@ def run_profile(args):
     print()
 
     # Save resolved durations back to tag DB so subsequent runs are fast
-    save_tag_db(TAGS_FILE, db, allow_shrink=True)
+    merge_tag_fields(TAGS_FILE, {
+        rp: {"duration": d} for rp, d in durations.items() if d > 0 and stored.get(rp) != d
+    })
 
     cut_threshold = args.min_duration
     cut_candidates = [rp for rp in active if durations.get(rp, 0) >= cut_threshold]
@@ -474,6 +478,7 @@ def _cleanup_empty_dirs(root):
 
 def run_execute(args):
     db = load_tag_db(TAGS_FILE)
+    loaded_keys = set(db)
     active_keys = {k for k in db if not is_excluded_rel_path(k)}
 
     print("=" * 70)
@@ -507,7 +512,7 @@ def run_execute(args):
 
     # Save DB
     if not args.dry_run:
-        save_tag_db(TAGS_FILE, db, allow_shrink=True)
+        delete_tag_paths(TAGS_FILE, sorted(loaded_keys - set(db)))
         empty_removed = _cleanup_empty_dirs(LIBRARY)
         if empty_removed:
             print("\n  Cleaned up %d empty directories" % empty_removed)

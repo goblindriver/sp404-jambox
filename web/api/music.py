@@ -414,7 +414,7 @@ def _run_split(job_id, track_data):
             sys.path.insert(0, scripts_dir)
 
         from stem_split import (run_demucs, copy_stem_to_library, tag_stem,
-                                source_id, get_duration, load_tag_db, save_tag_db,
+                                source_id, get_duration, save_stem_rows,
                                 STEM_TYPE_MAP)
         from plex_client import MOOD_TO_VIBE, STYLE_TO_GENRE
 
@@ -478,7 +478,7 @@ def _run_split(job_id, track_data):
             'source': 'personal',
         }
 
-        db = load_tag_db()
+        stem_rows = {}
         created_stems = []
 
         for stem_name, stem_path in stems:
@@ -502,7 +502,7 @@ def _run_split(job_id, track_data):
                 stem_entry.setdefault('tags', []).append('personal')
                 stem_entry['tags'] = sorted(stem_entry['tags'])
 
-            db[stem_rel] = stem_entry
+            stem_rows[stem_rel] = stem_entry
             tc = STEM_TYPE_MAP.get(stem_name, 'BRK')
             created_stems.append({
                 'stem': stem_name,
@@ -511,7 +511,7 @@ def _run_split(job_id, track_data):
                 'duration': dur,
             })
 
-        save_tag_db(db)
+        save_stem_rows(stem_rows)
 
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)

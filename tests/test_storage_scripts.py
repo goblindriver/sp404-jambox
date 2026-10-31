@@ -42,7 +42,7 @@ class StorageScriptsTests(unittest.TestCase):
                     handle.write(b"flacdata")
                 return flac_path
 
-            with patch.object(convert_to_flac, "LIBRARY", tempdir), patch.object(convert_to_flac, "TAGS_FILE", tags_path), patch("convert_to_flac.find_wavs", return_value=[wav_path]), patch("convert_to_flac.convert_wav_to_flac", side_effect=fake_convert), patch("convert_to_flac.verify_flac", return_value=True), patch("convert_to_flac.save_tags", side_effect=OSError("disk full")):
+            with patch.object(convert_to_flac, "LIBRARY", tempdir), patch.object(convert_to_flac, "TAGS_FILE", tags_path), patch("convert_to_flac.find_wavs", return_value=[wav_path]), patch("convert_to_flac.convert_wav_to_flac", side_effect=fake_convert), patch("convert_to_flac.verify_flac", return_value=True), patch("convert_to_flac.rekey_tag", side_effect=OSError("disk full")):
                 converted, skipped, failed, _bytes_saved = convert_to_flac.batch_convert()
 
             self.assertEqual((converted, skipped, failed), (0, 0, 1))

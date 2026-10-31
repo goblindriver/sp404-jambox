@@ -272,7 +272,7 @@ def extract_from_source(source_info, scan_minutes=10, max_clips=None):
 
             shutil.copy2(tmp_path, dest_path)
             extracted.append({
-                'path': os.path.relpath(dest_path, LIBRARY),
+                'path': os.path.relpath(dest_path, LIBRARY).replace(os.sep, '/'),
                 'source_title': title,
                 'source_year': source_info.get('year'),
                 'start_sec': round(start, 2),
@@ -292,9 +292,9 @@ def tag_extracted_clips(clips):
         return
 
     try:
-        from jambox_config import load_tag_db, save_tag_db
+        from jambox_config import upsert_tag_entries
         tags_file = SETTINGS["TAGS_FILE"]
-        db = load_tag_db(tags_file)
+        rows = {}
 
         for clip in clips:
             rel_path = clip['path']
@@ -348,9 +348,9 @@ def tag_extracted_clips(clips):
                 'mtime': time.time(),
             }
 
-            db[rel_path] = entry
+            rows[rel_path] = entry
 
-        save_tag_db(tags_file, db)
+        upsert_tag_entries(tags_file, rows)
         print(f"\n  Tagged {len(clips)} clips in _tags.json")
 
     except Exception as e:

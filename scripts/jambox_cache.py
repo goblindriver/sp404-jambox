@@ -60,17 +60,20 @@ def file_marker(path):
 
 
 def tags_freshness_marker(tags_path):
-    """Return a marker reflecting the most recent tag DB write.
+    """Return a marker that changes on every tag DB write.
 
-    Checks both JSON and SQLite (whichever is newer) so cache invalidates
-    correctly even when JSON writes are skipped for large databases.
+    Combines the DB's write counter (exact, bumped by every
+    jambox_config.write_tag_changes) with the SQLite file's stats as a
+    backstop for writes made outside that API.
     """
-    json_marker = file_marker(tags_path)
+    from jambox_config import tags_version
+
     sqlite_path = tags_path.rsplit(".", 1)[0] + ".sqlite"
     sqlite_marker = file_marker(sqlite_path)
-    if sqlite_marker.get("mtime_ns", 0) > json_marker.get("mtime_ns", 0):
-        return sqlite_marker
-    return json_marker
+    if not sqlite_marker:
+        # Not migrated yet: the legacy JSON file is the only store.
+        return {"json": file_marker(tags_path)}
+    return {"version": tags_version(tags_path), **sqlite_marker}
 
 
 def score_cache_key(parsed_query, bank_config, *, score_version, tags_marker, weights_hash=None):

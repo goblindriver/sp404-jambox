@@ -20,7 +20,8 @@ from jambox_config import (
     load_bank_config,
     load_scoring_config,
     load_settings_for_script,
-    upsert_tag_entries,
+    library_rel_path,
+    merge_tag_fields,
 )
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from wav_utils import convert_and_tag, wav_identity
@@ -237,13 +238,7 @@ def _load_performance_profile():
 
 def _library_rel_path(full_path):
     """Tag DB keys are relative to the sample library root."""
-    full_path = os.path.normpath(os.path.abspath(full_path))
-    lib = os.path.normpath(os.path.abspath(LIBRARY))
-    prefix = lib + os.sep
-    if not full_path.startswith(prefix):
-        return None
-    rel = full_path[len(prefix) :]
-    return rel.replace("\\", "/")
+    return library_rel_path(full_path, LIBRARY)
 
 
 def _persist_sp404_wav_identity(tag_db, rel_path, staged_path):
@@ -263,7 +258,7 @@ def _persist_sp404_wav_identity(tag_db, rel_path, staged_path):
     updated["sp404_wav_identity"] = ident
     tag_db[rel_path] = updated
     try:
-        upsert_tag_entries(TAGS_FILE, {rel_path: updated})
+        merge_tag_fields(TAGS_FILE, {rel_path: {"sp404_wav_identity": ident}})
     except Exception:
         return False
     return True

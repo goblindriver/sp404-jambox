@@ -9,12 +9,13 @@ import re
 import fetch_samples
 import preset_utils
 import vibe_training_store as vts
+from jambox_cache import tags_freshness_marker
 from jambox_config import is_excluded_rel_path
 
 
 STOP_WORDS = {"a", "an", "the", "and", "or", "with", "for", "of", "to", "in", "on"}
 
-_tag_freq_cache = {"mtime": 0, "index": None}
+_tag_freq_cache = {"marker": None, "index": None}
 
 
 def _tokenize(text):
@@ -113,32 +114,23 @@ def _build_tag_freq_index(tag_db):
 
 
 def _get_tag_freq_index():
-    """Return cached frequency index, rebuilding only when tag DB file changes."""
+    """Return cached frequency index, rebuilding only after a tag DB write."""
     fetch_samples._ensure_settings()
-    tags_path = fetch_samples.TAGS_FILE
-    try:
-        current_mtime = os.path.getmtime(tags_path)
-    except OSError:
-        _tag_freq_cache["index"] = None
-        _tag_freq_cache["mtime"] = 0
-        return {}
-
-    if _tag_freq_cache["index"] is not None and _tag_freq_cache["mtime"] >= current_mtime:
+    marker = tags_freshness_marker(fetch_samples.TAGS_FILE)
+    if _tag_freq_cache["index"] is not None and _tag_freq_cache["marker"] == marker:
         return _tag_freq_cache["index"]
 
     try:
         tag_db = fetch_samples.load_tag_db()
     except (FileNotFoundError, OSError, ValueError):
         _tag_freq_cache["index"] = None
-        _tag_freq_cache["mtime"] = 0
         return {}
     if not isinstance(tag_db, dict):
         _tag_freq_cache["index"] = None
-        _tag_freq_cache["mtime"] = 0
         return {}
 
     index = _build_tag_freq_index(tag_db)
-    _tag_freq_cache["mtime"] = current_mtime
+    _tag_freq_cache["marker"] = marker
     _tag_freq_cache["index"] = index
     return index
 
