@@ -2,7 +2,6 @@
 import os
 import sys
 import json
-import fcntl
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -11,7 +10,7 @@ SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from jambox_config import load_settings_for_script
+from jambox_config import atomic_write_json, file_lock, load_settings_for_script
 
 # Load settings using the original script location (not nested package)
 _SCRIPT_PATH = os.path.join(SCRIPTS_DIR, "ingest_downloads.py")
@@ -100,25 +99,16 @@ def _log_ingest(source_name, num_samples, categories, source_type='pack'):
         'categories': categories,
     }
 
-    log = []
-    try:
-        with open(INGEST_LOG, 'r+') as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
+    with file_lock(INGEST_LOG):
+        try:
+            with open(INGEST_LOG, encoding="utf-8") as f:
                 log = json.load(f)
-            except (json.JSONDecodeError, ValueError):
-                log = []
-            log.append(entry)
-            log = log[-500:]
-            f.seek(0)
-            f.truncate()
-            json.dump(log, f, indent=2)
-            fcntl.flock(f, fcntl.LOCK_UN)
-    except FileNotFoundError:
-        with open(INGEST_LOG, 'w') as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            json.dump([entry], f, indent=2)
-            fcntl.flock(f, fcntl.LOCK_UN)
+        except (FileNotFoundError, json.JSONDecodeError, ValueError):
+            log = []
+        if not isinstance(log, list):
+            log = []
+        log.append(entry)
+        atomic_write_json(INGEST_LOG, log[-500:], sort_keys=False)
 
     with _watcher_lock:
         _watcher_state['recent'].append(entry)

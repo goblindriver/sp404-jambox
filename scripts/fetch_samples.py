@@ -567,13 +567,17 @@ def rank_library_matches_legacy(query, bank_config=None, tag_db=None, used_files
     _ensure_settings()
     parsed = parse_pad_query(query)
     bank_config = bank_config or {}
+    # The persistent score cache is keyed to the library's tag DB, so only
+    # results ranked against that DB may be saved; a caller-supplied dict
+    # (eval fixtures, retrieval subsets) gets a throwaway in-memory cache.
+    uses_library_db = tag_db is None
     tag_db = tag_db if tag_db is not None else load_tag_db()
     tag_db = tag_db if isinstance(tag_db, dict) else {}
     used_files = used_files or set()
 
     owns_cache = cache_entries is None
     if owns_cache:
-        cache_entries = load_score_cache(LIBRARY)
+        cache_entries = load_score_cache(LIBRARY) if uses_library_db else {}
 
     cache_key = score_cache_key(
         parsed,
@@ -608,7 +612,7 @@ def rank_library_matches_legacy(query, bank_config=None, tag_db=None, used_files
         cached_results.sort(key=lambda item: item["score"], reverse=True)
         cached_results = cached_results[:200]
         cache_entries[cache_key] = cached_results
-        if owns_cache:
+        if owns_cache and uses_library_db:
             save_score_cache(LIBRARY, cache_entries)
 
     filtered = [

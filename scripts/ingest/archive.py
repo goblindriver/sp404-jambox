@@ -173,14 +173,14 @@ def read_source_context(filepath):
         source_path = base + suffix
         if os.path.exists(source_path):
             try:
-                with open(source_path) as f:
+                with open(source_path, encoding='utf-8') as f:
                     return f.read().strip()
             except IOError:
                 pass
     dir_source = os.path.join(os.path.dirname(filepath), '_SOURCE.txt')
     if os.path.exists(dir_source):
         try:
-            with open(dir_source) as f:
+            with open(dir_source, encoding='utf-8') as f:
                 return f.read().strip()
         except IOError:
             pass

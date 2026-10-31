@@ -304,7 +304,7 @@ def main():
         db = apply_clean(report["duplicate_groups"], db)
 
     if args.report_json or args.clean:
-        with open(REPORT_PATH, "w") as handle:
+        with open(REPORT_PATH, "w", encoding="utf-8") as handle:
             json.dump(report, handle, indent=2)
 
     print(json.dumps(report, indent=2))

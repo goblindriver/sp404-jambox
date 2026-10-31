@@ -441,7 +441,7 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
 def _load_checkpoint():
     if os.path.exists(CHECKPOINT_PATH):
         try:
-            with open(CHECKPOINT_PATH) as f:
+            with open(CHECKPOINT_PATH, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             pass
@@ -454,7 +454,7 @@ def _save_checkpoint(cp):
     os.makedirs(cp_dir, exist_ok=True)
     fd, tmp = tempfile.mkstemp(suffix=".json", dir=cp_dir)
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(cp, f, indent=2)
         os.replace(tmp, CHECKPOINT_PATH)
     except BaseException:

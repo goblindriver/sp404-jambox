@@ -96,7 +96,7 @@ def music_status():
 
     # Fallback to old index
     try:
-        with open(_index_file()) as f:
+        with open(_index_file(), encoding='utf-8') as f:
             index = json.load(f)
         count = len(index.get('tracks', index))
         return jsonify({

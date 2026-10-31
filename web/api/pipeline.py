@@ -323,7 +323,7 @@ def watcher_status():
         log = []
         if os.path.exists(log_path):
             try:
-                with open(log_path) as f:
+                with open(log_path, encoding='utf-8') as f:
                     log = json.load(f)
                 # Return last 20 entries
                 log = log[-20:]

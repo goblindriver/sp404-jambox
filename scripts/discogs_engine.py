@@ -153,7 +153,7 @@ def _get_model():
     onnx_path = _download_if_needed(MODEL_URL, os.path.join(models, "discogs-effnet-bsdynamic-1.onnx"))
     meta_path = _download_if_needed(META_URL, os.path.join(models, "discogs-effnet.json"))
 
-    with open(meta_path) as f:
+    with open(meta_path, encoding="utf-8") as f:
         meta = json.load(f)
     _class_labels = meta["classes"]
 

@@ -550,7 +550,7 @@ def run_execute(args):
     report_dir = os.path.join(REPO_DIR, "data", "audit_reports")
     os.makedirs(report_dir, exist_ok=True)
     report_path = os.path.join(report_dir, "trim_report_latest.json")
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     print("\n  Report: %s" % report_path)
 

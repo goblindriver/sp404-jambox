@@ -1,8 +1,10 @@
 """Shared runtime settings for the SP-404 Jambox app and scripts."""
 
+import contextlib
 import json
 import os
 import shutil
+import time
 
 import yaml
 
@@ -16,7 +18,7 @@ def _load_dotenv():
     if not os.path.isfile(env_file):
         return
     try:
-        with open(env_file) as f:
+        with open(env_file, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -93,7 +95,7 @@ def atomic_write_json(path, data, indent=2, sort_keys=True):
     os.makedirs(target_dir, exist_ok=True)
     fd, tmp = tempfile.mkstemp(suffix=".json", dir=target_dir)
     try:
-        with os.fdopen(fd, "w") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=indent, sort_keys=sort_keys)
         os.replace(tmp, path)
     except BaseException:
@@ -115,7 +117,7 @@ def atomic_write_yaml(path, data, **kwargs):
     kwargs.setdefault("sort_keys", False)
     fd, tmp = tempfile.mkstemp(suffix=".yaml", dir=target_dir)
     try:
-        with os.fdopen(fd, "w") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
             yaml.safe_dump(data, fh, **kwargs)
         os.replace(tmp, path)
     except BaseException:
@@ -124,6 +126,42 @@ def atomic_write_yaml(path, data, **kwargs):
         except OSError:
             pass
         raise
+
+
+@contextlib.contextmanager
+def file_lock(path, timeout=60):
+    """Hold an exclusive inter-process lock on ``path + ".lock"``.
+
+    Uses fcntl on POSIX and msvcrt on Windows so read-modify-write cycles on
+    shared JSON files (ingest log, caches) don't interleave across processes.
+    """
+    lock_path = path + ".lock"
+    os.makedirs(os.path.dirname(lock_path) or ".", exist_ok=True)
+    with open(lock_path, "a+b") as fh:
+        if os.name == "nt":
+            import msvcrt
+            deadline = time.monotonic() + timeout
+            fh.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for lock: {lock_path}")
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
 
 
 class ConfigError(ValueError):
@@ -335,7 +373,7 @@ def load_bank_config(config_path, *, strict=False):
     import yaml
 
     try:
-        with open(config_path, "r") as fh:
+        with open(config_path, "r", encoding="utf-8") as fh:
             payload = yaml.safe_load(fh)
     except FileNotFoundError as exc:
         if strict:
@@ -378,7 +416,7 @@ def _migrate_json_to_sqlite(json_path, db_path):
     """One-time migration: import existing JSON tags into SQLite."""
     import sqlite3
     try:
-        with open(json_path, "r") as fh:
+        with open(json_path, "r", encoding="utf-8") as fh:
             payload = json.load(fh)
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return
@@ -434,7 +472,7 @@ def load_tag_db(tags_file):
 
     # Fallback to JSON
     try:
-        with open(tags_file, "r") as fh:
+        with open(tags_file, "r", encoding="utf-8") as fh:
             payload = json.load(fh)
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return {}

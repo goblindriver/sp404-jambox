@@ -153,7 +153,7 @@ def ingest_pack(pack_dir, dry_run=False):
     if not dry_run and total > 0:
         try:
             if os.path.isdir(pack_dir):
-                with open(marker_path, 'w') as f:
+                with open(marker_path, 'w', encoding='utf-8') as f:
                     f.write(f"Ingested {total} files at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         except OSError as e:
             print(f"  Could not write marker: {e}")
