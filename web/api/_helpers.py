@@ -11,6 +11,25 @@ import uuid
 from flask import request
 
 
+def normalize_bank(value):
+    """Validate a bank letter from a request; returns it lowercase (A-J only)."""
+    bank = str(value or '').strip().lower()
+    if len(bank) != 1 or bank < 'a' or bank > 'j':
+        raise ValueError('bank must be a single letter from A to J')
+    return bank
+
+
+def normalize_pad(value):
+    """Validate a pad number from a request (1-12)."""
+    try:
+        pad = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('pad must be an integer') from exc
+    if pad < 1 or pad > 12:
+        raise ValueError('pad must be between 1 and 12')
+    return pad
+
+
 # ═══════════════════════════════════════════════════════════
 # Background job tracking
 # ═══════════════════════════════════════════════════════════

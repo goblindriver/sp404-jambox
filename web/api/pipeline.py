@@ -3,7 +3,7 @@ import os, sys, time as _time, threading, subprocess, json
 from flask import Blueprint, jsonify, request, current_app
 from jambox_config import build_subprocess_env, load_tag_db
 
-from api._helpers import JobTracker
+from api._helpers import JobTracker, normalize_bank, normalize_pad
 
 pipeline_bp = Blueprint('pipeline', __name__)
 
@@ -42,13 +42,13 @@ def _command_error_payload(result):
 def _normalize_pad_value(value):
     if value in (None, ''):
         return None
-    try:
-        pad = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError('pad must be an integer') from exc
-    if pad < 1 or pad > 12:
-        raise ValueError('pad must be between 1 and 12')
-    return pad
+    return normalize_pad(value)
+
+
+def _normalize_bank_value(value):
+    if value in (None, ''):
+        return None
+    return normalize_bank(value)
 
 
 def _run_script(script_name, timeout=None):
@@ -189,8 +189,8 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
 @pipeline_bp.route('/pipeline/fetch', methods=['POST'])
 def fetch():
     data = request.get_json(silent=True) or {}
-    bank = data.get('bank')
     try:
+        bank = _normalize_bank_value(data.get('bank'))
         pad = _normalize_pad_value(data.get('pad'))
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400

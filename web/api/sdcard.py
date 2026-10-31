@@ -3,6 +3,8 @@ import os, shutil, struct, subprocess
 from flask import Blueprint, jsonify, request, current_app
 from wav_utils import wav_identity as _wav_identity
 
+from api._helpers import normalize_bank, normalize_pad
+
 sdcard_bp = Blueprint('sdcard', __name__)
 
 
@@ -371,6 +373,80 @@ def pull_intelligence():
     })
 
 
+def _slot_fname(slot):
+    bank, pad = slot
+    return f"{bank}{pad:07d}.WAV"
+
+
+def _slot_offset(slot):
+    bank, pad = slot
+    return ((ord(bank) - ord('A')) * 12 + (pad - 1)) * 32
+
+
+def _plan_reorganize(moves, sd_smpl):
+    """Validate a move list and turn it into a full placement {target: origin}.
+
+    Raises ValueError (nothing has been touched yet) for malformed moves, a
+    pad named twice, or a source pad with no sample. A destination already
+    holding a sample that isn't itself moving is never overwritten: that
+    sample moves into a slot the moves vacate (a single move becomes a swap).
+    """
+    if not isinstance(moves, list) or not moves:
+        raise ValueError('No moves specified')
+    pairs = []
+    for move in moves:
+        if not isinstance(move, dict):
+            raise ValueError('Each move needs "from" and "to"')
+        src, dst = move.get('from') or {}, move.get('to') or {}
+        if not isinstance(src, dict) or not isinstance(dst, dict):
+            raise ValueError('Each move needs "from" and "to"')
+        source = (normalize_bank(src.get('bank')).upper(), normalize_pad(src.get('pad')))
+        target = (normalize_bank(dst.get('bank')).upper(), normalize_pad(dst.get('pad')))
+        if source != target:
+            pairs.append((source, target))
+
+    sources = [s for s, _ in pairs]
+    targets = [t for _, t in pairs]
+    if len(set(sources)) != len(sources) or len(set(targets)) != len(targets):
+        raise ValueError('A pad appears more than once in the moves')
+    for source in sources:
+        if not os.path.isfile(os.path.join(sd_smpl, _slot_fname(source))):
+            raise ValueError(f'{_slot_fname(source)} not found on card')
+
+    placement = {target: source for source, target in pairs}
+    vacated = [s for s in sources if s not in placement]
+    for source, target in pairs:
+        occupied = os.path.isfile(os.path.join(sd_smpl, _slot_fname(target)))
+        if target in sources or not occupied:
+            continue
+        home = source if source in vacated else vacated[0]
+        vacated.remove(home)
+        placement[home] = target
+    return placement, vacated
+
+
+def _rebuild_padinfo(padinfo_path, placement, vacated):
+    """Move each sample's 32-byte PAD_INFO record with it (from the original bytes)."""
+    from gen_padinfo import encode_pad
+
+    with open(padinfo_path, 'rb') as f:
+        original = f.read()
+    if len(original) < 3840:
+        raise ValueError('PAD_INFO.BIN is shorter than 3840 bytes')
+    updated = bytearray(original)
+    for target, origin in placement.items():
+        src = _slot_offset(origin)
+        dst = _slot_offset(target)
+        updated[dst:dst + 32] = original[src:src + 32]
+    for slot in vacated:
+        off = _slot_offset(slot)
+        updated[off:off + 32] = encode_pad()
+    tmp = padinfo_path + '.tmp'
+    with open(tmp, 'wb') as f:
+        f.write(updated)
+    os.replace(tmp, padinfo_path)
+
+
 @sdcard_bp.route('/sdcard/reorganize', methods=['POST'])
 def reorganize():
     """Move samples between pad slots on the SD card.
@@ -379,97 +455,56 @@ def reorganize():
 
         {"moves": [{"from": {"bank": "D", "pad": 1}, "to": {"bank": "F", "pad": 3}}, ...]}
 
-    Renames WAV files on card and regenerates PAD_INFO.BIN so that each
-    sample's user settings (BPM, loop/gate, reverse, lofi) follow it to
-    the new slot.
+    Every move is validated before anything on the card changes. Moving onto
+    an occupied pad swaps the two samples (nothing is deleted). Renames run
+    through temp names and roll back on failure, and PAD_INFO.BIN is rebuilt
+    from its original bytes so each sample's settings (BPM, loop/gate,
+    reverse, lofi, trim) follow it.
     """
     sd_smpl = _sd_smpl_dir()
     if not os.path.isdir(sd_smpl):
         return jsonify({'ok': False, 'error': 'SD card not mounted'}), 400
 
     data = request.get_json(silent=True) or {}
-    moves = data.get('moves', [])
-    if not moves:
-        return jsonify({'ok': False, 'error': 'No moves specified'}), 400
+    try:
+        placement, vacated = _plan_reorganize(data.get('moves'), sd_smpl)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc), 'errors': [str(exc)]}), 400
 
-    padinfo_path = os.path.join(sd_smpl, 'PAD_INFO.BIN')
-    pad_settings = _decode_padinfo(padinfo_path)
+    done = []  # (from_path, to_path) renames already applied, for rollback
+    try:
+        temps = {}
+        for origin in placement.values():
+            path = os.path.join(sd_smpl, _slot_fname(origin))
+            tmp = path + '.REORG_TMP'
+            os.rename(path, tmp)
+            done.append((path, tmp))
+            temps[origin] = tmp
+        for target, origin in placement.items():
+            dest = os.path.join(sd_smpl, _slot_fname(target))
+            os.rename(temps[origin], dest)  # never overwrites: every occupied target was moved away
+            done.append((temps[origin], dest))
+    except OSError as exc:
+        for src, dest in reversed(done):
+            try:
+                os.rename(dest, src)
+            except OSError:
+                pass
+        message = f'Reorganize failed, card left unchanged: {exc}'
+        return jsonify({'ok': False, 'error': message, 'errors': [message]}), 500
 
     errors = []
-    completed = []
-    temp_suffix = '.REORG_TMP'
-
-    # Phase 1: rename to temp names (avoid collisions on swaps)
-    for move in moves:
-        src = move.get('from', {})
-        dst = move.get('to', {})
-        src_bank, src_pad = src.get('bank', ''), src.get('pad', 0)
-        dst_bank, dst_pad = dst.get('bank', ''), dst.get('pad', 0)
-
-        src_fname = f"{src_bank.upper()}{int(src_pad):07d}.WAV"
-        src_path = os.path.join(sd_smpl, src_fname)
-        if not os.path.isfile(src_path):
-            errors.append(f'{src_fname} not found on card')
-            continue
-
-        tmp_path = src_path + temp_suffix
+    padinfo_path = os.path.join(sd_smpl, 'PAD_INFO.BIN')
+    if os.path.exists(padinfo_path):
         try:
-            os.rename(src_path, tmp_path)
-            completed.append({
-                'src_fname': src_fname, 'tmp_path': tmp_path,
-                'dst_bank': dst_bank.upper(), 'dst_pad': int(dst_pad),
-                'src_settings_key': (src_bank.upper(), int(src_pad)),
-            })
-        except OSError as e:
-            errors.append(f'Failed to move {src_fname}: {e}')
-
-    # Phase 2: rename temp files to final destinations
-    for item in completed:
-        dst_fname = f"{item['dst_bank']}{item['dst_pad']:07d}.WAV"
-        dst_path = os.path.join(sd_smpl, dst_fname)
-        try:
-            if os.path.exists(dst_path):
-                os.remove(dst_path)
-            os.rename(item['tmp_path'], dst_path)
-            item['dst_fname'] = dst_fname
-        except OSError as e:
-            errors.append(f'Failed to place {dst_fname}: {e}')
-
-    # Phase 3: rebuild PAD_INFO.BIN with settings following each sample
-    try:
-        with open(padinfo_path, 'rb') as f:
-            padinfo_data = bytearray(f.read())
-
-        for item in completed:
-            src_key = item['src_settings_key']
-            src_info = pad_settings.get(src_key, {})
-            if not src_info:
-                continue
-
-            dst_idx = (ord(item['dst_bank']) - ord('A')) * 12 + (item['dst_pad'] - 1)
-            offset = dst_idx * 32
-
-            # Reconstruct the 32-byte record with the source pad's settings
-            orig_start = src_info.get('trim_start', 512) or 512
-            orig_end = src_info.get('trim_end', 512) or 512
-            # For non-trimmed pads, keep original boundaries from source
-            src_idx = (ord(src_key[0]) - ord('A')) * 12 + (src_key[1] - 1)
-            src_offset = src_idx * 32
-            src_record = struct.unpack('>IIII BBBBBBBB II',
-                                       bytes(padinfo_data[src_offset:src_offset + 32]))
-
-            # Write source record into destination slot
-            padinfo_data[offset:offset + 32] = struct.pack(
-                '>IIII BBBBBBBB II', *src_record)
-
-        with open(padinfo_path, 'wb') as f:
-            f.write(padinfo_data)
-    except (OSError, struct.error) as e:
-        errors.append(f'PAD_INFO rebuild failed: {e}')
+            _rebuild_padinfo(padinfo_path, placement, vacated)
+        except (OSError, ValueError) as exc:
+            errors.append(f'PAD_INFO rebuild failed: {exc}')
 
     return jsonify({
-        'ok': len(errors) == 0,
-        'moved': len(completed),
+        'ok': not errors,
+        'moved': len(placement),
+        'placement': {_slot_fname(t): _slot_fname(o) for t, o in placement.items()},
         'errors': errors,
     })
 
