@@ -27,6 +27,13 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(resolve_backend(LLAMA_CPP), (LLAMA_CPP, False))
         self.assertEqual(resolve_backend("http://box:11434/api/chat"), ("http://box:11434/api/chat", True))
 
+    def test_a_bare_base_url_gets_the_chat_path(self):
+        self.assertEqual(resolve_backend("http://100.71.235.42:11434"), ("http://100.71.235.42:11434/api/chat", True))
+        self.assertEqual(resolve_backend("http://box:11434/"), ("http://box:11434/api/chat", True))
+        self.assertEqual(resolve_backend("http://box:8080"), ("http://box:8080/v1/chat/completions", False))
+        self.assertEqual(resolve_backend("http://box:11434", "openai"), ("http://box:11434/v1/chat/completions", False))
+        self.assertEqual(resolve_backend("http://box:8080", "ollama"), ("http://box:8080/api/chat", True))
+
     def test_explicit_backend_wins(self):
         self.assertEqual(resolve_backend(OLLAMA, "openai"), (OLLAMA, False))
         self.assertEqual(resolve_backend(LLAMA_CPP, "ollama"), ("http://127.0.0.1:8080/api/chat", True))

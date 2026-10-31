@@ -152,12 +152,20 @@ def resolve_backend(endpoint, backend="auto"):
         backend = "auto"
     if endpoint.rstrip("/").endswith("/api/chat"):
         return endpoint, True
+    try:
+        parts = urlsplit(endpoint)
+        port = parts.port
+    except ValueError:
+        parts, port = None, None
+    if parts is not None and parts.netloc and not parts.path.strip("/"):
+        # A bare base URL ("http://box:11434", the way OLLAMA_HOST is written)
+        # would otherwise be POSTed to the server root.
+        base = endpoint.rstrip("/")
+        if backend == "ollama" or (backend == "auto" and port == OLLAMA_DEFAULT_PORT):
+            return base + "/api/chat", True
+        return base + "/v1/chat/completions", False
     if backend == "openai" or "/v1/chat/completions" not in endpoint:
         return endpoint, False
-    try:
-        port = urlsplit(endpoint).port
-    except ValueError:
-        port = None
     if backend == "ollama" or port == OLLAMA_DEFAULT_PORT:
         return endpoint.replace("/v1/chat/completions", "/api/chat"), True
     return endpoint, False
