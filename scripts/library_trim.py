@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 """Library trim: profile, audit, and aggressively prune the sample library.
 
-Two modes:
-  --profile   Dry-run audit: duration buckets, type distribution, quality scores,
-              dedup potential, audio quality flags, projected trim summary.
-  --execute   Perform the trim passes (duration → dedup → audio quality → quality_score).
-              Add --dry-run to preview without deleting.
+Modes:
+  profile   Audit: duration buckets, type distribution, quality scores,
+            dedup potential, audio quality flags, projected trim summary.
+  execute   Trim passes (duration → dedup → audio quality → quality_score).
+            Dry run by default; --apply moves cut files to
+            LIBRARY/_TRASH/<run-id>/ (nothing is ever deleted outright).
+  restore   Undo a trim run: files and their tag rows go back.
 
 Usage:
-    python scripts/library_trim.py --profile
-    python scripts/library_trim.py --execute --min-duration 30
-    python scripts/library_trim.py --execute --min-duration 30 --dry-run
-    python scripts/library_trim.py --execute --skip-dedup
+    python scripts/library_trim.py profile
+    python scripts/library_trim.py execute --min-duration 30            # preview
+    python scripts/library_trim.py execute --min-duration 30 --apply    # trim
+    python scripts/library_trim.py restore                              # list runs
+    python scripts/library_trim.py restore 20261031-142500              # undo
 """
 
 import argparse
 import collections
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -29,14 +33,17 @@ if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
 from jambox_config import (
-    LIBRARY_SKIP_DIRS,
+    TRASH_DIRNAME,
+    build_subprocess_env,
+    delete_tag_paths,
     is_excluded_rel_path,
     load_settings_for_script,
-    delete_tag_paths,
     load_tag_db,
     merge_tag_fields,
+    resolve_command,
+    upsert_tag_entries,
 )
-from tag_library import AUDIO_EXTS, get_duration
+from tag_library import get_duration
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -171,7 +178,9 @@ def _check_audio_quality(samples):
     """Returns set of issue strings: 'silent', 'clipping', 'dc_offset'."""
     import numpy as np
     issues = set()
-    if samples is None or len(samples) == 0:
+    if samples is None:  # undecodable: no verdict (callers skip these)
+        return issues
+    if len(samples) == 0:
         issues.add("silent")
         return issues
     abs_samples = np.abs(samples)
@@ -323,51 +332,84 @@ def run_profile(args):
 # Execute mode
 # ---------------------------------------------------------------------------
 
-def _delete_file_and_entry(rel_path, db, stats, dry_run=False, reason=""):
-    """Delete a file from disk and remove its tag DB entry."""
-    full_path = os.path.join(LIBRARY, rel_path)
-    if dry_run:
-        stats["would_delete"] += 1
+class TrashRun:
+    """Moves trimmed files to LIBRARY/_TRASH/<run-id>/ and records how to undo it.
+
+    Every move appends a line to manifest.jsonl (rel_path, reason, tag_row)
+    before the tag row is deleted, so `library_trim.py restore <run-id>` can
+    put both the file and its tags back, even after a crash mid-run.
+    """
+
+    def __init__(self, run_id=None):
+        self.run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.root = os.path.join(LIBRARY, TRASH_DIRNAME, self.run_id)
+        self.manifest = os.path.join(self.root, "manifest.jsonl")
+        self._pending_deletes = []
+
+    def move(self, rel_path, entry, reason):
+        src = os.path.join(LIBRARY, rel_path)
+        os.makedirs(self.root, exist_ok=True)
+        if os.path.exists(src):
+            dest = os.path.join(self.root, rel_path)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.move(src, dest)
+        with open(self.manifest, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"rel_path": rel_path, "reason": reason, "tag_row": entry}) + "\n")
+        self._pending_deletes.append(rel_path)
+        if len(self._pending_deletes) >= 200:
+            self.flush()
+
+    def flush(self):
+        if self._pending_deletes:
+            delete_tag_paths(TAGS_FILE, self._pending_deletes)
+            self._pending_deletes = []
+
+
+def _new_stats():
+    return {"trashed": 0, "would_trash": 0, "would_free": 0, "errors": 0}
+
+
+def _trash_file_and_entry(rel_path, db, stats, trash, reason=""):
+    """Move a file to the trash run and drop its tag row (count only when trash is None)."""
+    if trash is None:
+        stats["would_trash"] += 1
         stats["would_free"] += _file_size(rel_path)
         return
     try:
-        if os.path.exists(full_path):
-            os.remove(full_path)
+        trash.move(rel_path, db.get(rel_path), reason)
         db.pop(rel_path, None)
-        stats["deleted"] += 1
+        stats["trashed"] += 1
     except OSError as e:
-        print("  ERROR deleting %s: %s" % (rel_path, e), file=sys.stderr)
+        print("  ERROR trashing %s: %s" % (rel_path, e), file=sys.stderr)
         stats["errors"] += 1
 
 
-def _pass_duration(db, active_keys, min_duration, dry_run):
-    """Pass 1: delete files >= min_duration seconds."""
+def _print_pass_result(stats, trash):
+    if trash is None:
+        print("  Would trash: %d files (%s)" % (stats["would_trash"], _format_bytes(stats["would_free"])))
+    else:
+        print("  Moved to trash: %d files  Errors: %d" % (stats["trashed"], stats["errors"]))
+
+
+def _pass_duration(db, active_keys, min_duration, trash):
+    """Pass 1: trash files >= min_duration seconds."""
     print("\n--- Pass 1: Duration Cut (>= %ds) ---" % min_duration)
-    stats = {"deleted": 0, "would_delete": 0, "would_free": 0, "errors": 0}
+    stats = _new_stats()
 
     durations = _batch_resolve_durations(db, active_keys)
-    removed_keys = []
-
     for rel_path in list(active_keys):
-        dur = durations.get(rel_path, 0.0)
-        if dur >= min_duration:
-            _delete_file_and_entry(rel_path, db, stats, dry_run=dry_run, reason="duration")
-            removed_keys.append(rel_path)
+        if durations.get(rel_path, 0.0) >= min_duration:
+            _trash_file_and_entry(rel_path, db, stats, trash, reason="duration")
+            active_keys.discard(rel_path)
 
-    for k in removed_keys:
-        active_keys.discard(k)
-
-    if dry_run:
-        print("  Would delete: %d files (%s)" % (stats["would_delete"], _format_bytes(stats["would_free"])))
-    else:
-        print("  Deleted: %d files  Errors: %d" % (stats["deleted"], stats["errors"]))
+    _print_pass_result(stats, trash)
     return stats
 
 
-def _pass_dedup(db, active_keys, threshold, dry_run):
+def _pass_dedup(db, active_keys, threshold, trash):
     """Pass 2: fingerprint-based dedup, keep best quality."""
     print("\n--- Pass 2: Dedup (threshold=%.2f) ---" % threshold)
-    stats = {"deleted": 0, "would_delete": 0, "would_free": 0, "errors": 0}
+    stats = _new_stats()
 
     try:
         from deduplicate_samples import find_duplicate_groups
@@ -382,20 +424,18 @@ def _pass_dedup(db, active_keys, threshold, dry_run):
     for group in groups:
         for dupe_path in group["duplicates"]:
             if dupe_path in active_keys:
-                _delete_file_and_entry(dupe_path, db, stats, dry_run=dry_run, reason="dedup")
+                _trash_file_and_entry(dupe_path, db, stats, trash, reason="dedup")
                 active_keys.discard(dupe_path)
 
-    if dry_run:
-        print("  Would delete: %d files (%s)" % (stats["would_delete"], _format_bytes(stats["would_free"])))
-    else:
-        print("  Deleted: %d files  Errors: %d" % (stats["deleted"], stats["errors"]))
+    _print_pass_result(stats, trash)
     return stats
 
 
-def _pass_audio_quality(db, active_keys, dry_run):
-    """Pass 3: delete silent/clipping/DC-offset files."""
+def _pass_audio_quality(db, active_keys, trash):
+    """Pass 3: trash silent/clipping/DC-offset files. Unreadable files are skipped."""
     print("\n--- Pass 3: Audio Quality ---")
-    stats = {"deleted": 0, "would_delete": 0, "would_free": 0, "errors": 0}
+    stats = _new_stats()
+    stats["unreadable"] = 0
 
     try:
         import numpy as np  # noqa: F401
@@ -411,18 +451,22 @@ def _pass_audio_quality(db, active_keys, dry_run):
     for i, rel_path in enumerate(keys_snapshot):
         full_path = os.path.join(LIBRARY, rel_path)
         if not os.path.exists(full_path):
-            _delete_file_and_entry(rel_path, db, stats, dry_run=dry_run, reason="missing")
+            _trash_file_and_entry(rel_path, db, stats, trash, reason="missing")
             active_keys.discard(rel_path)
             continue
 
         samples = _read_pcm_short(full_path)
+        if samples is None:
+            # A decode failure says nothing about the audio: never cut on it.
+            stats["unreadable"] += 1
+            continue
         issues = _check_audio_quality(samples)
         checked += 1
 
         if issues:
             for iss in issues:
                 issue_counts[iss] += 1
-            _delete_file_and_entry(rel_path, db, stats, dry_run=dry_run, reason=",".join(issues))
+            _trash_file_and_entry(rel_path, db, stats, trash, reason=",".join(sorted(issues)))
             active_keys.discard(rel_path)
 
         if (i + 1) % 2000 == 0:
@@ -431,38 +475,32 @@ def _pass_audio_quality(db, active_keys, dry_run):
             print("  [%d/%d] %.0f files/sec" % (i + 1, len(keys_snapshot), rate))
 
     elapsed = time.time() - t0
-    print("  Checked %d files in %.1fs" % (checked, elapsed))
+    print("  Checked %d files in %.1fs (%d unreadable, skipped)" % (checked, elapsed, stats["unreadable"]))
     for iss, cnt in issue_counts.most_common():
         print("    %s: %d" % (iss, cnt))
 
-    if dry_run:
-        print("  Would delete: %d files (%s)" % (stats["would_delete"], _format_bytes(stats["would_free"])))
-    else:
-        print("  Deleted: %d files  Errors: %d" % (stats["deleted"], stats["errors"]))
+    _print_pass_result(stats, trash)
     return stats
 
 
-def _pass_quality_score(db, active_keys, min_score, dry_run):
-    """Pass 4: delete files with quality_score below min_score."""
-    print("\n--- Pass 4: Quality Score (delete score < %d) ---" % min_score)
-    stats = {"deleted": 0, "would_delete": 0, "would_free": 0, "errors": 0}
+def _pass_quality_score(db, active_keys, min_score, trash):
+    """Pass 4: trash files with quality_score below min_score."""
+    print("\n--- Pass 4: Quality Score (trash score < %d) ---" % min_score)
+    stats = _new_stats()
 
     for rel_path in list(active_keys):
         entry = db.get(rel_path, {})
         qs = entry.get("quality_score")
         if qs is not None and qs < min_score:
-            _delete_file_and_entry(rel_path, db, stats, dry_run=dry_run, reason="quality_%d" % qs)
+            _trash_file_and_entry(rel_path, db, stats, trash, reason="quality_%d" % qs)
             active_keys.discard(rel_path)
 
-    if dry_run:
-        print("  Would delete: %d files (%s)" % (stats["would_delete"], _format_bytes(stats["would_free"])))
-    else:
-        print("  Deleted: %d files  Errors: %d" % (stats["deleted"], stats["errors"]))
+    _print_pass_result(stats, trash)
     return stats
 
 
 def _cleanup_empty_dirs(root):
-    """Remove empty directories left after file deletion."""
+    """Remove empty directories left after files moved to the trash."""
     removed = 0
     for dirpath, dirs, files in os.walk(root, topdown=False):
         if dirpath == root:
@@ -477,50 +515,48 @@ def _cleanup_empty_dirs(root):
 
 
 def run_execute(args):
+    apply = bool(getattr(args, "apply", False)) and not args.dry_run
+    if not args.skip_audio_quality and not resolve_command(FFMPEG, build_subprocess_env(SETTINGS)):
+        print("ERROR: ffmpeg not found (%s). The audio-quality pass needs it; "
+              "set SP404_FFMPEG or pass --skip-audio-quality." % FFMPEG, file=sys.stderr)
+        sys.exit(2)
+
     db = load_tag_db(TAGS_FILE)
-    loaded_keys = set(db)
     active_keys = {k for k in db if not is_excluded_rel_path(k)}
+    trash = TrashRun() if apply else None
 
     print("=" * 70)
-    print("LIBRARY TRIM%s" % (" (DRY RUN)" if args.dry_run else ""))
+    print("LIBRARY TRIM%s" % ("" if apply else " (DRY RUN)"))
     print("=" * 70)
     print("  Library: %s" % LIBRARY)
     print("  Active files: %d" % len(active_keys))
     print("  Min duration: %ds" % args.min_duration)
-    if args.dry_run:
-        print("  Mode: DRY RUN (no files will be deleted)")
+    if apply:
+        print("  Mode: APPLY (files move to %s; undo with: library_trim.py restore %s)"
+              % (trash.root, trash.run_id))
     else:
-        print("  Mode: LIVE (files will be permanently deleted)")
+        print("  Mode: DRY RUN (nothing is moved; pass --apply to trim)")
     print()
 
     starting = len(active_keys)
     all_stats = {}
 
-    # Pass 1: Duration
-    all_stats["duration"] = _pass_duration(db, active_keys, args.min_duration, args.dry_run)
-
-    # Pass 2: Dedup
+    all_stats["duration"] = _pass_duration(db, active_keys, args.min_duration, trash)
     if not args.skip_dedup:
-        all_stats["dedup"] = _pass_dedup(db, active_keys, args.dedup_threshold, args.dry_run)
-
-    # Pass 3: Audio quality
+        all_stats["dedup"] = _pass_dedup(db, active_keys, args.dedup_threshold, trash)
     if not args.skip_audio_quality:
-        all_stats["audio_quality"] = _pass_audio_quality(db, active_keys, args.dry_run)
+        all_stats["audio_quality"] = _pass_audio_quality(db, active_keys, trash)
+    all_stats["quality_score"] = _pass_quality_score(db, active_keys, args.min_quality, trash)
 
-    # Pass 4: Quality score
-    all_stats["quality_score"] = _pass_quality_score(db, active_keys, args.min_quality, args.dry_run)
-
-    # Save DB
-    if not args.dry_run:
-        delete_tag_paths(TAGS_FILE, sorted(loaded_keys - set(db)))
+    if trash is not None:
+        trash.flush()
         empty_removed = _cleanup_empty_dirs(LIBRARY)
         if empty_removed:
             print("\n  Cleaned up %d empty directories" % empty_removed)
 
-    # Summary
     final = len(active_keys)
-    total_deleted = sum(s.get("deleted", 0) for s in all_stats.values())
-    total_would = sum(s.get("would_delete", 0) for s in all_stats.values())
+    total_trashed = sum(s.get("trashed", 0) for s in all_stats.values())
+    total_would = sum(s.get("would_trash", 0) for s in all_stats.values())
     total_errors = sum(s.get("errors", 0) for s in all_stats.values())
 
     print("\n" + "=" * 70)
@@ -528,23 +564,23 @@ def run_execute(args):
     print("=" * 70)
     print("  Starting files:  %6d" % starting)
     for name, stats in all_stats.items():
-        cut = stats.get("deleted", 0) or stats.get("would_delete", 0)
+        cut = stats.get("trashed", 0) or stats.get("would_trash", 0)
         if cut:
             print("    %-18s -%d" % (name, cut))
     print("  Final files:     %6d" % final)
 
-    if args.dry_run:
+    if trash is None:
         total_free = sum(s.get("would_free", 0) for s in all_stats.values())
-        print("\n  DRY RUN: would delete %d files, freeing %s" % (total_would, _format_bytes(total_free)))
-        print("  Run without --dry-run to execute.")
+        print("\n  DRY RUN: would move %d files to the trash, freeing %s" % (total_would, _format_bytes(total_free)))
+        print("  Re-run with --apply to trim.")
     else:
-        print("\n  Deleted: %d  Errors: %d" % (total_deleted, total_errors))
-        print("  Tag DB saved: %d entries" % len(db))
+        print("\n  Moved to trash: %d  Errors: %d" % (total_trashed, total_errors))
+        print("  Undo with: python scripts/library_trim.py restore %s" % trash.run_id)
 
-    # Write report
     report = {
         "generated_at": datetime.now().isoformat(),
-        "mode": "dry_run" if args.dry_run else "execute",
+        "mode": "apply" if trash is not None else "dry_run",
+        "trash_run": trash.run_id if trash is not None else None,
         "starting_files": starting,
         "final_files": final,
         "passes": {name: dict(s) for name, s in all_stats.items()},
@@ -558,6 +594,55 @@ def run_execute(args):
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     print("\n  Report: %s" % report_path)
+
+
+def run_restore(args):
+    """Move a trash run's files back into the library and restore their tag rows."""
+    trash_root = os.path.join(LIBRARY, TRASH_DIRNAME)
+    if not args.run_id:
+        runs = sorted(os.listdir(trash_root)) if os.path.isdir(trash_root) else []
+        print("Trash runs:" if runs else "No trash runs in %s" % trash_root)
+        for run in runs:
+            print("  %s" % run)
+        return 0
+
+    run = TrashRun(args.run_id)
+    if not os.path.isfile(run.manifest):
+        print("ERROR: no manifest at %s" % run.manifest, file=sys.stderr)
+        return 1
+
+    restored, conflicts, rows = 0, [], {}
+    with open(run.manifest, encoding="utf-8") as fh:
+        items = [json.loads(line) for line in fh if line.strip()]
+    for item in items:
+        rel_path = item["rel_path"]
+        trashed = os.path.join(run.root, rel_path)
+        if not os.path.exists(trashed):
+            continue  # was already missing when trimmed
+        dest = os.path.join(LIBRARY, rel_path)
+        if os.path.exists(dest):
+            conflicts.append(rel_path)
+            continue
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.move(trashed, dest)
+        if isinstance(item.get("tag_row"), dict):
+            rows[rel_path] = item["tag_row"]
+        restored += 1
+
+    upsert_tag_entries(TAGS_FILE, rows)
+    print("Restored %d files (%d tag rows) from %s" % (restored, len(rows), run.root))
+    if conflicts:
+        print("Left %d in the trash because the library already has a file at that path:" % len(conflicts))
+        for rel_path in conflicts[:20]:
+            print("  %s" % rel_path)
+    else:
+        os.remove(run.manifest)
+        _cleanup_empty_dirs(run.root)
+        try:
+            os.rmdir(run.root)
+        except OSError:
+            pass
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -576,19 +661,26 @@ def main():
                            help="Duration threshold for cut projection (default: 30)")
 
     # -- execute --
-    p_exec = sub.add_parser("execute", aliases=["--execute"], help="Perform trim passes")
+    p_exec = sub.add_parser("execute", aliases=["--execute"],
+                            help="Trim passes (dry run unless --apply)")
     p_exec.add_argument("--min-duration", type=int, default=30,
-                        help="Delete files >= this duration in seconds (default: 30)")
+                        help="Trash files >= this duration in seconds (default: 30)")
     p_exec.add_argument("--dedup-threshold", type=float, default=0.93,
                         help="Fingerprint similarity threshold for dedup (default: 0.93)")
     p_exec.add_argument("--min-quality", type=int, default=3,
-                        help="Delete files with quality_score < this (default: 3, deletes 1-2)")
+                        help="Trash files with quality_score < this (default: 3, trashes 1-2)")
     p_exec.add_argument("--skip-dedup", action="store_true",
                         help="Skip the dedup pass")
     p_exec.add_argument("--skip-audio-quality", action="store_true",
                         help="Skip the audio quality pass")
+    p_exec.add_argument("--apply", action="store_true",
+                        help="Actually move files to _TRASH/<run-id>/ (default: dry run)")
     p_exec.add_argument("--dry-run", action="store_true",
-                        help="Show what would be deleted without deleting")
+                        help="Preview only (the default; overrides --apply)")
+
+    # -- restore --
+    p_restore = sub.add_parser("restore", help="Undo a trim run (lists runs when no id is given)")
+    p_restore.add_argument("run_id", nargs="?", help="Trash run id, e.g. 20261031-142500")
 
     # Handle --profile / --execute as flags too (backward compat with plan CLI examples)
     parser.add_argument("--profile", action="store_true", help=argparse.SUPPRESS)
@@ -598,12 +690,15 @@ def main():
     parser.add_argument("--min-quality", type=int, default=3, help=argparse.SUPPRESS)
     parser.add_argument("--skip-dedup", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--skip-audio-quality", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--apply", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 
     # Reconcile subcommand vs flag style
-    if args.command in ("profile", "--profile") or getattr(args, "profile", False):
+    if args.command == "restore":
+        sys.exit(run_restore(args))
+    elif args.command in ("profile", "--profile") or getattr(args, "profile", False):
         run_profile(args)
     elif args.command in ("execute", "--execute") or getattr(args, "execute", False):
         run_execute(args)

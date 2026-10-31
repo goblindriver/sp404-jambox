@@ -51,6 +51,8 @@ DEFAULT_LLM_TIMEOUT = 30
 
 # Raw/long material lives here until chopped; excluded from pad fetch and bulk library walks.
 LONG_HOLD_DIRNAME = "_LONG-HOLD"
+# library_trim moves cut files here (one folder per run) instead of deleting them.
+TRASH_DIRNAME = "_TRASH"
 
 # Canonical set of directories to skip in library walks.
 # Every script that walks the sample library should import this instead of
@@ -63,6 +65,7 @@ LIBRARY_SKIP_DIRS = frozenset({
     "_QUARANTINE",
     "Stems",
     LONG_HOLD_DIRNAME,
+    TRASH_DIRNAME,
 })
 
 _EXCLUDED_PREFIXES = LIBRARY_SKIP_DIRS
