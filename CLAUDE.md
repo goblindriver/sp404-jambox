@@ -24,9 +24,9 @@ This project is worked on by multiple Claude agents coordinated by the user:
 - After ingesting new samples, re-tag: `python scripts/tag_library.py --update`
 
 ## Key Paths
-- **Repo**: `/Users/jasongronvold/Desktop/SP-404SX/sp404-jambox/`
+- **Repo**: `/Users/jasongronvold/Projects/SP-404SX/sp404-jambox/`
 - **SD card mount**: `/Volumes/SP-404SX`
-- **Sample library**: `~/Music/SP404-Sample-Library/` (~30,700 FLACs)
+- **Sample library**: `~/Music/SP404-Sample-Library/` (~26,720 FLACs after dedup + curation)
 - **Tag database**: `~/Music/SP404-Sample-Library/_tags.json`
 - **Raw downloads archive**: `~/Music/SP404-Sample-Library/_RAW-DOWNLOADS/`
 - **Bank config**: `bank_config.yaml` (defines all banks, pads, BPM, key)
@@ -365,17 +365,32 @@ Bank configurations are standalone YAML files in `presets/`, organized by catego
 
 Local-first creative tools. Status shown in the Power Button UI dashboard.
 
-### Smart Retag (LLM-Powered Library Intelligence) — NEXT PRIORITY
-Runs every file through librosa feature extraction + Ollama LLM tagging to generate real dimensional tags (vibe, texture, genre, energy, instrument_hint, quality_score). Currently ~700 of ~30,700 files have dimensional tags — this is the #1 blocker for fetch quality.
+### Smart Retag (LLM-Powered Library Intelligence) — RUNNING
+Runs every file through librosa feature extraction + Ollama LLM tagging to generate real dimensional tags (`sonic_description`, `quality_score`, `type_code`, `vibe`, `texture`, `genre`, `energy`, `instrument_hint`). Full library pass launched 2026-04-16 with qwen3.5:9b, 3 workers, ~17s/file, ~5-6 day wall-clock runtime.
+
+**Current dimensional coverage** (of 26,720 tag entries — measured 2026-04-16):
+
+| Dimension | Coverage | Notes |
+|-----------|----------|-------|
+| `energy` | 99% (26,656) | Covered by legacy tag pass + features |
+| `genre` | 36% (9,860) | Legacy multi-dim pass |
+| `texture` | 30% (8,082) | Legacy multi-dim pass |
+| `vibe` | 25% (6,775) | Legacy multi-dim pass |
+| `sonic_description` | 10% (2,691) | From `smart_retag_v1` tagger |
+| `quality_score` | 10% (2,691) | From `smart_retag_v1` tagger |
+| `instrument_hint` | 2% (617) | Legacy + early smart_retag |
+| CLAP embedding | 0% | Batch pass never run (Track A5) |
+
+Everything below 25% will be filled by the in-flight retag run. The April 2026 prompt rewrite restored full-dim LLM output so every file gets `vibe`/`texture`/`genre`/`energy`/`instrument_hint` in a single pass — vocabularies enforced against `scripts/tag_vocab.py`.
 
 **Architecture:** CLI batch tool (`scripts/smart_retag.py`) for bulk pass, inline in ingest pipeline for new files, webapp for monitoring + review only. Training stays standalone CLI.
 
 **See:** `docs/SMART_RETAG_SPEC.md` for full system prompt, quality rubric, trim policy, tag vocabulary, and processing order.
 
-**New type codes added:** GTR (guitar), HRN (horns/brass), KEY (keys/piano), STR (strings), RSR (riser/build)
+**Type codes:** KIK, SNR, HAT, CLP, CYM, RIM, PRC, BRK, DRM, BAS, GTR, KEY, SYN, PAD, STR, BRS, PLK, WND, VOX, FX, SFX, AMB, FLY, TPE, RSR, HRN
 
 ### Natural Language Vibe Prompts — LIVE
-Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Connected to Ollama Qwen3 8B. See "Personalized Vibe Intelligence" section above for full details.
+Describe the sound you're hearing — the system translates it into fetch parameters via a local LLM. Three parser modes (base/rag/fine_tuned). Results scored against the full library including Plex metadata. Connected to Ollama qwen3.5:9b. See "Personalized Vibe Intelligence" section above for full details.
 
 ### Audio Analysis — LIVE
 librosa-powered BPM, key, and loudness detection. Runs inline during ingest. Results stored in `_tags.json` with `bpm_source`, `key_source`, `loudness_db` fields. Module: `scripts/audio_analysis.py`.
@@ -405,14 +420,18 @@ All paths and service endpoints managed through `scripts/jambox_config.py` with 
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `SP404_LLM_ENDPOINT` | Local LLM endpoint for vibe prompts | (disabled) |
-| `SP404_LLM_MODEL` | LLM model name | `qwen3` |
+| `SP404_LLM_MODEL` | LLM model name | `qwen3.5:9b` |
 | `SP404_LLM_TIMEOUT` | LLM request timeout (seconds) | `30` |
 | `SP404_VIBE_PARSER_MODE` | Parser mode: base, rag, fine_tuned | `base` |
 | `SP404_FINE_TUNED_LLM_ENDPOINT` | Endpoint for fine-tuned model | (disabled) |
 | `SP404_FINE_TUNED_LLM_MODEL` | Fine-tuned model name | (disabled) |
 | `SP404_VIBE_RETRIEVAL_LIMIT` | Max retrieval examples per query | `4` |
-| `SP404_MUSICVAE_CHECKPOINT_DIR` | MusicVAE model checkpoints | (disabled) |
-| `SP404_MAGENTA_COMMAND` | Magenta pattern generation command | `music_vae_generate` |
+| `SP404_SMART_RETAG_WORKERS` | Concurrent workers for smart_retag (Ollama-bound) | `3` |
+| `SP404_SMART_RETAG_WORKERS_MAX` | Hard cap for worker count | `16` |
+| `SP404_SMART_RETAG_LLM_TIMEOUT` | Per-request LLM read timeout during retag | `420` |
+| `SP404_MUSICVAE_CHECKPOINT_DIR` | MusicVAE checkpoints (Magenta pattern gen — DORMANT) | (disabled) |
+| `SP404_MAGENTA_COMMAND` | Magenta CLI for pattern gen (DORMANT; B6 will replace with ACE-Step) | `music_vae_generate` |
+| `SP404_CRUNCH_REPO` | Second jambox clone the blackout dashboard monitors (optional) | (disabled) |
 | `SP404_FINGERPRINT_TOOL` | Audio fingerprint tool | `fpcalc` |
 | `SP404_DAILY_BANK_SOURCE` | Daily bank source (`recent` or `trending`) | `recent` |
 | `SP404_TRENDING_FILE` | Path to trending.json | `$REPO/trending.json` |
@@ -490,6 +509,55 @@ These should feed the RAG corpus and/or synthetic training examples:
 - LofiAndy, CremaSound, SPVIDZ — paid pack creators whose bank architectures inform Jambox's structure
 
 Ecosystem research docs: see `docs/SP404_ECOSYSTEM_RESEARCH.md` (index) and `docs/research/` (individual reports)
+
+## Creative Tools & External Integrations
+
+Full reference with code snippets: `docs/CREATIVE_TOOLS_REFERENCE.md`
+
+### Installed CLI Tools
+| Tool | Path | Purpose |
+|------|------|---------|
+| ffmpeg | `/opt/homebrew/bin/ffmpeg` | Audio/video conversion (core pipeline) |
+| sox | `/opt/homebrew/bin/sox` | Audio batch processing (normalize, trim, fade, stats) |
+| fpcalc | `/opt/homebrew/bin/fpcalc` | Chromaprint audio fingerprinting |
+| hs | `/opt/homebrew/bin/hs` | Hammerspoon CLI |
+
+### Installed Python Packages (Jambox venv)
+| Package | Purpose |
+|---------|---------|
+| `python-osc` | OSC bridge to Ableton, TouchDesigner, SuperCollider, Reaper |
+| `python-reapy` | External Reaper DAW control (TCP bridge on localhost:2306) |
+| `pylive` | Pythonic Ableton Live control (requires AbletonOSC Remote Script) |
+| `librosa` | Audio analysis (BPM, key, loudness) |
+| `demucs` | Stem splitting |
+
+### Installed Applications
+| App | Path | Hook Type |
+|-----|------|-----------|
+| Blender 5.1 | `/Applications/Blender.app` | Python `bpy` API, headless CLI (`--background --python`) |
+| REAPER | `/Applications/REAPER.app` | ReaScript Python/Lua, CLI batch render (`-renderproject`) |
+| SuperCollider | `/Applications/SuperCollider.app` | Native OSC server (port 57110), sclang scripting |
+| TouchDesigner | `/Applications/TouchDesigner.app` | Embedded Python 3.11, OSC/MIDI input, GLSL shaders |
+| Hammerspoon | `/Applications/Hammerspoon.app` | Lua scripting, pathwatcher, HTTP server on :5405 |
+| Keyboard Maestro | `/Applications/Keyboard Maestro.app` | USB/folder/hotkey triggers, shell script execution |
+| After Effects 2026 | `/Applications/Adobe After Effects 2026/` | `aerender` CLI (headless), ExtendScript |
+| Photoshop 2025 | `/Applications/Adobe Photoshop 2025/` | ExtendScript via `osascript` bridge |
+| Premiere Pro 2025 | `/Applications/Adobe Premiere Pro 2025/` | ExtendScript (limited) |
+| DaVinci Resolve 20 | `/Applications/DaVinci Resolve/DaVinci Resolve.app` | Python/Lua scripting API, Fusion nodes |
+| VCV Rack 2 | `/Applications/VCV Rack 2 Free.app` | Virtual modular synth, MIDI I/O |
+| Topaz Gigapixel AI | `/Applications/Topaz Gigapixel AI.app` | AI image upscaling |
+| Topaz Photo AI | `/Applications/Topaz Photo AI.app` | AI photo enhancement |
+| Topaz Video AI | `/Applications/Topaz Video AI.app` | AI video upscaling/interpolation |
+
+### Key Integration Paths
+- **python-osc** is the universal bridge: one library talks to Ableton, TouchDesigner, SuperCollider, Reaper
+- **Hammerspoon** config at `~/.hammerspoon/init.lua`: SD card mount watcher, download watcher, workspace layout (Cmd+Shift+J), audio device switcher (Cmd+Shift+A), HTTP server on port 5405
+- **SoX** integrates via subprocess: `sox input.flac output.flac gain -n` (normalize), `silence 1 0.01 -50d` (trim)
+- **Blender headless**: `/Applications/Blender.app/Contents/MacOS/Blender --background --python script.py`
+- **aerender headless**: `"/Applications/Adobe After Effects 2026/aerender" -project file.aep -comp "Main" -output out.mov`
+- **scsynth**: `/Applications/SuperCollider.app/Contents/Resources/scsynth` (OSC on port 57110)
+- **DaVinci Resolve scripting**: API at `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules/DaVinciResolveScript.py`
+- **Topaz suite**: AI upscaling for album art (Gigapixel), video content (Video AI), photo cleanup (Photo AI)
 
 ## Important Notes
 - The SP-404A (original, non-SX) is more restrictive — always use 44.1kHz/16-bit/mono

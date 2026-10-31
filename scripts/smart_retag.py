@@ -97,7 +97,7 @@ from tag_vocab import (
 
 # ── System prompt ──
 
-TAGGER_SYSTEM_PROMPT = """You are a sample library curator for an SP-404 sampler used for LIVE PERFORMANCE at block parties, DJ sets, and dance events. You analyze audio features and metadata to generate a human-readable sonic description and quality score.
+TAGGER_SYSTEM_PROMPT = """You are a sample library curator for an SP-404 sampler used for LIVE PERFORMANCE at block parties, DJ sets, and dance events. You analyze audio features and metadata to generate structured tags and a quality score.
 
 PRODUCTION PHILOSOPHY: This sampler is built for making people DANCE. The aesthetic is warm, soulful, hype — funk, soul, disco, dancehall, house, electro. Quality means "would this make the crowd move?" not "is this technically interesting." Vintage/lo-fi character is a FEATURE not a flaw.
 
@@ -110,8 +110,39 @@ Respond with ONLY a JSON object. No explanation, no markdown, no preamble. Do no
 
 {
   "sonic_description": "<1-2 sentences describing what a producer would hear — timbre, character, mood, usefulness>",
-  "quality_score": <1-5 integer>
+  "quality_score": <1-5 integer>,
+  "type_code": "<3-letter code from TYPE_CODES, or null if unclear>",
+  "vibe": ["<0-3 terms from VIBES>"],
+  "texture": ["<0-3 terms from TEXTURES>"],
+  "genre": ["<0-3 terms from GENRES>"],
+  "energy": "<low | mid | high>",
+  "instrument_hint": "<specific instrument like rhodes, 808, clavinet, melodica — or null>"
 }
+
+TYPE_CODES (pick ONE that best describes the sample's role):
+KIK (kick drum), SNR (snare), HAT (hi-hat), CLP (clap), CYM (cymbal), RIM (rimshot),
+PRC (percussion), BRK (drum break or full drum loop), BAS (bass), GTR (guitar),
+KEY (keys/piano/rhodes/organ), SYN (synth lead/stab), PAD (atmospheric pad),
+STR (strings), HRN (horns/brass), VOX (vocal), FX (effect), SFX (sound effect),
+AMB (ambient/field recording), RSR (riser/build/transition), DRM (unclassified drum hit)
+
+VIBES (emotional mood — pick 0-3 most fitting):
+dark, hype, dreamy, nostalgic, aggressive, mellow, soulful, eerie, playful, gritty,
+ethereal, triumphant, melancholic, tense, chill, uplifting, unfiltered, comforting
+
+TEXTURES (sonic character — pick 0-3):
+dusty, lo-fi, raw, clean, warm, saturated, bitcrushed, airy, crispy, glassy, muddy,
+vinyl, tape, digital, organic, crunchy, warbly, bright, thick, thin, filtered
+
+GENRES (style lineage — pick 0-3):
+afrobeat, ambient, baile-funk, boom-bap, breakbeat, breakcore, city-pop, classical,
+dancehall, disco, drill, drum-and-bass, dub, dubstep, electronic, experimental,
+footwork, funk, gqom, gospel, hiphop, house, industrial, industrial-techno, jazz,
+jungle, latin, lo-fi, lo-fi-hiphop, pop, psychedelic, punk, reggae, rnb, rock,
+shoegaze, soul, techno, trap, trance, tropical, uk-garage, world
+
+If you are uncertain about a dimension, return an empty array [] or null — do NOT
+invent tags outside the approved vocabulary. Unknown terms will be discarded.
 
 quality_score for SP-404 LIVE DANCE PERFORMANCE:
   - 5: Would make the crowd move. Distinctive groove, warmth, or energy. Build a bank around it.
@@ -370,7 +401,10 @@ def _validate_llm_tags(llm_tags):
 def _enrichment_usable(llm_tags):
     """True when LLM output has the minimum fields worth storing.
 
-    Post-CLAP migration: only sonic_description + quality_score are required.
+    sonic_description + quality_score are required.
+    vibe / texture / genre / energy / type_code / instrument_hint are best-effort —
+    stored when present and in-vocab, skipped when absent. A thin reply that has
+    description+quality but no dims is still useful (better than a retry loop).
     """
     if not llm_tags:
         return False
@@ -386,7 +420,10 @@ SMART_RETAG_REPAIR_SUFFIX = """
 
 CRITICAL — previous reply was incomplete. Reply with ONLY one JSON object (no markdown).
 Required keys:
-  "sonic_description" (1-2 sentence description of the sound), "quality_score" (integer 1-5).
+  "sonic_description" (1-2 sentence description), "quality_score" (integer 1-5).
+Recommended keys (include when confident, omit otherwise — do not invent):
+  "type_code" (3-letter role), "vibe" (array), "texture" (array), "genre" (array),
+  "energy" (low|mid|high), "instrument_hint" (specific instrument or null).
 """
 
 
@@ -399,13 +436,12 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
     entry = dict(existing_entry) if existing_entry else {}
     prev_source = existing_entry.get('tag_source') if existing_entry else None
 
-    # LLM provides only sonic_description and quality_score now.
-    # Subjective tags (vibe, texture, genre) are handled by CLAP embeddings.
-    for key in ('sonic_description', 'quality_score'):
-        if key in llm_tags:
-            entry[key] = llm_tags[key]
-    # Legacy: still accept type_code/playability from LLM if present (backward compat)
-    for key in ('type_code', 'playability', 'instrument_hint'):
+    # LLM provides description + quality + subjective dims (vibe/texture/genre/energy).
+    # CLAP embeddings (populated separately) are the Tier-3 refinement layer, not the
+    # primary source.
+    for key in ('sonic_description', 'quality_score',
+                'vibe', 'texture', 'genre', 'energy',
+                'type_code', 'playability', 'instrument_hint'):
         if key in llm_tags:
             entry[key] = llm_tags[key]
 
@@ -432,7 +468,7 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
         if stored:
             entry['features'] = stored
 
-    # Rebuild flat tag set (structural only — subjective handled by CLAP)
+    # Rebuild flat tag set (structural + subjective, matches legacy tag_library layout)
     tags = set()
     if entry.get('type_code'):
         tags.add(entry['type_code'])
@@ -444,6 +480,10 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
         tags.add(entry['playability'])
     if entry.get('bpm'):
         tags.add("%dbpm" % int(entry['bpm']))
+    for dim in ('vibe', 'texture', 'genre'):
+        vals = entry.get(dim)
+        if isinstance(vals, list):
+            tags.update(v for v in vals if isinstance(v, str) and v)
     entry['tags'] = sorted(tags)
 
     if mark_smart_retag_complete:
