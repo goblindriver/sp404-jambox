@@ -45,6 +45,10 @@ app.register_blueprint(pattern_bp, url_prefix='/api')
 app.register_blueprint(media_bp, url_prefix='/api')
 app.register_blueprint(blackout_bp, url_prefix='/api')
 
+# Host allowlist + CSRF header/Origin checks + request size cap
+from api._security import install_guards
+install_guards(app)
+
 
 @app.errorhandler(HTTPException)
 def handle_http_error(exc):
