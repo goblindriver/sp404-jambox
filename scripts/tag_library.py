@@ -698,6 +698,16 @@ def tag_file(rel_path, full_path, get_dur=True, use_librosa=True):
 # Library walker
 # ═══════════════════════════════════════════════════════════
 
+# Characters macOS filenames may contain but Windows paths can't. Over an SMB
+# share such a file looks missing from Windows even though it exists.
+_WINDOWS_ILLEGAL_NAME_CHARS = re.compile(r'[<>:"|?*]')
+
+
+def _unrepresentable_here(rel_path):
+    """True when this OS can't address *rel_path*, so "missing" proves nothing."""
+    return os.name == "nt" and bool(_WINDOWS_ILLEGAL_NAME_CHARS.search(rel_path))
+
+
 def walk_library(path_filter=None, skip_dirs=None):
     """Walk library and return (rel_path, full_path) for all audio files.
 
@@ -707,7 +717,13 @@ def walk_library(path_filter=None, skip_dirs=None):
     root_dir = path_filter or LIBRARY
     excluded = skip_dirs if skip_dirs is not None else SKIP_DIRS
     files = []
-    for root, dirs, filenames in os.walk(root_dir):
+
+    def unlisted(err):
+        # os.walk skips folders it can't list without a word; say so, because
+        # a partial walk means new files in that folder go untagged.
+        print(f"WARNING: could not list {err.filename}: {err.strerror or err}", file=sys.stderr)
+
+    for root, dirs, filenames in os.walk(root_dir, onerror=unlisted):
         dirs[:] = [d for d in dirs if d not in excluded and not d.startswith(".")]
         for f in filenames:
             if f.startswith("."):
@@ -936,6 +952,7 @@ def main():
         if k.startswith(scope)
         and not is_excluded_rel_path(k)
         and not os.path.exists(os.path.join(LIBRARY, k))
+        and not _unrepresentable_here(k)
     ]
     if stale:
         delete_tag_paths(TAGS_FILE, stale)
