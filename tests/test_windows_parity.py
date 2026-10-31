@@ -17,7 +17,7 @@ for path in (os.path.join(REPO_ROOT, "scripts"), os.path.join(REPO_ROOT, "web"))
 import deploy_sd
 import jambox_config
 from api._helpers import kill_process_tree, new_process_group_kwargs, pid_alive
-from api.pipeline import restart_helper_argv
+from api.pipeline import _RESTART_HELPER, restart_helper_argv
 
 
 def _touch(path, data=b"x"):
@@ -133,6 +133,21 @@ class ProcessControlTests(unittest.TestCase):
                 time.sleep(0.1)
             self.assertTrue(os.path.exists(marker))
             sleeper.wait(timeout=5)
+
+    def test_restart_helper_treats_an_unreaped_server_as_exited(self):
+        # On POSIX the killed server stays a zombie until its parent reaps it.
+        fake_psutil = SimpleNamespace(
+            STATUS_ZOMBIE="zombie",
+            NoSuchProcess=type("NoSuchProcess", (Exception,), {}),
+            Process=lambda pid: SimpleNamespace(status=lambda: "zombie"),
+        )
+        with patch.dict(sys.modules, {"psutil": fake_psutil}), \
+             patch.object(sys, "argv", ["-c", "1234", "app.py", "web"]), \
+             patch("subprocess.Popen") as popen, \
+             patch("time.sleep") as sleep:
+            exec(_RESTART_HELPER, {})
+        popen.assert_called_once_with([sys.executable, "app.py"], cwd="web")
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":

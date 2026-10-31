@@ -238,9 +238,10 @@ BPM_PATTERNS = [
 
 # A key token sits between delimiters: "_Am_", " C#min.", "-Bb-". The quality
 # (m/min/minor/maj/major) is part of the match -- dropping it stored every
-# minor key as major.
+# minor key as major. Only a lowercase bare "m" means minor: "_AM_" (ambient),
+# "FM" (synthesis) and "CM" are not keys.
 KEY_PATTERN = re.compile(
-    r"(?<=[\s_\-\(])([A-Ga-g])(#|b|sharp|flat)?\s?((?i:minor|min|major|maj|m))?(?=[\s_\-\.\)]|$)"
+    r"(?<=[\s_\-\(])([A-Ga-g])(#|b|sharp|flat)?\s?((?i:minor|min|major|maj)|m)?(?=[\s_\-\.\)]|$)"
 )
 
 
@@ -843,13 +844,23 @@ def print_summary(db):
 
 
 def refresh_filename_keys():
-    """Re-run extract_key on rows whose key came from the filename."""
+    """Re-run extract_key on rows whose key came from the filename.
+
+    librosa is only the fallback for filenames without a key, so a librosa row
+    whose filename now parses (e.g. "Bmin" the old pattern missed) takes the
+    filename key; one whose filename still has none keeps librosa's.
+    """
     changes = {}
     for rel, entry in load_existing_tags().items():
-        if not isinstance(entry, dict) or entry.get("key_source") not in ("filename", None):
+        if not isinstance(entry, dict):
+            continue
+        source = entry.get("key_source")
+        if source not in ("filename", "librosa", None):
             continue
         key = extract_key(os.path.basename(rel))
-        if key != entry.get("key"):
+        if source == "librosa" and not key:
+            continue
+        if key != entry.get("key") or (key and source != "filename"):
             changes[rel] = {"key": key, "key_source": "filename" if key else None}
     for rel, fields in list(changes.items())[:20]:
         print(f"  {rel}: -> {fields['key']}")

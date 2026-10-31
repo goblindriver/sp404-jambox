@@ -209,6 +209,30 @@ class TagLibraryScanTests(unittest.TestCase):
             db = self._scan()
         self.assertIn("Vocals/Who?.flac", db)
 
+    def test_refresh_keys_fixes_filename_keys_and_beats_librosa_only_when_the_name_parses(self):
+        upsert_tag_entries(self.tags, {
+            "Loops/Pad_Bmin_Low.wav": {"key": "Am", "key_source": "librosa"},
+            "Loops/Pad_Low.wav": {"key": "Am", "key_source": "librosa"},
+            "Loops/ambient_AM_Verb.wav": {"key": "Am", "key_source": "filename"},
+            "Loops/Bass_Am_120.wav": {"key": "A", "key_source": "filename"},
+            "Loops/Lead_Cm.wav": {"key": "Cm", "key_source": "filename"},
+        })
+        before = tags_version(self.tags)
+
+        with patch.object(tag_library, "TAGS_FILE", self.tags), patch("builtins.print"):
+            tag_library.refresh_filename_keys()
+
+        db = load_tag_db(self.tags)
+        keys = {rel: (row["key"], row["key_source"]) for rel, row in db.items()}
+        self.assertEqual(keys, {
+            "Loops/Pad_Bmin_Low.wav": ("Bm", "filename"),
+            "Loops/Pad_Low.wav": ("Am", "librosa"),
+            "Loops/ambient_AM_Verb.wav": (None, None),
+            "Loops/Bass_Am_120.wav": ("Am", "filename"),
+            "Loops/Lead_Cm.wav": ("Cm", "filename"),
+        })
+        self.assertEqual(tags_version(self.tags), before + 1)
+
     def test_unchanged_files_are_skipped(self):
         upsert_tag_entries(self.tags, {
             "Drums/Kicks/kick_120.wav": {"type_code": "SNR", "mtime": time.time() + 3600},
