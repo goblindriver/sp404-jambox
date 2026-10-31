@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import shutil
+import subprocess
 import time
 
 import yaml
@@ -162,6 +163,30 @@ def file_lock(path, timeout=60):
                 yield
             finally:
                 fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def ffmpeg_atomic(ffmpeg, src, dest, out_args, *, fmt, timeout):
+    """Run ffmpeg into ``dest + ".part"`` and rename it into place on success.
+
+    A failed, killed or timed-out run never leaves a file at *dest*, so
+    "the output exists" stays a reliable "already done" check for ingest and
+    conversion. Returns True on success.
+    """
+    part = dest + ".part"
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-y", "-i", src, *out_args, "-f", fmt, part],
+            capture_output=True, timeout=timeout,
+        )
+        if result.returncode == 0 and os.path.getsize(part) > 0:
+            os.replace(part, dest)
+            return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
+    return False
 
 
 class ConfigError(ValueError):

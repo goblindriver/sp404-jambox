@@ -45,18 +45,10 @@ def rekey_tag(old_rel, new_rel, entry):
 def convert_wav_to_flac(wav_path):
     """Convert a single WAV to FLAC. Returns FLAC path or None on failure."""
     flac_path = os.path.splitext(wav_path)[0] + '.flac'
-
-    result = subprocess.run(
-        [FFMPEG, '-y', '-i', wav_path, '-c:a', 'flac', '-compression_level', '5', flac_path],
-        capture_output=True, text=True, timeout=60
-    )
-
-    if result.returncode != 0:
-        # Clean up failed output
-        if os.path.exists(flac_path):
-            os.remove(flac_path)
+    from jambox_config import ffmpeg_atomic
+    if not ffmpeg_atomic(FFMPEG, wav_path, flac_path,
+                         ['-c:a', 'flac', '-compression_level', '5'], fmt='flac', timeout=60):
         return None
-
     return flac_path
 
 

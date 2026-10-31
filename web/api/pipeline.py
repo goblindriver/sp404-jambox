@@ -301,8 +301,9 @@ def watcher_stop():
             sys.path.insert(0, scripts_dir)
         import ingest
 
-        ingest.stop_watcher()
-        return jsonify({'ok': True, 'message': 'Watcher stopped'})
+        if ingest.stop_watcher():
+            return jsonify({'ok': True, 'message': 'Watcher stopped'})
+        return jsonify({'ok': True, 'message': 'Watcher stopping after the current file'})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 

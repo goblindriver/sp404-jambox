@@ -3,24 +3,32 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import zipfile
+
+from jambox_config import ffmpeg_atomic
 
 from . import _state
 
 
-def extract_archive(filepath, dest):
-    """Extract zip/rar archive to destination."""
-    os.makedirs(dest, exist_ok=True)
+def _run_extractor(filepath, dest):
     ext = os.path.splitext(filepath)[1].lower()
-
+    name = os.path.basename(filepath)
     if ext == '.zip':
-        print(f"  Extracting ZIP: {os.path.basename(filepath)}...")
-        command = ['unzip', '-o', '-q', filepath, '-d', dest]
-    elif ext == '.rar':
-        print(f"  Extracting RAR: {os.path.basename(filepath)}...")
+        print(f"  Extracting ZIP: {name}...")
+        try:
+            with zipfile.ZipFile(filepath) as zf:
+                zf.extractall(dest)  # ZipFile.extract strips absolute and '..' paths
+        except (zipfile.BadZipFile, OSError) as e:
+            print(f"  Extract failed: {e}")
+            return False
+        return True
+
+    if ext == '.rar':
+        print(f"  Extracting RAR: {name}...")
         command = [_state.SETTINGS["UNAR_BIN"], '-o', dest, '-f', filepath]
     elif ext == '.7z':
-        print(f"  Extracting 7z: {os.path.basename(filepath)}...")
+        print(f"  Extracting 7z: {name}...")
         command = ['7z', 'x', filepath, f'-o{dest}', '-y']
     else:
         return False
@@ -31,7 +39,7 @@ def extract_archive(filepath, dest):
         print(f"  Extract failed: command not found for {ext} archives")
         return False
     except subprocess.TimeoutExpired:
-        print(f"  Extract failed: timed out for {os.path.basename(filepath)}")
+        print(f"  Extract failed: timed out for {name}")
         return False
 
     if result.returncode != 0:
@@ -40,25 +48,62 @@ def extract_archive(filepath, dest):
     return True
 
 
+def extract_archive(filepath, dest):
+    """Extract a zip/rar/7z archive to *dest*, atomically.
+
+    Extracts into a hidden ``.<name>.partial`` sibling and renames it to
+    *dest* only on success, so a failed or timed-out extraction never leaves
+    a folder that later runs (or Downloads cleanup) mistake for a finished one.
+    """
+    parent = os.path.dirname(dest)
+    partial = os.path.join(parent, f".{os.path.basename(dest)}.partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    os.makedirs(partial)
+    ok = False
+    try:
+        ok = _run_extractor(filepath, partial)
+        if ok:
+            if os.path.exists(dest):
+                shutil.rmtree(dest)  # earlier attempt that never finished ingest
+            os.replace(partial, dest)
+    finally:
+        if not ok:
+            shutil.rmtree(partial, ignore_errors=True)
+    return ok
+
+
+def is_ingested(folder):
+    """True once every file in *folder* went through ingest (marker written)."""
+    return os.path.exists(os.path.join(folder, _state.MARKER))
+
+
+def mark_ingested(folder, count):
+    try:
+        with open(os.path.join(folder, _state.MARKER), 'w', encoding='utf-8') as f:
+            f.write(f"Ingested {count} files at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    except OSError as e:
+        print(f"  Could not write marker: {e}")
+
+
 def _copy_as_flac(src_path, dest_path):
     """Copy an audio file to the library, converting to FLAC for storage.
-    Returns the actual destination path (with .flac extension)."""
+
+    Returns the actual destination path (with .flac extension), or the plain
+    copy at *dest_path* if FLAC conversion isn't possible. Both are written
+    via a temp file, so an interrupted copy never leaves a partial output.
+    """
     flac_dest = os.path.splitext(dest_path)[0] + '.flac'
     if os.path.exists(flac_dest):
         return flac_dest
 
-    try:
-        result = subprocess.run(
-            [_state.FFMPEG, '-y', '-i', src_path, '-c:a', 'flac', '-compression_level', '5', flac_dest],
-            capture_output=True, text=True, timeout=60
-        )
-        if result.returncode == 0 and os.path.exists(flac_dest):
-            return flac_dest
-    except (subprocess.TimeoutExpired, Exception):
-        pass
+    if ffmpeg_atomic(_state.FFMPEG, src_path, flac_dest,
+                     ['-c:a', 'flac', '-compression_level', '5'], fmt='flac', timeout=60):
+        return flac_dest
 
     if not os.path.exists(dest_path):
-        shutil.copy2(src_path, dest_path)
+        part = dest_path + '.part'
+        shutil.copy2(src_path, part)
+        os.replace(part, dest_path)
     return dest_path
 
 
@@ -66,7 +111,7 @@ def extract_rar(folder, dest):
     """Extract RAR archive from a folder using unar."""
     rar_file = None
     for f in os.listdir(folder):
-        if f.endswith('.rar'):
+        if f.lower().endswith('.rar'):
             rar_file = os.path.join(folder, f)
             break
     if not rar_file:
@@ -217,7 +262,7 @@ def is_sample_pack(dirname):
 def has_rar_files(folder):
     """Check if folder contains RAR archives."""
     try:
-        return any(f.endswith('.rar') for f in os.listdir(folder))
+        return any(f.lower().endswith('.rar') for f in os.listdir(folder))
     except OSError:
         return False
 
