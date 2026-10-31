@@ -1,9 +1,42 @@
 """Pipeline control API — fetch, build, deploy, watcher."""
-import os, sys, time as _time, threading, subprocess, json
+import os, sys, socket, time as _time, threading, subprocess, json
+from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, jsonify, request, current_app
 from jambox_config import build_subprocess_env, find_sd_card, load_tag_db
 
 from api._helpers import JobTracker, normalize_bank, normalize_pad
+
+# Session 8 AI creative stack — services the dashboard probes.
+# Host defaults to 127.0.0.1; ports are the Pinokio / Open WebUI defaults.
+AI_STACK_PROBES = (
+    ('pinokio', 42000),
+    ('comfyui', 8188),
+    ('acestep', 3001),
+    ('open_webui', 42003),
+)
+
+
+def _tcp_alive(host, port, timeout=0.5):
+    """Return True if a TCP connection can be opened. Endpoint-agnostic liveness check."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
+
+
+def _probe_ai_stack(host='127.0.0.1', timeout=0.5):
+    """Probe all Session 8 services in parallel. Returns {service: alive_bool}."""
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(AI_STACK_PROBES)) as pool:
+        futures = {name: pool.submit(_tcp_alive, host, port, timeout)
+                   for name, port in AI_STACK_PROBES}
+        for name, fut in futures.items():
+            try:
+                results[name] = bool(fut.result(timeout=timeout + 0.1))
+            except Exception:
+                results[name] = False
+    return results
 
 pipeline_bp = Blueprint('pipeline', __name__)
 
@@ -491,12 +524,18 @@ def server_status():
         except Exception:
             features['discogs'] = False
 
+        # Session 8 AI creative stack — Pinokio, ComfyUI, ACE-Step, Open WebUI.
+        # TCP probes in parallel; each is fast-fail with a 500ms timeout.
+        ai_stack = _probe_ai_stack()
+        features.update({f'ai_stack.{name}': alive for name, alive in ai_stack.items()})
+
         return jsonify({
             'ok': True,
             'pid': os.getpid(),
             'features': features,
             'clap': clap_info,
             'discogs': discogs_info,
+            'ai_stack': ai_stack,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
