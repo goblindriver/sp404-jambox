@@ -85,9 +85,10 @@ def _connect(db_path=None):
 
 def _normalize_label(settings):
     mode = settings.get("VIBE_PARSER_MODE", "base")
+    model = settings.get("LLM_MODEL") or "unknown"
     if mode == "fine_tuned":
-        return settings.get("FINE_TUNED_LLM_MODEL") or settings.get("LLM_MODEL", "qwen3")
-    return settings.get("LLM_MODEL", "qwen3")
+        return settings.get("FINE_TUNED_LLM_MODEL") or model
+    return model
 
 
 def create_session(prompt_payload, result_payload, settings, db_path=None):

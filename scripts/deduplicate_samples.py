@@ -196,6 +196,7 @@ def _llm_tag_filename(rel_path):
             temperature=0.2,
             json_mode=True,
             max_tokens=SETTINGS.get("DEDUP_TAG_MAX_TOKENS", 200),
+            backend=SETTINGS.get("LLM_BACKEND", "auto"),
         )
     except LLMError:
         return []

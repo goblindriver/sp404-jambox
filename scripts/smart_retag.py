@@ -202,19 +202,29 @@ def _skip_llm_for_duration(duration_sec):
     return float(duration_sec) >= float(SMART_RETAG_SKIP_ABOVE_SECONDS)
 
 
-def _call_llm(prompt, model, retries=None):
-    """Send prompt to Ollama and parse JSON response. Retries on timeout.
+# Ingest retags one file at a time inline, so a stalled or stopped Ollama
+# must cost seconds, not minutes, per file.
+INGEST_LLM_TIMEOUT = max(int(LLM_TIMEOUT), 120)
+INGEST_LLM_BACKOFF_SECONDS = 300
+_llm_unavailable_until = 0.0
+
+
+def _call_llm(prompt, model, retries=None, timeout=None, raise_errors=False):
+    """Send prompt to the LLM and parse JSON response. Retries on timeout / 5xx.
 
     Thin wrapper around llm_client.call_llm_chat() that injects the smart-retag
     system prompt and uses the long-running read timeout for big libraries.
+    With raise_errors, transport failures raise LLMError instead of returning
+    None, so callers can tell "server down" from "unparseable reply".
     """
     if not LLM_ENDPOINT:
         return None
 
     if retries is None:
         retries = _retag_llm_retries()
-    # Use long read timeout for retag (model latency + librosa contention)
-    timeout = _retag_llm_read_timeout_seconds()
+    if timeout is None:
+        # Long read timeout for batch retag (model latency + librosa contention)
+        timeout = _retag_llm_read_timeout_seconds()
 
     messages = [
         {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
@@ -230,17 +240,26 @@ def _call_llm(prompt, model, retries=None):
             retries=retries,
             json_mode=True,
             temperature=0.3,
-            max_tokens=SETTINGS.get("SMART_RETAG_MAX_TOKENS", 2048),
+            max_tokens=SETTINGS.get("SMART_RETAG_MAX_TOKENS", 400),
             on_stat=_bump_llm_stat,
+            backend=SETTINGS.get("LLM_BACKEND", "auto"),
+            num_ctx=SETTINGS.get("LLM_NUM_CTX"),
         )
     except LLMError as exc:
         # All retries exhausted; log and return None to match legacy contract
         print("  LLM %s: %s" % (exc.code, exc.message), file=sys.stderr)
+        if raise_errors:
+            raise
         return None
 
 
-def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):
+def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2,
+                         retries=None, timeout=None):
     """Call LLM; if output is too thin for fetch, retry with stricter instructions.
+
+    The repair pass only follows a reply that came back incomplete: when the
+    server can't be reached or times out, asking again with a stricter prompt
+    can't help, so it gives up at once.
 
     Returns (validated_tags_dict, ollama_model_used_or_None, skipped_due_to_duration).
     """
@@ -254,14 +273,21 @@ def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):
 
     model = LLM_MODEL
     prompt = _build_prompt(full_path, features)
-    raw = _call_llm(prompt, model=model)
+    try:
+        raw = _call_llm(prompt, model=model, retries=retries, timeout=timeout, raise_errors=True)
+    except LLMError:
+        return {}, model, False
     validated = _validate_llm_tags(raw) if raw else {}
     if _enrichment_usable(validated):
         return validated, model, False
     for _ in range(repair_attempts):
         if verbose:
             print("  LLM repair pass (incomplete JSON / missing dimensions)...", flush=True)
-        raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX, model=model)
+        try:
+            raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX, model=model,
+                             retries=retries, timeout=timeout, raise_errors=True)
+        except LLMError:
+            break
         validated = _validate_llm_tags(raw2) if raw2 else {}
         if _enrichment_usable(validated):
             return validated, model, False
@@ -560,16 +586,19 @@ def _sort_by_demand(files, tag_db):
 # ── Core batch processing ──
 
 def _entry_needs_smart_retag(entry):
-    """False only for rows that already have full LLM enrichment (fetch-ready)."""
-    if entry.get('tag_source') != 'smart_retag_v1':
+    """False only for rows that already have full LLM enrichment (fetch-ready).
+
+    Enrichment means sonic_description + quality_score: the post-CLAP prompt
+    returns only those, so requiring vibe/texture/genre too re-queued rows
+    (DRM/HRN/UNK, revibed rows) on every --all run forever.
+    """
+    if not str(entry.get('tag_source') or '').startswith('smart_retag'):
         return True
     if entry.get('smart_retag_pending'):
         return True
     if not (entry.get('sonic_description') or '').strip():
         return True
     if entry.get('quality_score') is None:
-        return True
-    if not (entry.get('vibe') or entry.get('texture') or entry.get('genre')):
         return True
     return False
 
@@ -870,7 +899,10 @@ def retag_single(rel_path, full_path, existing_entry=None):
     if not features:
         return None
 
-    if not LLM_ENDPOINT:
+    global _llm_unavailable_until
+    if not LLM_ENDPOINT or time.time() < _llm_unavailable_until:
+        # No LLM (or it just failed): store features now, LLM later via
+        # smart_retag --retry-llm-failures / --all.
         existing = existing_entry or {}
         entry = _merge_tags(
             existing, {}, features, rel_path,
@@ -878,8 +910,15 @@ def retag_single(rel_path, full_path, existing_entry=None):
         )
         return entry
 
+    calls_before = _llm_stats_snapshot()
     llm_tags, used_model, _skipped = _llm_tag_with_repair(
-        full_path, features, verbose=False, repair_attempts=2)
+        full_path, features, verbose=False, repair_attempts=1,
+        retries=0, timeout=INGEST_LLM_TIMEOUT)
+    calls_after = _llm_stats_snapshot()
+    if any(calls_after.get(k, 0) > calls_before.get(k, 0) for k in ("connection_error", "timeout")):
+        # Server down or stalled: skip the LLM for the next files of this ingest.
+        _llm_unavailable_until = time.time() + INGEST_LLM_BACKOFF_SECONDS
+        print("  LLM unavailable; storing features only for the next %ds" % INGEST_LLM_BACKOFF_SECONDS)
     usable = _enrichment_usable(llm_tags)
     existing = existing_entry or {}
     entry = _merge_tags(

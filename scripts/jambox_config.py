@@ -403,6 +403,11 @@ def load_settings(repo_dir):
         "WEB_DEBUG": _read_bool("SP404_WEB_DEBUG", default=False),
         "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
         "LLM_MODEL": _read_command("SP404_LLM_MODEL", "qwen3.5:9b"),
+        # Which API the endpoint speaks: auto routes only Ollama's default port
+        # to its native /api/chat; llama.cpp / LM Studio / vLLM are OpenAI-style.
+        "LLM_BACKEND": _read_choice("SP404_LLM_BACKEND", "auto", {"auto", "ollama", "openai"}),
+        # Ollama context window; its default silently truncates long prompts.
+        "LLM_NUM_CTX": _read_int("SP404_LLM_NUM_CTX", 8192, minimum=512),
         "SMART_RETAG_SKIP_ABOVE_SECONDS": _read_optional_int(
             "SP404_SMART_RETAG_SKIP_ABOVE_SECONDS", default=None, minimum=1
         ),
@@ -412,7 +417,8 @@ def load_settings(repo_dir):
         "VIBE_PARSE_MAX_TOKENS": _read_int("SP404_VIBE_PARSE_MAX_TOKENS", 400, minimum=50),
         "VIBE_INSPIRE_MAX_TOKENS": _read_int("SP404_VIBE_INSPIRE_MAX_TOKENS", 200, minimum=50),
         "DEDUP_TAG_MAX_TOKENS": _read_int("SP404_DEDUP_TAG_MAX_TOKENS", 200, minimum=50),
-        "SMART_RETAG_MAX_TOKENS": _read_int("SP404_SMART_RETAG_MAX_TOKENS", 2048, minimum=256),
+        # The retag reply is two fields of JSON (~100 tokens).
+        "SMART_RETAG_MAX_TOKENS": _read_int("SP404_SMART_RETAG_MAX_TOKENS", 400, minimum=128),
         # smart_retag only: longer HTTP read than vibe UI; unset = script default floor
         "SMART_RETAG_LLM_TIMEOUT": _read_optional_int(
             "SP404_SMART_RETAG_LLM_TIMEOUT", default=None, minimum=60

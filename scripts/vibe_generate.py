@@ -105,8 +105,10 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
         temperature=0.3,
         json_mode=True,
         max_tokens=SETTINGS.get("VIBE_PARSE_MAX_TOKENS", 400),
+        backend=SETTINGS.get("LLM_BACKEND", "auto"),
+        num_ctx=SETTINGS.get("LLM_NUM_CTX"),
     )
-    if not parsed:
+    if not isinstance(parsed, dict) or not parsed:
         raise LLMError("empty_response", "LLM response did not include usable content")
 
     def _to_list(val):
@@ -448,6 +450,8 @@ def inspire_bank_metadata(seed_genre=None):
             temperature=0.7,
             json_mode=True,
             max_tokens=SETTINGS.get("VIBE_INSPIRE_MAX_TOKENS", 200),
+            backend=SETTINGS.get("LLM_BACKEND", "auto"),
+            num_ctx=SETTINGS.get("LLM_NUM_CTX"),
         )
         if not parsed:
             return _inspire_fallback(seed_genre)

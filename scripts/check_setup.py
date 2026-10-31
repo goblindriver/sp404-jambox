@@ -109,7 +109,7 @@ def run_checks():
         warnings += 1
 
     parser_mode = settings.get("VIBE_PARSER_MODE", "base")
-    mode_detail = f"mode={parser_mode}; model={settings.get('LLM_MODEL', 'qwen3')}"
+    mode_detail = f"mode={parser_mode}; model={settings.get('LLM_MODEL', '')}; backend={settings.get('LLM_BACKEND', 'auto')}"
     if parser_mode == "fine_tuned":
         tuned_endpoint = settings.get("FINE_TUNED_LLM_ENDPOINT", "").strip()
         tuned_model = settings.get("FINE_TUNED_LLM_MODEL", "").strip() or "(unset)"
