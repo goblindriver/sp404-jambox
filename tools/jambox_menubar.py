@@ -56,7 +56,12 @@ def api_post(path, body=None):
         req = Request(
             f"{API}{path}",
             data=data,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                # Required by the server's CSRF guard (web/api/_security.py)
+                "X-Jambox-Client": "1",
+            },
         )
         with urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
