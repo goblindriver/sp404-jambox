@@ -417,7 +417,7 @@ def load_settings(repo_dir):
         "VIBE_PARSE_MAX_TOKENS": _read_int("SP404_VIBE_PARSE_MAX_TOKENS", 400, minimum=50),
         "VIBE_INSPIRE_MAX_TOKENS": _read_int("SP404_VIBE_INSPIRE_MAX_TOKENS", 200, minimum=50),
         "DEDUP_TAG_MAX_TOKENS": _read_int("SP404_DEDUP_TAG_MAX_TOKENS", 200, minimum=50),
-        # The retag reply is two fields of JSON (~100 tokens).
+        # The full-dimension retag reply is ~120 tokens of JSON (measured on qwen3.5:9b).
         "SMART_RETAG_MAX_TOKENS": _read_int("SP404_SMART_RETAG_MAX_TOKENS", 400, minimum=128),
         # smart_retag only: longer HTTP read than vibe UI; unset = script default floor
         "SMART_RETAG_LLM_TIMEOUT": _read_optional_int(
