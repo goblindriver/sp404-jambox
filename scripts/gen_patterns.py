@@ -6,19 +6,22 @@ Creates .PTN files that go in ROLAND/SP-404SX/PTN/ on the SD card.
 Uses vendored spEdit404 library (patched for banks A-J).
 Pattern format: 384 ticks per bar, 96 = quarter note, 48 = eighth, 24 = 16th.
 
-Each bank gets a 2-bar pattern using its own drum hits (pads 1-4):
-  Pad 1 = Kick, Pad 2 = Snare, Pad 3 = Hi-Hat, Pad 4 = Clap/Perc
+Each bank gets a 2-bar pattern played on its own one-shot drum hits: the
+kick/snare/hat/perc roles map to whichever pads hold KIK/SNR/HAT/PRC
+one-shots in bank_config.yaml. Banks without a kick and snare get none.
 """
 import os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jambox_config import load_bank_config, load_settings_for_script
+from tag_vocab import pad_type_and_playability
 from spedit404.pattern import Pattern
 from spedit404.note import Note
 from spedit404.binary import write_binary, get_ptn_filename
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_DIR = os.path.dirname(SCRIPT_DIR)
-PTN_DIR = os.path.join(REPO_DIR, "sd-card-template", "ROLAND", "SP-404SX", "PTN")
+SETTINGS = load_settings_for_script(__file__)
+PTN_DIR = os.path.join(os.path.dirname(SETTINGS["SMPL_DIR"]), "PTN")
+CONFIG_PATH = SETTINGS["CONFIG_PATH"]
 
 # Timing constants
 BAR = 384
@@ -29,13 +32,46 @@ HIT = 24  # default note length (16th)
 LONG = 48 # longer hit
 
 
-def add_notes(pattern, notes):
-    """Add a list of (pad, bank, start_tick, length, velocity) tuples."""
+def add_notes(pattern, notes, roles=None):
+    """Add (pad, bank, start_tick, length, velocity) tuples.
+
+    Generators write drum *roles* as pads 1-4 (kick, snare, hat, perc).
+    *roles* maps each role to the bank's actual pad; notes for a role the
+    bank doesn't have are dropped. Without *roles* pads are used as written.
+    """
     for pad, bank, tick, length, vel in notes:
+        if roles is not None:
+            pad = roles.get(pad)
+            if pad is None:
+                continue
         pattern.add_note(Note(pad=pad, bank=bank, start_tick=tick, length=length, velocity=vel))
 
 
-def gen_lofi_hiphop(bank='c'):
+ROLE_TYPES = {1: ("KIK",), 2: ("SNR", "CLP"), 3: ("HAT",), 4: ("PRC", "CLP", "RIM", "CYM")}
+
+
+def drum_roles(pad_descriptions):
+    """{role: pad} from a bank's pad descriptions, using one-shot drum hits only.
+
+    Role 1 = kick, 2 = snare/clap, 3 = hat, 4 = perc. Loops are never used, so
+    a bank whose pads 1-4 hold breaks doesn't get its loops retriggered.
+    """
+    hits = []
+    for num, desc in sorted(pad_descriptions.items(), key=lambda kv: int(kv[0])):
+        type_code, playability = pad_type_and_playability(desc)
+        if playability in (None, "one-shot"):
+            hits.append((int(num), type_code))
+    roles, used = {}, set()
+    for role, types in ROLE_TYPES.items():
+        for num, type_code in hits:
+            if type_code in types and num not in used:
+                roles[role] = num
+                used.add(num)
+                break
+    return roles
+
+
+def gen_lofi_hiphop(bank='c', roles=None):
     """Bank C: Lo-fi hip-hop — lazy, swung boom-bap (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -49,11 +85,11 @@ def gen_lofi_hiphop(bank='c'):
         for i in range(8):
             vel = 80 if i % 2 == 0 else 55
             notes.append((3, bank, b + i * E, HIT, vel))
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
-def gen_witch_house(bank='d'):
+def gen_witch_house(bank='d', roles=None):
     """Bank D: Witch house — slow, sparse, heavy (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -65,11 +101,11 @@ def gen_witch_house(bank='d'):
         notes.append((4, bank, b + Q*2, LONG, 110))
         # Hat: sparse, every other beat
         notes += [(3, bank, b + Q, HIT, 60), (3, bank, b + Q*3, HIT, 50)]
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
-def gen_nu_rave(bank='e'):
+def gen_nu_rave(bank='e', roles=None):
     """Bank E: Nu-rave — four-on-the-floor, high energy (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -87,11 +123,11 @@ def gen_nu_rave(bank='e'):
         # Extra FX hit on beat 4 "and" in bar 2
         if bar == 1:
             notes.append((4, bank, b + Q*3 + E, HIT, 80))
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
-def gen_electroclash(bank='f'):
+def gen_electroclash(bank='f', roles=None):
     """Bank F: Electroclash — punchy, driving (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -107,11 +143,11 @@ def gen_electroclash(bank='f'):
             notes.append((3, bank, b + i * Q + E, HIT, 75))
         # Perc accent
         notes.append((4, bank, b + Q*3 + E, HIT, 70))
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
-def gen_funk(bank='g'):
+def gen_funk(bank='g', roles=None):
     """Bank G: Funk — syncopated, groovy (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -134,11 +170,11 @@ def gen_funk(bank='g'):
         for i in range(16):
             vel = 90 if i % 4 == 0 else (65 if i % 2 == 0 else 45)
             notes.append((3, bank, b + i * S, S - 2, vel))
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
-def gen_idm(bank='h'):
+def gen_idm(bank='h', roles=None):
     """Bank H: IDM — irregular, glitchy (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -168,11 +204,11 @@ def gen_idm(bank='h'):
         notes.append((2, bank, b + tick, S - 2, 65))
     notes.append((3, bank, b + Q*2 + E, LONG, 90))
 
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
-def gen_ambient(bank='i'):
+def gen_ambient(bank='i', roles=None):
     """Bank I: Ambient — minimal, breathing (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -183,11 +219,11 @@ def gen_ambient(bank='i'):
         notes.append((2, bank, b + Q*2, LONG, 40))
     # One soft hit in bar 2
     notes.append((1, bank, BAR + Q*3, LONG, 35))
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
-def gen_utility(bank='j'):
+def gen_utility(bank='j', roles=None):
     """Bank J: Utility — straight metronome-style (2 bars)"""
     p = Pattern(2)
     notes = []
@@ -200,7 +236,7 @@ def gen_utility(bank='j'):
         # Offbeat percussion
         for beat in range(4):
             notes.append((3, bank, b + beat * Q + E, HIT, 60))
-    add_notes(p, notes)
+    add_notes(p, notes, roles)
     return p
 
 
@@ -217,21 +253,31 @@ GENERATORS = {
 
 
 def generate_patterns(ptn_dir=None):
-    """Generate starter patterns for all genre banks."""
+    """Generate starter patterns for every bank that has one-shot drum hits."""
     if ptn_dir is None:
         ptn_dir = PTN_DIR
     os.makedirs(ptn_dir, exist_ok=True)
+    config = load_bank_config(CONFIG_PATH)
 
     print("=== Generating Starter Patterns ===")
+    written = 0
     for bank, (name, gen_func) in GENERATORS.items():
-        pattern = gen_func(bank.lower())
-        # Write pattern to pad 1 of that bank (the "bank pattern")
         filename = get_ptn_filename(bank.lower(), 1)
         out_path = os.path.join(ptn_dir, filename)
+        bank_config = config.get(f"bank_{bank.lower()}") or {}
+        roles = drum_roles(bank_config.get("pads") or {})
+        if 1 not in roles or 2 not in roles:
+            print(f"  Bank {bank}: skipped — no kick + snare one-shots in bank_config")
+            if os.path.exists(out_path):
+                os.remove(out_path)  # don't leave a pattern that fires loops
+            continue
+        pattern = gen_func(bank.lower(), roles)
+        # Write pattern to pad 1 of that bank (the "bank pattern")
         write_binary(pattern, bank.lower(), 1, out_path)
-        print(f"  Bank {bank} ({name}): {filename} — 2-bar pattern")
+        print(f"  Bank {bank} ({name}): {filename} — 2-bar pattern, pads {roles}")
+        written += 1
 
-    print(f"\nDone! {len(GENERATORS)} patterns written to {ptn_dir}")
+    print(f"\nDone! {written} patterns written to {ptn_dir}")
 
 
 if __name__ == '__main__':

@@ -19,6 +19,7 @@ import os
 from typing import Any
 
 from jambox_config import load_scoring_config
+from tag_vocab import canonical_key
 
 # ---------------------------------------------------------------------------
 # Config loading
@@ -63,9 +64,11 @@ _KEY_RELATIVES = {
 
 
 def normalize_key(key: str | None) -> str:
+    """Canonical key with sharps folded to flats ('c#m', 'C# min', 'Csm' -> 'Dbm')."""
     if not key:
         return ""
-    return _ENHARMONIC.get(key, key)
+    canonical = canonical_key(str(key)) or str(key)
+    return _ENHARMONIC.get(canonical, canonical)
 
 
 def keys_compatible(key_a: str, key_b: str) -> bool:

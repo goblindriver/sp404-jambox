@@ -28,8 +28,10 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from tag_vocab import canonical_key
 from jambox_config import (
     LIBRARY_SKIP_DIRS,
+    merge_tag_fields,
     LONG_HOLD_DIRNAME,
     delete_tag_paths,
     export_tags_json,
@@ -234,13 +236,11 @@ BPM_PATTERNS = [
     re.compile(r"\((\d{2,3})\)"),
 ]
 
+# A key token sits between delimiters: "_Am_", " C#min.", "-Bb-". The quality
+# (m/min/minor/maj/major) is part of the match -- dropping it stored every
+# minor key as major.
 KEY_PATTERN = re.compile(
-    r"[\s_\-]([A-G][#bs]?)\s*(?:m(?:in(?:or)?)?|maj(?:or)?)?[\s_\-\.]",
-    re.IGNORECASE,
-)
-KEY_PATTERN_SUFFIX = re.compile(
-    r"[\s_\-]([A-G][#bs]?(?:m|min|maj)?)\s*\.",
-    re.IGNORECASE,
+    r"(?<=[\s_\-\(])([A-Ga-g])(#|b|sharp|flat)?\s?((?i:minor|min|major|maj|m))?(?=[\s_\-\.\)]|$)"
 )
 
 
@@ -272,16 +272,19 @@ def extract_bpm(filename, dirpath):
 
 
 def extract_key(filename):
-    """Try to extract musical key from filename. Normalizes # to s per spec."""
-    for pat in [KEY_PATTERN, KEY_PATTERN_SUFFIX]:
-        m = pat.search(filename)
-        if m:
-            raw = m.group(1).strip()
-            if len(raw) >= 1:
-                root = raw[0].upper()
-                rest = raw[1:].replace("#", "s")
-                return root + rest
-    return None
+    """Musical key from a filename, canonical ("Am", "Csm", "Bb") or None.
+
+    Tokens with an accidental or quality ("Am", "c#", "Ebmin") win over a bare
+    letter. A bare letter only counts when uppercase, so "kick_e_01" isn't E.
+    """
+    bare = None
+    for m in KEY_PATTERN.finditer(filename):
+        root, accidental, quality = m.groups()
+        if accidental or quality:
+            return canonical_key(root + (accidental or "") + (quality or ""))
+        if bare is None and root.isupper():
+            bare = root
+    return canonical_key(bare) if bare else None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -823,12 +826,31 @@ def print_summary(db):
         print(f"  {p:<15s} {count:>5d}")
 
 
+def refresh_filename_keys():
+    """Re-run extract_key on rows whose key came from the filename."""
+    changes = {}
+    for rel, entry in load_existing_tags().items():
+        if not isinstance(entry, dict) or entry.get("key_source") not in ("filename", None):
+            continue
+        key = extract_key(os.path.basename(rel))
+        if key != entry.get("key"):
+            changes[rel] = {"key": key, "key_source": "filename" if key else None}
+    for rel, fields in list(changes.items())[:20]:
+        print(f"  {rel}: -> {fields['key']}")
+    if changes:
+        merge_tag_fields(TAGS_FILE, changes)
+        export_tags_json(TAGS_FILE)
+    print(f"Updated {len(changes)} filename-derived keys")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Auto-tag the SP-404 sample library")
     parser.add_argument("--update", action="store_true",
                         help="Only tag new or changed files (the default; kept for compatibility)")
     parser.add_argument("--rebuild", action="store_true",
                         help="Re-derive base tags for every file, keeping smart-retag and enrichment fields")
+    parser.add_argument("--refresh-keys", action="store_true",
+                        help="Re-read filename-derived keys (fixes minor keys stored as major) and exit")
     parser.add_argument("--no-duration", action="store_true",
                         help="Skip ffprobe duration detection (faster)")
     parser.add_argument("--path", type=str,
@@ -836,6 +858,10 @@ def main():
     parser.add_argument("--include-long-hold", action="store_true",
                         help="Include _LONG-HOLD/ in the scan (normally skipped)")
     args = parser.parse_args()
+
+    if args.refresh_keys:
+        refresh_filename_keys()
+        return
 
     path_filter = None
     if args.path:

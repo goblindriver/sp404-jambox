@@ -6,8 +6,8 @@ Usage:
     python scripts/deduplicate_samples.py --dedupe --clean
 """
 
+import numpy as np
 import argparse
-import difflib
 import json
 import os
 import shutil
@@ -38,13 +38,16 @@ def _fingerprint_with_fpcalc(filepath):
     if not tool:
         return None
 
-    result = subprocess.run(
-        [tool, "-raw", filepath],
-        capture_output=True,
-        text=True,
-        timeout=20,
-        env=build_subprocess_env(SETTINGS),
-    )
+    try:
+        result = subprocess.run(
+            [tool, "-raw", filepath],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=build_subprocess_env(SETTINGS),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None  # fpcalc missing or hung: compute_fingerprint falls back to Python
     if result.returncode != 0:
         return None
 
@@ -67,7 +70,8 @@ def _fingerprint_with_python(filepath):
     vector = dedup_library.compute_fingerprint(filepath)
     if vector is None:
         return None
-    return {"kind": "python", "value": vector}
+    # Plain list so the fingerprint cache stays JSON-serializable.
+    return {"kind": "python", "value": vector.tolist() if hasattr(vector, "tolist") else list(vector)}
 
 
 def compute_fingerprint(filepath):
@@ -101,9 +105,36 @@ def _cached_fingerprint(rel_path, cache_entries, python_fingerprints):
     return fingerprint
 
 
+def _fpcalc_frames(value):
+    """fpcalc -raw fingerprint (comma-separated, possibly signed ints) as uint32."""
+    if isinstance(value, str):
+        value = [int(x) for x in value.split(",") if x.strip()]
+    return (np.asarray(value, dtype=np.int64) & 0xFFFFFFFF).astype(np.uint32)
+
+
+def fingerprint_similarity(a, b, max_offset=3):
+    """1 - bit error rate of the best alignment within +/-max_offset frames.
+
+    Chromaprint frames are 32-bit feature hashes: the same audio re-encoded
+    differs in a few bits per frame (similarity ~0.9-1.0), unrelated audio in
+    about half of them (~0.5). Text diffing the comma-separated string scored
+    near-identical fingerprints around 0.05.
+    """
+    best = 0.0
+    for offset in range(-max_offset, max_offset + 1):
+        x = a[max(0, offset):]
+        y = b[max(0, -offset):]
+        n = min(len(x), len(y))
+        if n == 0:
+            continue
+        differing = int(np.unpackbits(np.bitwise_xor(x[:n], y[:n]).view(np.uint8)).sum())
+        best = max(best, 1.0 - differing / (32.0 * n))
+    return best
+
+
 def similarity(a, b):
     if a["kind"] == "fpcalc" and b["kind"] == "fpcalc":
-        return difflib.SequenceMatcher(a=a["value"], b=b["value"]).ratio()
+        return fingerprint_similarity(_fpcalc_frames(a["value"]), _fpcalc_frames(b["value"]))
     if a["kind"] == "python" and b["kind"] == "python":
         return float(dedup_library.cosine_similarity(a["value"], b["value"]))
     return None

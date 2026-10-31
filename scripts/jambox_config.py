@@ -373,6 +373,14 @@ def load_settings(repo_dir):
         "FINE_TUNED_LLM_ENDPOINT": _read_command("SP404_FINE_TUNED_LLM_ENDPOINT", ""),
         "FINE_TUNED_LLM_MODEL": _read_command("SP404_FINE_TUNED_LLM_MODEL", ""),
         "VIBE_RETRIEVAL_LIMIT": _read_int("SP404_VIBE_RETRIEVAL_LIMIT", 4, minimum=0),
+        "FETCH_HISTORY_FILE": _read_optional_path(
+            "SP404_FETCH_HISTORY_FILE", os.path.join(repo_dir, "data", "fetch_history.json")
+        ),
+        "FETCH_DIVERSITY_TOP_N": _read_int("SP404_FETCH_DIVERSITY_TOP_N", 8, minimum=1),
+        "FETCH_DETERMINISTIC": _read_bool("SP404_FETCH_DETERMINISTIC", default=False),
+        "FETCH_DIVERSITY_COOLDOWN_SECONDS": _read_int(
+            "SP404_FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 * 3600, minimum=0
+        ),
         # Optional second clone: blackout "Live crunch" reads retag checkpoint + crunch logs here
         "CRUNCH_REPO": _read_optional_path("SP404_CRUNCH_REPO", ""),
         "MULTITRACK_SESSIONS_ROOT": _read_required_path(

@@ -17,16 +17,6 @@ def _settings():
     return current_app.config
 
 
-def _clear_staging_wavs(staging_dir):
-    """Remove only generated pad WAVs so a run starts cleanly."""
-    if not os.path.isdir(staging_dir):
-        return
-
-    for name in os.listdir(staging_dir):
-        if name.upper().endswith('.WAV'):
-            os.remove(os.path.join(staging_dir, name))
-
-
 def _command_error_payload(result):
     stderr = (result.stderr or '').strip()
     stdout = (result.stdout or '').strip()
@@ -84,10 +74,7 @@ def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
 
     config = fs.load_config()
     os.makedirs(fs.STAGING, exist_ok=True)
-    if bank is None and pad is None:
-        _clear_staging_wavs(fs.STAGING)
-    else:
-        fs.clear_staging_wavs(bank=bank, pad=pad)
+    fs.clear_staging_wavs(bank=bank, pad=pad)
 
     tag_db = fs.load_tag_db()
     used_files = set()
@@ -150,12 +137,7 @@ def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
 
     save_score_cache(fs.LIBRARY, score_cache)
 
-    smpl_dir = settings['SMPL_DIR']
-    if total_fetched > 0:
-        os.makedirs(smpl_dir, exist_ok=True)
-        import shutil
-        for path in generated_files:
-            shutil.copy2(path, smpl_dir)
+    fs.publish_staging(bank=bank, pad=pad)
 
     return {
         'total_fetched': total_fetched,
