@@ -381,6 +381,8 @@ def load_settings(repo_dir):
         "SD_SMPL_DIR": sd_smpl_dir(sd_card),
         "PLEX_DATA_DIR": plex_data_dir(),
         "WEB_PORT": _read_int("SP404_WEB_PORT", 5404, minimum=1),
+        # Extra Host values the web UI accepts besides localhost (comma-separated)
+        "WEB_ALLOWED_HOSTS": os.environ.get("SP404_WEB_ALLOWED_HOSTS", ""),
         "GOLD_BANK_A_DIR": os.path.join(sample_library, "_GOLD", "Bank-A"),
         "INGEST_LOG": os.path.join(sample_library, "_ingest_log.json"),
         "RAW_ARCHIVE": os.path.join(sample_library, "_RAW-DOWNLOADS"),

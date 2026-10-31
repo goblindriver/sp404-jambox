@@ -71,5 +71,6 @@ def index():
 
 
 if __name__ == '__main__':
-    print("SP-404 Jambox UI: http://localhost:5404")
-    app.run(host='127.0.0.1', port=5404, debug=app.config['WEB_DEBUG'])
+    port = app.config['WEB_PORT']
+    print(f"SP-404 Jambox UI: http://localhost:{port}")
+    app.run(host='127.0.0.1', port=port, debug=app.config['WEB_DEBUG'])
