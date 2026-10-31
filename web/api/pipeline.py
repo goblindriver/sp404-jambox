@@ -542,13 +542,22 @@ def server_status():
 
 
 # Waits for the old server to exit (so the port is free), then starts web/app.py.
+# Waits for the server pid to exit, then relaunches app.py. Polls status rather
+# than Process.wait(): the server isn't the helper's child, and on POSIX an
+# exited-but-unreaped server stays a zombie, which wait() treats as alive.
 _RESTART_HELPER = (
-    "import subprocess, sys\n"
+    "import subprocess, sys, time\n"
     "import psutil\n"
-    "try:\n"
-    "    psutil.Process(int(sys.argv[1])).wait(timeout=30)\n"
-    "except Exception:\n"
-    "    pass\n"
+    "deadline = time.time() + 30\n"
+    "while time.time() < deadline:\n"
+    "    try:\n"
+    "        if psutil.Process(int(sys.argv[1])).status() == psutil.STATUS_ZOMBIE:\n"
+    "            break\n"
+    "    except psutil.NoSuchProcess:\n"
+    "        break\n"
+    "    except Exception:\n"
+    "        pass\n"
+    "    time.sleep(0.1)\n"
     "subprocess.Popen([sys.executable, sys.argv[2]], cwd=sys.argv[3])\n"
 )
 

@@ -59,6 +59,12 @@ class KeyTests(unittest.TestCase):
             "Vox_G.wav": "G",
             "kick_e_01.wav": None,
             "FM_Bass_120.wav": None,
+            "Keys_AMin_90.wav": "Am",
+            # Uppercase M is a word, not minor: ambient packs, FM synths, "CM".
+            "musicradar-ambient_AM_GuitVerber120D-05.flac": None,
+            "SYNTH-PWM-FM-Rich.flac": None,
+            "Organic-Violin_CM 70 bpm 4.flac": None,
+            "Bass Loop FM Mod C# 128bpm.flac": "Cs",
         }
         for name, expected in cases.items():
             self.assertEqual(extract_key(name), expected, name)
