@@ -15,8 +15,119 @@ const state = {
 
 const audio = document.getElementById('audio-player');
 
+// ── HTML escaping ──
+// Every value interpolated into an html`` template is escaped unless it is
+// itself an html`` result (or wrapped with raw()). Assign the result straight
+// to innerHTML; never build markup with plain template strings.
+class SafeHtml {
+    constructor(value) {
+        this.value = value;
+    }
+    toString() {
+        return this.value;
+    }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/** Mark a trusted, already-built HTML fragment so html`` does not escape it. */
+function raw(str) {
+    return str instanceof SafeHtml ? str : new SafeHtml(String(str ?? ''));
+}
+
+function htmlValue(value) {
+    if (value === null || value === undefined) return '';
+    if (value instanceof SafeHtml) return value.value;
+    if (Array.isArray(value)) return value.map(htmlValue).join('');
+    return escapeHtml(value);
+}
+
+/** Tagged template: escapes every interpolated value; nests without double-escaping. */
+function html(strings, ...values) {
+    let out = strings[0];
+    for (let i = 0; i < values.length; i++) {
+        out += htmlValue(values[i]) + strings[i + 1];
+    }
+    return new SafeHtml(out);
+}
+
+/** Join fragments with a separator; plain strings among them are escaped. */
+function joinHtml(items, separator = '') {
+    return raw(items.map(htmlValue).join(htmlValue(separator)));
+}
+
+/** Only allow same-origin paths and http(s) URLs in src attributes. */
+function safeUrl(url) {
+    const s = String(url ?? '').trim();
+    if (s.startsWith('/') && !s.startsWith('//')) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    return '';
+}
+
+// ── Delegated click / drag handlers for rendered markup ──
+// Rendered elements carry data-action plus escaped data-* arguments instead of
+// inline on* attributes; one document-level listener dispatches them.
+function trackIdFromData(value) {
+    return /^\d+$/.test(value || '') ? Number(value) : value;
+}
+
+const CLICK_ACTIONS = {
+    'browse-library': (el) => browseLibrary(el.dataset.path || ''),
+    'preview-library': (el) => previewLibraryFile(el.dataset.path),
+    'assign-library': (el) => assignFromLibrary(el.dataset.path),
+    'toggle-tag': (el) => toggleTag(el.dataset.dim, el.dataset.tag),
+    'filter-preset-category': (el) =>
+        filterPresetCategory(el.hasAttribute('data-category') ? el.dataset.category : null),
+    'preview-preset': (el) => previewPreset(el.dataset.presetRef),
+    'load-artist': (el) => loadArtist(el.dataset.artist),
+    'load-mood': (el) => loadMoodResults(el.dataset.mood),
+    'load-style': (el) => loadStyleResults(el.dataset.style),
+    'split-track': (el) => splitTrack(trackIdFromData(el.dataset.trackId), el),
+};
+
+function eventElement(e) {
+    const t = e.target;
+    if (t instanceof Element) return t;
+    return t && t.parentElement ? t.parentElement : null;
+}
+
+function installDelegatedHandlers() {
+    document.addEventListener('click', (e) => {
+        const target = eventElement(e);
+        const el = target ? target.closest('[data-action]') : null;
+        if (!el) return;
+        const handler = CLICK_ACTIONS[el.dataset.action];
+        if (handler) handler(el, e);
+    });
+
+    // Preset cards → drag onto a bank tab
+    document.addEventListener('dragstart', (e) => {
+        const target = eventElement(e);
+        const card = target ? target.closest('.preset-card[data-preset-ref]') : null;
+        if (card) dragPreset(e, card.dataset.presetRef);
+    });
+
+    // Album art that fails to load is hidden (error events don't bubble — capture)
+    document.addEventListener('error', (e) => {
+        const img = e.target;
+        if (img instanceof HTMLImageElement && img.hasAttribute('data-hide-on-error')) {
+            img.style.display = 'none';
+        }
+    }, true);
+}
+
 // ── Init ──
 async function init() {
+    installDelegatedHandlers();
+    installPadGridDnD();
+    installBankTabDnD();
     try {
         const data = await api('/api/banks');
         if (!Array.isArray(data)) {
@@ -25,7 +136,6 @@ async function init() {
         state.banks = data;
 
         renderBankTabs();
-        setupBankTabDropZones();
         switchBank(state.banks.find(b => b.letter === 'b') || state.banks[0]);
 
         checkSDCard();
@@ -234,9 +344,10 @@ function renderBankTabs() {
         // Show card fill count badge if SD data available
         const cardBank = state.sdCardData?.banks?.[bank.letter.toUpperCase()];
         const badge = cardBank && cardBank.filled_count > 0
-            ? `<span class="tab-card-badge">${cardBank.filled_count}</span>`
+            ? html`<span class="tab-card-badge">${cardBank.filled_count}</span>`
             : '';
-        tab.innerHTML = `<span class="tab-dot" style="background:${bank.color}"></span>${bank.letter.toUpperCase()}${badge}`;
+        tab.innerHTML = html`<span class="tab-dot"></span>${bank.letter.toUpperCase()}${badge}`;
+        tab.querySelector('.tab-dot').style.background = bank.color;
 
         if (state.currentBank && state.currentBank.letter === bank.letter) {
             tab.classList.add('active');
@@ -271,7 +382,6 @@ function switchBank(bank) {
     grid.style.setProperty('--bank-color-glow', bank.color + '55');
 
     renderPadGrid(bank);
-    setupPadDropZones();
     document.getElementById('pad-detail').classList.add('hidden');
     updateBankToolbarState();
 }
@@ -319,14 +429,17 @@ function renderPadGrid(bank) {
                 else if (ptnStats && ptnStats.hit_count > 5) heatClass = ' pad-warm';
 
                 const title = `${provLabel} · ${kb}KB ${parts}${adjusted ? ' · BPM adjusted' : ''}${ptnStats ? ` · ${ptnStats.hit_count} pattern hits` : ''}`;
-                cardIndicator = `<span class="pad-card-badge${heatClass}" title="${title}">${provIcon}${adjusted}</span>`;
+                cardIndicator = html`<span class="pad-card-badge${heatClass}" title="${title}">${provIcon}${adjusted}</span>`;
                 el.classList.add('on-card');
+                // On-card pads can be dragged onto other pads to reorganize the card
+                // (handled by the delegated listeners in installPadGridDnD).
+                if (state.sdMounted) el.draggable = true;
                 if (cardPad.bpm_adjusted) el.classList.add('user-adjusted');
                 if (ptnStats && ptnStats.hit_count > 0) el.classList.add('pattern-used');
             }
         }
 
-        el.innerHTML = `
+        el.innerHTML = html`
             <span class="pad-num">${pad.num}</span>
             ${cardIndicator}
             <span class="pad-status-icon">${statusIcon}</span>
@@ -432,7 +545,7 @@ function selectPad(pad) {
             // PAD_INFO reliability note for Bank A
             const reliabilityNote = !cardPad.padinfo_reliable ? ' · ⚠ Settings may not reflect hardware state' : '';
 
-            cardInfoEl.innerHTML = `<strong>${tier}</strong> · ${prov} · ${kb}KB · ${mode}${bpmInfo}${rev}${lofi}${ptnInfo}${reliabilityNote}`;
+            cardInfoEl.innerHTML = html`<strong>${tier}</strong> · ${prov} · ${kb}KB · ${mode}${bpmInfo}${rev}${lofi}${ptnInfo}${reliabilityNote}`;
             cardInfoEl.classList.remove('hidden');
         } else if (cardBank) {
             cardInfoEl.textContent = 'SD: not on card';
@@ -708,9 +821,9 @@ function renderInspireHistory() {
     if (!container) return;
     const seeds = loadInspireHistory();
     if (seeds.length === 0) { container.innerHTML = ''; return; }
-    container.innerHTML = seeds.map(s =>
-        `<button class="inspire-seed-chip" title="Re-use: ${escapeHtml(s)}">${escapeHtml(s)}</button>`
-    ).join('');
+    container.innerHTML = html`${seeds.map(s =>
+        html`<button class="inspire-seed-chip" title="Re-use: ${s}">${s}</button>`
+    )}`;
     container.querySelectorAll('.inspire-seed-chip').forEach(btn => {
         btn.onclick = (e) => {
             e.stopPropagation();
@@ -1448,45 +1561,43 @@ async function searchLibrary(query) {
 
 function renderLibraryBrowser(data, path) {
     const container = document.getElementById('library-browser');
-    let html = '';
+    const out = [];
 
     // Breadcrumb
     const parts = path ? path.split('/') : [];
-    html += '<div class="lib-breadcrumb">';
-    html += `<a onclick="browseLibrary('')">Library</a>`;
+    const crumbs = [html`<a data-action="browse-library" data-path="">Library</a>`];
     let cumPath = '';
     for (const part of parts) {
         cumPath += (cumPath ? '/' : '') + part;
-        const p = cumPath;
-        html += ` / <a onclick="browseLibrary('${p}')">${part}</a>`;
+        crumbs.push(html` / <a data-action="browse-library" data-path="${cumPath}">${part}</a>`);
     }
-    html += '</div>';
+    out.push(html`<div class="lib-breadcrumb">${crumbs}</div>`);
 
     // Directories
-    for (const dir of data.dirs) {
-        html += `<div class="lib-item lib-dir" onclick="browseLibrary('${dir.path}')">
+    for (const dir of (data.dirs || [])) {
+        out.push(html`<div class="lib-item lib-dir" data-action="browse-library" data-path="${dir.path}">
             <span>📁 ${dir.name}</span>
             <span class="lib-count">${dir.count}</span>
-        </div>`;
+        </div>`);
     }
 
     // Files
-    for (const file of data.files) {
+    for (const file of (data.files || [])) {
         const kb = Math.round(file.size / 1024);
-        html += `<div class="lib-item lib-file" data-library-path="${file.path}">
+        out.push(html`<div class="lib-item lib-file" data-library-path="${file.path}">
             <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
-            <button class="lib-play" onclick="previewLibraryFile('${file.path}')" title="Preview">▶</button>
+            <button class="lib-play" data-action="preview-library" data-path="${file.path}" title="Preview">▶</button>
             <span class="lib-name" title="${file.name}">${truncate(file.name, 28)}</span>
             <span class="lib-size">${kb}KB</span>
-            <button class="lib-assign" onclick="assignFromLibrary('${file.path}')" title="Assign to selected pad">Assign</button>
-        </div>`;
+            <button class="lib-assign" data-action="assign-library" data-path="${file.path}" title="Assign to selected pad">Assign</button>
+        </div>`);
     }
 
     if (data.total_files > 200) {
-        html += `<div class="lib-item" style="color:var(--text-muted)">Showing 200 of ${data.total_files} files — use search to narrow down</div>`;
+        out.push(html`<div class="lib-item" style="color:var(--text-muted)">Showing 200 of ${data.total_files} files — use search to narrow down</div>`);
     }
 
-    container.innerHTML = html;
+    container.innerHTML = html`${out}`;
     setupLibraryDrag(container);
 }
 
@@ -1503,23 +1614,23 @@ function renderSearchResults(results, mode) {
         return;
     }
     const isClap = mode === 'clap' || mode === 'facet';
-    let html = `<div class="lib-breadcrumb">Search results (${results.length})</div>`;
+    const out = [html`<div class="lib-breadcrumb">Search results (${results.length})</div>`];
     for (const r of results) {
         const name = r.path.split('/').pop();
         const scoreLabel = isClap ? (r.score > 0 ? r.score.toFixed(2) : '') : `${r.score}pts`;
-        const tc = r.type_code ? `<span class="search-type-badge">${r.type_code}</span>` : '';
-        const genreBadge = r.parent_genre ? `<span class="search-genre-badge">${r.parent_genre}</span>` : '';
-        const danceBadge = r.danceability != null && r.danceability >= 0.6 ? '<span class="search-dance-badge" title="Danceable">💃</span>' : '';
-        html += `<div class="lib-item lib-file" data-library-path="${r.path}">
+        const tc = r.type_code ? html`<span class="search-type-badge">${r.type_code}</span>` : '';
+        const genreBadge = r.parent_genre ? html`<span class="search-genre-badge">${r.parent_genre}</span>` : '';
+        const danceBadge = r.danceability != null && r.danceability >= 0.6 ? html`<span class="search-dance-badge" title="Danceable">💃</span>` : '';
+        out.push(html`<div class="lib-item lib-file" data-library-path="${r.path}">
             <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
-            <button class="lib-play" onclick="previewLibraryFile('${r.path}')" title="Preview">▶</button>
+            <button class="lib-play" data-action="preview-library" data-path="${r.path}" title="Preview">▶</button>
             ${tc}${genreBadge}${danceBadge}
             <span class="lib-name" title="${r.path}">${truncate(name, 18)}</span>
             <span class="lib-size" style="color:var(--accent)">${scoreLabel}</span>
-            <button class="lib-assign" onclick="assignFromLibrary('${r.path}')" title="Assign">Assign</button>
-        </div>`;
+            <button class="lib-assign" data-action="assign-library" data-path="${r.path}" title="Assign">Assign</button>
+        </div>`);
     }
-    container.innerHTML = html;
+    container.innerHTML = html`${out}`;
     setupLibraryDrag(container);
 }
 
@@ -1573,23 +1684,23 @@ async function loadTagCloud() {
 function renderTagCloud() {
     const data = state.tagData;
     const sections = document.getElementById('tag-sections');
-    let html = '';
+    const out = [];
 
-    html += renderTagSection('Type', data.type_codes, 'type_code');
-    html += renderTagSection('Vibe', data.vibes, 'vibe');
-    html += renderTagSection('Texture', data.textures, 'texture');
-    html += renderTagSection('Genre', data.genres, 'genre');
-    html += renderTagSection('Energy', data.energies, 'energy');
-    html += renderTagSection('Source', data.sources, 'source');
-    html += renderTagSection('Playability', data.playabilities, 'playability');
+    out.push(renderTagSection('Type', data.type_codes, 'type_code'));
+    out.push(renderTagSection('Vibe', data.vibes, 'vibe'));
+    out.push(renderTagSection('Texture', data.textures, 'texture'));
+    out.push(renderTagSection('Genre', data.genres, 'genre'));
+    out.push(renderTagSection('Energy', data.energies, 'energy'));
+    out.push(renderTagSection('Source', data.sources, 'source'));
+    out.push(renderTagSection('Playability', data.playabilities, 'playability'));
 
     const bpmTags = {};
     for (const [bpm, count] of Object.entries(data.bpms || {})) {
         bpmTags[bpm + 'bpm'] = count;
     }
-    html += renderTagSection('BPM', bpmTags, 'bpm');
+    out.push(renderTagSection('BPM', bpmTags, 'bpm'));
 
-    sections.innerHTML = html;
+    sections.innerHTML = html`${out}`;
     renderActiveTags();
 }
 
@@ -1600,22 +1711,19 @@ function renderTagSection(title, tagMap, dimension) {
     const maxCount = entries[0]?.[1] || 1;
     const active = state.activeFilters[dimension] || [];
 
-    let html = `<div class="tag-section">
-        <div class="tag-section-title">${title}</div>
-        <div class="tag-cloud">`;
-
-    for (const [tag, count] of entries) {
+    const chips = entries.map(([tag, count]) => {
         const ratio = count / maxCount;
         const size = ratio > 0.7 ? 5 : ratio > 0.4 ? 4 : ratio > 0.2 ? 3 : ratio > 0.1 ? 2 : 1;
         const isActive = active.includes(tag);
         const tooltip = TYPE_CODE_NAMES[tag] ? `${TYPE_CODE_NAMES[tag]} (${count})` : `${count} samples`;
-        html += `<span class="tag tag-size-${size} tag-dim-${dimension} ${isActive ? 'active' : ''}"
-                       onclick="toggleTag('${dimension}','${tag}')"
+        return html`<span class="tag tag-size-${size} tag-dim-${dimension} ${isActive ? 'active' : ''}"
+                       data-action="toggle-tag" data-dim="${dimension}" data-tag="${tag}"
                        title="${tooltip}">${tag}<span class="tag-count">${count}</span></span>`;
-    }
+    });
 
-    html += '</div></div>';
-    return html;
+    return html`<div class="tag-section">
+        <div class="tag-section-title">${title}</div>
+        <div class="tag-cloud">${chips}</div></div>`;
 }
 
 function toggleTag(dimension, tag) {
@@ -1650,9 +1758,9 @@ function renderActiveTags() {
         container.innerHTML = '';
         return;
     }
-    container.innerHTML = allFilters.map(f =>
-        `<span class="active-tag tag-dim-${f.dim}" onclick="toggleTag('${f.dim}','${f.val}')">${f.val}<span class="remove">&times;</span></span>`
-    ).join('');
+    container.innerHTML = html`${allFilters.map(f =>
+        html`<span class="active-tag tag-dim-${f.dim}" data-action="toggle-tag" data-dim="${f.dim}" data-tag="${f.val}">${f.val}<span class="remove">&times;</span></span>`
+    )}`;
 }
 
 async function fetchByTags() {
@@ -1675,19 +1783,19 @@ function renderTagResults(data) {
         return;
     }
 
-    let html = `<div class="tag-results-header">${data.total} matches</div>`;
+    const out = [html`<div class="tag-results-header">${data.total} matches</div>`];
     for (const r of data.results) {
         const dur = r.duration ? `${r.duration.toFixed(1)}s` : '';
         const code = r.type_code || '';
         const meta = [code, r.bpm ? r.bpm + 'bpm' : '', r.key || '', dur].filter(Boolean).join(' · ');
-        html += `<div class="lib-item lib-file" data-library-path="${r.path}">
+        out.push(html`<div class="lib-item lib-file" data-library-path="${r.path}">
             <span class="lib-drag-handle" title="Drag to a pad">⠿</span>
-            <button class="lib-play" onclick="previewLibraryFile('${r.path}')" title="Preview">▶</button>
+            <button class="lib-play" data-action="preview-library" data-path="${r.path}" title="Preview">▶</button>
             <span class="lib-name" title="${r.path}">${truncate(r.name, 26)}</span>
             <span class="lib-size">${meta}</span>
-        </div>`;
+        </div>`);
     }
-    container.innerHTML = html;
+    container.innerHTML = html`${out}`;
     setupLibraryDrag(container);
 }
 
@@ -1701,16 +1809,11 @@ function toast(msg, type = '') {
 }
 
 // ── Utils ──
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;');
-}
+// escapeHtml / html`` / raw() live at the top of the file.
 
 function truncate(str, len) {
-    return str.length > len ? str.slice(0, len) + '...' : str;
+    const s = String(str ?? '');
+    return s.length > len ? s.slice(0, len) + '...' : s;
 }
 
 /* Old vibe draft helpers removed — superseded by stepped workflow */
@@ -1738,7 +1841,7 @@ async function showTutorial() {
         const filledPads = state.banks.reduce((sum, b) =>
             sum + b.pads.filter(p => p.status === 'filled').length, 0);
 
-        document.getElementById('tutorial-stats').innerHTML = `
+        document.getElementById('tutorial-stats').innerHTML = html`
             <div class="stat-item">
                 <span class="stat-value">${stats.total.toLocaleString()}</span>
                 <span class="stat-label">samples in library</span>
@@ -1884,17 +1987,17 @@ function renderWatcherFeed(entries) {
         list.innerHTML = '<div class="watcher-empty">No recent activity</div>';
         return;
     }
-    list.innerHTML = entries.slice().reverse().map(e => {
+    list.innerHTML = html`${entries.slice().reverse().map(e => {
         const time = new Date(e.timestamp).toLocaleTimeString();
         const cats = e.categories ? Object.entries(e.categories).map(
             ([cat, n]) => `${cat.split('/').pop()}: ${n}`
         ).join(', ') : '';
-        return `<div class="watcher-entry">
+        return html`<div class="watcher-entry">
             <div class="watcher-entry-time">${time}</div>
             <div class="watcher-entry-name">${e.source}</div>
             <div class="watcher-entry-detail">${e.samples} sample${e.samples !== 1 ? 's' : ''} ${cats ? '— ' + cats : ''}</div>
         </div>`;
-    }).join('');
+    })}`;
 }
 
 // ── Disk Panel ──
@@ -1918,7 +2021,7 @@ async function loadDiskReport() {
     try {
         const d = await api('/api/pipeline/disk-report');
         const freeClass = d.disk_free < 500 * 1024 * 1024 ? 'disk-warn' : 'disk-ok';
-        el.innerHTML = `
+        el.innerHTML = html`
             <div>Disk free: <span class="${freeClass}">${d.disk_free_str}</span></div>
             <div>Downloads: ${d.downloads_str}</div>
             <div>Cleanable: <strong>${d.cleanable_str}</strong> (${d.cleanable_count} ingested items)</div>
@@ -2035,66 +2138,89 @@ async function saveBankEdit() {
 }
 
 // ── Drag & Drop ──
-function setupPadDropZones() {
-    const pads = document.querySelectorAll('.pad');
-    pads.forEach(el => {
-        const padNum = parseInt(el.dataset.num);
+// Pads are re-rendered often (bank switch, SD scan, saves), so drag/drop is
+// handled by listeners on the #pad-grid container, installed once at init.
+// renderPadGrid sets `draggable` on on-card pads while the SD card is mounted.
+function installPadGridDnD() {
+    const grid = document.getElementById('pad-grid');
+    if (!grid) return;
 
-        // Make on-card pads draggable for reorganization
-        if (el.classList.contains('on-card') && state.sdMounted) {
-            el.draggable = true;
-            el.addEventListener('dragstart', (e) => {
-                const bank = state.currentBank.letter.toUpperCase();
-                e.dataTransfer.setData('application/x-card-pad', JSON.stringify({bank, pad: padNum}));
-                e.dataTransfer.effectAllowed = 'move';
-                el.classList.add('dragging');
-            });
-            el.addEventListener('dragend', () => el.classList.remove('dragging'));
+    const padFromEvent = (e) => {
+        const target = eventElement(e);
+        const el = target ? target.closest('.pad') : null;
+        return el && grid.contains(el) ? el : null;
+    };
+
+    // Card pad drag start (reorganize pads on the SD card)
+    grid.addEventListener('dragstart', (e) => {
+        const el = padFromEvent(e);
+        if (!el || !state.currentBank) return;
+        if (!el.classList.contains('on-card') || !state.sdMounted) return;
+        const bank = state.currentBank.letter.toUpperCase();
+        const padNum = parseInt(el.dataset.num, 10);
+        e.dataTransfer.setData('application/x-card-pad', JSON.stringify({bank, pad: padNum}));
+        e.dataTransfer.effectAllowed = 'move';
+        el.classList.add('dragging');
+    });
+
+    grid.addEventListener('dragend', (e) => {
+        const el = padFromEvent(e);
+        if (el) el.classList.remove('dragging');
+    });
+
+    grid.addEventListener('dragover', (e) => {
+        const el = padFromEvent(e);
+        if (!el) return;
+        e.preventDefault();
+        const hasCardPad = e.dataTransfer.types.includes('application/x-card-pad');
+        e.dataTransfer.dropEffect = hasCardPad ? 'move' : 'copy';
+        el.classList.add('drag-over');
+    });
+
+    grid.addEventListener('dragleave', (e) => {
+        const el = padFromEvent(e);
+        if (!el) return;
+        // Moving between a pad's own children is not leaving the pad
+        if (e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) return;
+        el.classList.remove('drag-over');
+    });
+
+    grid.addEventListener('drop', (e) => {
+        const el = padFromEvent(e);
+        if (!el) return;
+        e.preventDefault();
+        el.classList.remove('drag-over');
+        if (!state.currentBank) return;
+        const targetPadNum = parseInt(el.dataset.num, 10);
+
+        // Card pad-to-pad reorganization
+        const cardPadData = e.dataTransfer.getData('application/x-card-pad');
+        if (cardPadData) {
+            try {
+                const src = JSON.parse(cardPadData);
+                const dstBank = state.currentBank.letter.toUpperCase();
+                if (src.bank === dstBank && src.pad === targetPadNum) return;
+                reorganizeCard([{
+                    from: {bank: src.bank, pad: src.pad},
+                    to: {bank: dstBank, pad: targetPadNum},
+                }]);
+            } catch (err) {
+                toast('Drag error: ' + err.message, 'error');
+            }
+            return;
         }
 
-        el.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            const hasCardPad = e.dataTransfer.types.includes('application/x-card-pad');
-            e.dataTransfer.dropEffect = hasCardPad ? 'move' : 'copy';
-            el.classList.add('drag-over');
-        });
-        el.addEventListener('dragleave', () => {
-            el.classList.remove('drag-over');
-        });
-        el.addEventListener('drop', (e) => {
-            e.preventDefault();
-            el.classList.remove('drag-over');
-            const targetPadNum = parseInt(el.dataset.num);
+        // Check for library drag
+        const libraryPath = e.dataTransfer.getData('application/x-library-path');
+        if (libraryPath) {
+            assignToPad(state.currentBank.letter, targetPadNum, libraryPath);
+            return;
+        }
 
-            // Card pad-to-pad reorganization
-            const cardPadData = e.dataTransfer.getData('application/x-card-pad');
-            if (cardPadData) {
-                try {
-                    const src = JSON.parse(cardPadData);
-                    const dstBank = state.currentBank.letter.toUpperCase();
-                    if (src.bank === dstBank && src.pad === targetPadNum) return;
-                    reorganizeCard([{
-                        from: {bank: src.bank, pad: src.pad},
-                        to: {bank: dstBank, pad: targetPadNum},
-                    }]);
-                } catch (err) {
-                    toast('Drag error: ' + err.message, 'error');
-                }
-                return;
-            }
-
-            // Check for library drag
-            const libraryPath = e.dataTransfer.getData('application/x-library-path');
-            if (libraryPath) {
-                assignToPad(state.currentBank.letter, targetPadNum, libraryPath);
-                return;
-            }
-
-            // OS file drop
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                uploadToPad(state.currentBank.letter, targetPadNum, e.dataTransfer.files[0]);
-            }
-        });
+        // OS file drop
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            uploadToPad(state.currentBank.letter, targetPadNum, e.dataTransfer.files[0]);
+        }
     });
 }
 
@@ -2115,7 +2241,6 @@ async function assignToPad(bankLetter, padNum, libraryPath) {
             if (state.currentBank.letter === bankLetter) {
                 state.currentBank = updated;
                 renderPadGrid(updated);
-                setupPadDropZones();
                 if (state.selectedPad && state.selectedPad.num === padNum) {
                     const pad = updated.pads.find(p => p.num === padNum);
                     if (pad) selectPad(pad);
@@ -2154,7 +2279,6 @@ async function uploadToPad(bankLetter, padNum, file) {
             if (state.currentBank.letter === bankLetter) {
                 state.currentBank = updated;
                 renderPadGrid(updated);
-                setupPadDropZones();
                 if (state.selectedPad && state.selectedPad.num === padNum) {
                     const pad = updated.pads.find(p => p.num === padNum);
                     if (pad) selectPad(pad);
@@ -2234,13 +2358,13 @@ async function loadPresets(category) {
 
 function renderPresetCategories(categories) {
     const el = document.getElementById('preset-categories');
-    let html = `<button class="preset-cat-pill ${!presetCategory ? 'active' : ''}" onclick="filterPresetCategory(null)">All</button>`;
-    for (const cat of categories) {
+    const out = [html`<button class="preset-cat-pill ${!presetCategory ? 'active' : ''}" data-action="filter-preset-category">All</button>`];
+    for (const cat of (categories || [])) {
         if (cat.count === 0) continue;
         const active = presetCategory === cat.name ? 'active' : '';
-        html += `<button class="preset-cat-pill ${active}" onclick="filterPresetCategory('${cat.name}')">${cat.name} (${cat.count})</button>`;
+        out.push(html`<button class="preset-cat-pill ${active}" data-action="filter-preset-category" data-category="${cat.name}">${cat.name} (${cat.count})</button>`);
     }
-    el.innerHTML = html;
+    el.innerHTML = html`${out}`;
 }
 
 function filterPresetCategory(cat) {
@@ -2254,16 +2378,16 @@ function renderPresetCards(presets, elId) {
         el.innerHTML = '<div style="padding:16px;color:var(--text-dim)">No presets found</div>';
         return;
     }
-    el.innerHTML = presets.map(p => `
+    // Drag start is handled by the delegated listener in installDelegatedHandlers.
+    el.innerHTML = html`${presets.map(p => html`
         <div class="preset-card" draggable="true"
-             ondragstart="dragPreset(event, '${p.ref}')"
-             onclick="previewPreset('${p.ref}')">
+             data-preset-ref="${p.ref}" data-action="preview-preset">
             <div class="preset-card-name">${p.name}</div>
             <div class="preset-card-meta">${p.bpm || '—'} BPM · ${p.key || '—'} · ${p.category}</div>
-            ${p.vibe ? `<div class="preset-card-vibe">${p.vibe.substring(0, 60)}</div>` : ''}
-            ${p.tags?.length ? `<div class="preset-card-tags">${p.tags.slice(0, 6).map(t => `<span class="preset-tag">${t}</span>`).join('')}</div>` : ''}
+            ${p.vibe ? html`<div class="preset-card-vibe">${String(p.vibe).substring(0, 60)}</div>` : ''}
+            ${p.tags?.length ? html`<div class="preset-card-tags">${p.tags.slice(0, 6).map(t => html`<span class="preset-tag">${t}</span>`)}</div>` : ''}
         </div>
-    `).join('');
+    `)}`;
 }
 
 async function previewPreset(ref) {
@@ -2288,47 +2412,49 @@ async function previewPreset(ref) {
     preview.classList.remove('hidden');
 
     // Header
-    document.getElementById('preset-preview-header').innerHTML = `
+    document.getElementById('preset-preview-header').innerHTML = html`
         <h4>${data.name}</h4>
         <div style="font-size:11px;color:var(--text-dim)">${data.bpm || '—'} BPM · ${data.key || '—'} · ${data.category || ''}</div>
-        ${data.vibe ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:4px">${data.vibe}</div>` : ''}
-        ${data.tags?.length ? `<div style="margin-top:6px">${data.tags.map(t => `<span class="preset-tag">${t}</span>`).join(' ')}</div>` : ''}
+        ${data.vibe ? html`<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:4px">${data.vibe}</div>` : ''}
+        ${data.tags?.length ? html`<div style="margin-top:6px">${joinHtml(data.tags.map(t => html`<span class="preset-tag">${t}</span>`), ' ')}</div>` : ''}
     `;
 
     // Pad grid — show scale mapping note if available
     const padsEl = document.getElementById('preset-preview-pads');
     const scaleMap = data.scale_mapping?.pads || {};
-    let html = '';
+    const out = [];
     for (let i = 1; i <= 12; i++) {
         const desc = data.pads?.[i] || data.pads?.[String(i)] || '';
         const note = scaleMap[i] || scaleMap[String(i)] || '';
-        html += `<div class="preset-preview-pad">
-            <div class="preset-preview-pad-num">${i}${note ? ` <span style="color:var(--accent);font-size:10px">${note}</span>` : ''}</div>
+        out.push(html`<div class="preset-preview-pad">
+            <div class="preset-preview-pad-num">${i}${note ? html` <span style="color:var(--accent);font-size:10px">${note}</span>` : ''}</div>
             <div class="preset-preview-pad-desc">${desc || '—'}</div>
-        </div>`;
+        </div>`);
     }
 
     // Show patterns info if available
     if (data.patterns?.length) {
-        html += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border)">
+        out.push(html`<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border)">
             <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Patterns:</div>
-            ${data.patterns.map(p => `<span class="preset-tag">${p.name} (${p.type})</span>`).join(' ')}
-        </div>`;
+            ${joinHtml(data.patterns.map(p => html`<span class="preset-tag">${p.name} (${p.type})</span>`), ' ')}
+        </div>`);
     }
-    padsEl.innerHTML = html;
+    padsEl.innerHTML = html`${out}`;
 
     // Show/update generate patterns button
     const loadBtn = document.getElementById('btn-load-preset');
     if (data.patterns?.length && loadBtn) {
         // Add generate patterns button after load button if not already there
-        if (!document.getElementById('btn-gen-preset-patterns')) {
-            const genBtn = document.createElement('button');
+        let genBtn = document.getElementById('btn-gen-preset-patterns');
+        if (!genBtn) {
+            genBtn = document.createElement('button');
             genBtn.id = 'btn-gen-preset-patterns';
             genBtn.className = 'btn';
             genBtn.textContent = 'Generate Patterns';
-            genBtn.onclick = () => generateScalePatterns(ref);
             loadBtn.parentNode.appendChild(genBtn);
         }
+        // Re-bind every time so the button targets the preset being shown
+        genBtn.onclick = () => generateScalePatterns(ref);
     } else {
         document.getElementById('btn-gen-preset-patterns')?.remove();
     }
@@ -2371,40 +2497,58 @@ function dragPreset(event, ref) {
     event.dataTransfer.effectAllowed = 'copy';
 }
 
-function setupBankTabDropZones() {
-    document.querySelectorAll('.bank-tab').forEach(tab => {
-        tab.addEventListener('dragover', (e) => {
-            if (e.dataTransfer.types.includes('application/x-preset-ref')) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'copy';
-                tab.classList.add('preset-drop-target');
-            }
-        });
-        tab.addEventListener('dragleave', () => {
-            tab.classList.remove('preset-drop-target');
-        });
-        tab.addEventListener('drop', async (e) => {
+// Bank tabs are re-rendered by renderBankTabs, so preset drops are handled by
+// listeners on the #bank-tabs container, installed once at init.
+function installBankTabDnD() {
+    const nav = document.getElementById('bank-tabs');
+    if (!nav) return;
+
+    const tabFromEvent = (e) => {
+        const target = eventElement(e);
+        const tab = target ? target.closest('.bank-tab') : null;
+        return tab && nav.contains(tab) ? tab : null;
+    };
+
+    nav.addEventListener('dragover', (e) => {
+        const tab = tabFromEvent(e);
+        if (!tab) return;
+        if (e.dataTransfer.types.includes('application/x-preset-ref')) {
             e.preventDefault();
-            tab.classList.remove('preset-drop-target');
-            const ref = e.dataTransfer.getData('application/x-preset-ref');
-            if (!ref) return;
-            const letter = tab.dataset.letter;
-            try {
-                const result = await api('/api/presets/load', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ref, bank: letter}),
-                });
-                if (result.ok) {
-                    toast(`Loaded preset to Bank ${letter.toUpperCase()}`, 'success');
-                    await refreshBanks();
-                } else {
-                    toast(result.error || 'Preset load failed', 'error');
-                }
-            } catch (e) {
-                toast('Drop failed: ' + e.message, 'error');
+            e.dataTransfer.dropEffect = 'copy';
+            tab.classList.add('preset-drop-target');
+        }
+    });
+
+    nav.addEventListener('dragleave', (e) => {
+        const tab = tabFromEvent(e);
+        if (!tab) return;
+        if (e.relatedTarget instanceof Node && tab.contains(e.relatedTarget)) return;
+        tab.classList.remove('preset-drop-target');
+    });
+
+    nav.addEventListener('drop', async (e) => {
+        const tab = tabFromEvent(e);
+        if (!tab) return;
+        e.preventDefault();
+        tab.classList.remove('preset-drop-target');
+        const ref = e.dataTransfer.getData('application/x-preset-ref');
+        if (!ref) return;
+        const letter = tab.dataset.letter;
+        try {
+            const result = await api('/api/presets/load', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ref, bank: letter}),
+            });
+            if (result.ok) {
+                toast(`Loaded preset to Bank ${letter.toUpperCase()}`, 'success');
+                await refreshBanks();
+            } else {
+                toast(result.error || 'Preset load failed', 'error');
             }
-        });
+        } catch (err) {
+            toast('Drop failed: ' + err.message, 'error');
+        }
     });
 }
 
@@ -2451,7 +2595,6 @@ async function refreshBanks() {
         }
         state.banks = data;
         renderBankTabs();
-        setupBankTabDropZones();
         if (state.currentBank) {
             const updated = data.find(b => b.letter === state.currentBank.letter);
             if (updated) switchBank(updated);
@@ -2491,9 +2634,9 @@ async function loadMusicBrowse() {
         const status = await api('/api/music/status');
         const bar = document.getElementById('music-status-bar');
         if (status.source === 'plex') {
-            bar.innerHTML = `<span class="plex-badge">PLEX</span> ${status.track_count.toLocaleString()} tracks · ${status.mood_count} moods · ${status.style_count} styles`;
+            bar.innerHTML = html`<span class="plex-badge">PLEX</span> ${status.track_count.toLocaleString()} tracks · ${status.mood_count} moods · ${status.style_count} styles`;
         } else {
-            bar.innerHTML = `${status.track_count?.toLocaleString() || 0} tracks (ID3)`;
+            bar.textContent = `${status.track_count?.toLocaleString() || 0} tracks (ID3)`;
         }
 
         const data = await api('/api/music/browse');
@@ -2519,34 +2662,34 @@ function switchMusicTab(tab) {
 
 function renderMusicArtists(artists) {
     const el = document.getElementById('music-artists-list');
-    el.innerHTML = artists.filter(a => a.name).map(a => `
-        <div class="music-item" onclick="loadArtist('${a.name.replace(/'/g, "\\'")}')">
+    el.innerHTML = html`${artists.filter(a => a.name).map(a => html`
+        <div class="music-item" data-action="load-artist" data-artist="${a.name}">
             <span class="music-item-name">${a.name}</span>
             <span class="music-item-meta">${a.album_count} albums · ${a.track_count} tracks</span>
         </div>
-    `).join('');
+    `)}`;
 }
 
 function renderMusicMoods(moods) {
     const el = document.getElementById('music-moods-list');
     const max = Math.max(...Object.values(moods), 1);
-    el.innerHTML = Object.entries(moods).map(([mood, count]) => {
+    el.innerHTML = joinHtml(Object.entries(moods).map(([mood, count]) => {
         const size = 0.7 + (count / max) * 0.6;
         const opacity = 0.5 + (count / max) * 0.5;
-        return `<span class="mood-tag" style="font-size:${size}em;opacity:${opacity}"
-                      onclick="loadMoodResults('${mood}')" title="${count} tracks">${mood}</span>`;
-    }).join(' ');
+        return html`<span class="mood-tag" style="font-size:${size}em;opacity:${opacity}"
+                      data-action="load-mood" data-mood="${mood}" title="${count} tracks">${mood}</span>`;
+    }), ' ');
 }
 
 function renderMusicStyles(styles) {
     const el = document.getElementById('music-styles-list');
     const max = Math.max(...Object.values(styles), 1);
-    el.innerHTML = Object.entries(styles).map(([style, count]) => {
+    el.innerHTML = joinHtml(Object.entries(styles).map(([style, count]) => {
         const size = 0.7 + (count / max) * 0.5;
         const opacity = 0.5 + (count / max) * 0.5;
-        return `<span class="style-tag" style="font-size:${size}em;opacity:${opacity}"
-                      onclick="loadStyleResults('${style.replace(/'/g, "\\'")}')" title="${count} tracks">${style}</span>`;
-    }).join(' ');
+        return html`<span class="style-tag" style="font-size:${size}em;opacity:${opacity}"
+                      data-action="load-style" data-style="${style}" title="${count} tracks">${style}</span>`;
+    }), ' ');
 }
 
 async function loadMoodResults(mood) {
@@ -2577,18 +2720,21 @@ function renderTrackResults(tracks, elId) {
         el.innerHTML = '<div style="padding:16px;color:var(--text-dim)">No tracks found</div>';
         return;
     }
-    el.innerHTML = tracks.map(r => `
+    el.innerHTML = html`${tracks.map(r => {
+        const thumb = safeUrl(r.thumb_url);
+        return html`
         <div class="music-track">
-            ${r.thumb_url ? `<img class="music-track-art" src="${r.thumb_url}" onerror="this.style.display='none'" />` : ''}
+            ${thumb ? html`<img class="music-track-art" src="${thumb}" data-hide-on-error />` : ''}
             <div class="music-track-info">
                 <span class="music-track-title">${r.title || 'Unknown'}</span>
                 <span class="music-item-meta">${r.artist || ''} · ${r.album || ''}</span>
             </div>
             <span class="music-track-dur">${r.duration_str || ''}</span>
             <button class="btn btn-sm btn-accent music-split-btn"
-                    onclick="splitTrack(${r.id}, this)" title="Split into stems">Split</button>
+                    data-action="split-track" data-track-id="${r.id}" title="Split into stems">Split</button>
         </div>
-    `).join('');
+    `;
+    })}`;
 }
 
 async function loadArtist(name) {
@@ -2607,53 +2753,53 @@ async function loadArtist(name) {
 
     // Artist header with bio + vibes
     const header = document.getElementById('music-detail-header');
-    let headerHtml = `<h4 style="color:var(--accent);margin-bottom:4px">${data.name}</h4>`;
+    const headerParts = [html`<h4 style="color:var(--accent);margin-bottom:4px">${data.name}</h4>`];
     if (data.vibes && data.vibes.length) {
-        headerHtml += `<div class="music-vibes">${data.vibes.map(v => `<span class="vibe-chip">${v}</span>`).join('')}</div>`;
+        headerParts.push(html`<div class="music-vibes">${data.vibes.map(v => html`<span class="vibe-chip">${v}</span>`)}</div>`);
     }
     if (data.styles && data.styles.length) {
-        headerHtml += `<div class="music-styles-line">${data.styles.slice(0, 5).join(' · ')}</div>`;
+        headerParts.push(html`<div class="music-styles-line">${data.styles.slice(0, 5).join(' · ')}</div>`);
     }
     if (data.country && data.country.length) {
-        headerHtml += `<div class="music-meta-line">${data.country.join(', ')}</div>`;
+        headerParts.push(html`<div class="music-meta-line">${data.country.join(', ')}</div>`);
     }
     if (data.summary) {
         const bio = data.summary.length > 200 ? data.summary.substring(0, 200) + '...' : data.summary;
-        headerHtml += `<div class="music-bio">${bio}</div>`;
+        headerParts.push(html`<div class="music-bio">${bio}</div>`);
     }
-    header.innerHTML = headerHtml;
+    header.innerHTML = html`${headerParts}`;
 
     // Albums and tracks
     const tracksEl = document.getElementById('music-detail-tracks');
-    let html = '';
+    const out = [];
     for (const album of (data.albums || [])) {
-        const artUrl = album.thumb_url || '';
-        html += `<div class="music-album-header">
-            ${artUrl ? `<img class="music-album-art" src="${artUrl}" onerror="this.style.display='none'" />` : ''}
+        const artUrl = safeUrl(album.thumb_url);
+        out.push(html`<div class="music-album-header">
+            ${artUrl ? html`<img class="music-album-art" src="${artUrl}" data-hide-on-error />` : ''}
             <div>
                 <span class="music-album-title">${album.title}</span>
-                ${album.year ? `<span class="music-album-year">${album.year}</span>` : ''}
-                ${album.studio ? `<span class="music-album-label">${album.studio}</span>` : ''}
+                ${album.year ? html`<span class="music-album-year">${album.year}</span>` : ''}
+                ${album.studio ? html`<span class="music-album-label">${album.studio}</span>` : ''}
             </div>
-        </div>`;
+        </div>`);
 
         for (const t of (album.tracks || [])) {
-            const vibeChips = (t.vibes || []).map(v => `<span class="vibe-chip vibe-sm">${v}</span>`).join('');
-            html += `
+            const vibeChips = (t.vibes || []).map(v => html`<span class="vibe-chip vibe-sm">${v}</span>`);
+            out.push(html`
                 <div class="music-track">
                     <span class="music-track-num">${t.track_num || ''}</span>
                     <div class="music-track-info">
                         <span class="music-track-title">${t.title}</span>
-                        ${vibeChips ? `<div class="music-track-vibes">${vibeChips}</div>` : ''}
+                        ${vibeChips.length ? html`<div class="music-track-vibes">${vibeChips}</div>` : ''}
                     </div>
                     <span class="music-track-dur">${t.duration_str || ''}</span>
                     <button class="btn btn-sm btn-accent music-split-btn"
-                            onclick="splitTrack(${t.id}, this)" title="Split into stems">Split</button>
+                            data-action="split-track" data-track-id="${t.id}" title="Split into stems">Split</button>
                 </div>
-            `;
+            `);
         }
     }
-    tracksEl.innerHTML = html;
+    tracksEl.innerHTML = html`${out}`;
 }
 
 function backToMusicBrowse() {
@@ -2810,11 +2956,6 @@ function renderBlackoutPanel(b) {
         el.textContent = b && b.error ? String(b.error) : 'Blackout status unavailable';
         return;
     }
-    const esc = (s) => String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    const escAttr = (s) => esc(s).replace(/"/g, '&quot;');
     const mode = b.vibe_parser_mode || 'base';
     const parserOk = !b.parser_needs_llm || b.parser_llm_ready;
     const parserLabel = !b.parser_needs_llm
@@ -2841,21 +2982,21 @@ function renderBlackoutPanel(b) {
     const gpu = hm.gpu || {};
     let hostHtml = '';
     if (hm.error === 'psutil_not_installed') {
-        hostHtml = `<div class="blackout-live"><div class="blackout-live-title">Host</div><div class="blackout-live-row">${esc('pip install psutil (in the same venv as the web app)')}</div></div>`;
+        hostHtml = html`<div class="blackout-live"><div class="blackout-live-title">Host</div><div class="blackout-live-row">${'pip install psutil (in the same venv as the web app)'}</div></div>`;
     } else if (typeof hm.cpu_percent === 'number') {
         const swapPart = (hm.swap_used_gb != null && hm.swap_used_gb > 0.05)
             ? ` \u00b7 swap ${hm.swap_used_gb} GB`
             : '';
         const loadPart = hm.load_1m != null ? ` \u00b7 load ${hm.load_1m}` : '';
         const ollPart = hm.ollama_rss_mb != null
-            ? `<div class="blackout-live-row">Ollama (all processes) RSS ~${hm.ollama_rss_mb} MB</div>`
+            ? html`<div class="blackout-live-row">Ollama (all processes) RSS ~${hm.ollama_rss_mb} MB</div>`
             : '';
         const srvPart = hm.server_rss_mb != null
-            ? `<div class="blackout-live-row">Jambox Flask RSS ~${hm.server_rss_mb} MB</div>`
+            ? html`<div class="blackout-live-row">Jambox Flask RSS ~${hm.server_rss_mb} MB</div>`
             : '';
-        const gpuTitle = escAttr((gpu.note || '').slice(0, 500));
-        const gpuLabel = esc(gpu.label || 'GPU');
-        hostHtml = `<div class="blackout-live">
+        const gpuTitle = String(gpu.note || '').slice(0, 500);
+        const gpuLabel = gpu.label || 'GPU';
+        hostHtml = html`<div class="blackout-live">
             <div class="blackout-live-title">Host (this machine)</div>
             <div class="blackout-live-row">CPU ${hm.cpu_percent}% \u00b7 RAM ${hm.memory_percent}% (${hm.memory_used_gb} / ${hm.memory_total_gb} GB)${swapPart}${loadPart}</div>
             <div class="blackout-live-row" title="${gpuTitle}">${gpuLabel}: ${gpu.utilization_percent != null ? gpu.utilization_percent + '%' : 'utilization n/a'} \u2014 Activity Monitor \u2192 GPU History</div>
@@ -2893,32 +3034,32 @@ function renderBlackoutPanel(b) {
     const tailRetag = (snip.retag || []).join('\n');
     const anyTail = tailLib || tailRetag;
     const tailBlock = anyTail
-        ? esc([tailLib && 'tag_library.log:\n' + tailLib, tailRetag && 'crunch_retag.log:\n' + tailRetag].filter(Boolean).join('\n\n'))
+        ? [tailLib && 'tag_library.log:\n' + tailLib, tailRetag && 'crunch_retag.log:\n' + tailRetag].filter(Boolean).join('\n\n')
         : '';
     const watchSrc = live.watch_source || 'app_repo';
-    const watchRoot = live.watch_root || '';
+    const watchRoot = String(live.watch_root || '');
     const invalidCrunch = !!live.crunch_repo_invalid;
     const watchTitle = watchSrc === 'env'
         ? 'Live crunch (SP404_CRUNCH_REPO)'
         : 'Live crunch (app repo)';
-    const watchTitleTip = escAttr(watchRoot.slice(0, 800));
+    const watchTitleTip = watchRoot.slice(0, 800);
     const crunchWarn = invalidCrunch
-        ? '<div class="blackout-live-row" style="color:#e57373">SP404_CRUNCH_REPO invalid \u2014 using app repo; fix path in .env</div>'
+        ? html`<div class="blackout-live-row" style="color:#e57373">SP404_CRUNCH_REPO invalid \u2014 using app repo; fix path in .env</div>`
         : '';
-    liveHtml = `<div class="blackout-live">
+    liveHtml = html`<div class="blackout-live">
         <div class="blackout-live-title" title="${watchTitleTip}">${watchTitle}</div>
         ${crunchWarn}
-        <div class="blackout-live-row">Processes: ${esc(runStr)}</div>
-        <div class="blackout-live-row">Retag: ${esc(retagBits.join(' \u00b7 '))}</div>
-        ${anyTail ? `<div class="blackout-live-tail">${tailBlock}</div>` : ''}
+        <div class="blackout-live-row">Processes: ${runStr}</div>
+        <div class="blackout-live-row">Retag: ${retagBits.join(' \u00b7 ')}</div>
+        ${anyTail ? html`<div class="blackout-live-tail">${tailBlock}</div>` : ''}
     </div>`;
 
     const row = (ok, warn, text) => {
         const cls = ok ? 'ok' : (warn ? 'warn' : 'bad');
-        return `<div class="blackout-row"><span class="blackout-dot ${cls}"></span><span>${text}</span></div>`;
+        return html`<div class="blackout-row"><span class="blackout-dot ${cls}"></span><span>${text}</span></div>`;
     };
 
-    el.innerHTML = [
+    el.innerHTML = html`${[
         row(parserOk, !parserOk, parserLabel),
         row(evalOk, false, evalOk ? 'Offline eval suite: JSONL + fixture present' : 'Eval suite: missing files under data/evals/'),
         row(true, false, `Vibe sessions: ${total} total, ${reviewed} reviewed (sqlite)`),
@@ -2927,8 +3068,8 @@ function renderBlackoutPanel(b) {
         row(!!lora.train_script, false, loraLine),
         hostHtml,
         liveHtml,
-        `<div class="blackout-cli" title="Run from repo root with .venv/bin/python">eval: training/vibe/eval_model.py \u00b7 dataset: prepare_dataset.py \u00b7 pattern: readiness.py \u00b7 quality: review_tag_outputs.py \u00b7 deep audit: scripts/audit_tag_vs_features.py</div>`,
-    ].join('');
+        html`<div class="blackout-cli" title="Run from repo root with .venv/bin/python">eval: training/vibe/eval_model.py \u00b7 dataset: prepare_dataset.py \u00b7 pattern: readiness.py \u00b7 quality: review_tag_outputs.py \u00b7 deep audit: scripts/audit_tag_vs_features.py</div>`,
+    ]}`;
 }
 
 async function fetchServerStatus() {
@@ -2957,19 +3098,19 @@ async function fetchServerStatus() {
             ['watcher', features.watcher],
         ];
         const lines = feats.map(([name, on]) =>
-            `<div class="feat ${on ? 'feat-on' : 'feat-off'}">${on ? '\u2713' : '\u2717'} ${name}</div>`
+            html`<div class="feat ${on ? 'feat-on' : 'feat-off'}">${on ? '\u2713' : '\u2717'} ${name}</div>`
         );
         if (clap.available) {
             lines.push(
-                `<div class="power-meta-line" title="Text+audio embeddings for fetch + search">CLAP ${clap.embedded} emb · ${clap.coverage}%</div>`
+                html`<div class="power-meta-line" title="Text+audio embeddings for fetch + search">CLAP ${clap.embedded} emb · ${clap.coverage}%</div>`
             );
         }
         if (discogs.available) {
             lines.push(
-                `<div class="power-meta-line" title="Genre + danceability from Discogs-EffNet">Discogs ${discogs.classified} · ${discogs.coverage}% · dance ${discogs.danceable}</div>`
+                html`<div class="power-meta-line" title="Genre + danceability from Discogs-EffNet">Discogs ${discogs.classified} · ${discogs.coverage}% · dance ${discogs.danceable}</div>`
             );
         }
-        container.innerHTML = lines.join('');
+        container.innerHTML = html`${lines}`;
     } else {
         dot.classList.remove('active');
         btn.classList.add('offline');
