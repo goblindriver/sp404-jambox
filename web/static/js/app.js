@@ -119,8 +119,20 @@ async function init() {
 }
 
 // ── API Helper ──
-async function api(url, opts) {
-    const resp = await fetch(url, opts);
+// The server's CSRF guard rejects state-changing /api requests without this header.
+const CLIENT_HEADER = 'X-Jambox-Client';
+
+function withClientHeader(opts) {
+    const merged = Object.assign({}, opts || {});
+    const headers = new Headers(merged.headers || {});
+    headers.set(CLIENT_HEADER, '1');
+    merged.headers = headers;
+    return merged;
+}
+
+/** fetch + JSON decode; returns {resp, data}. Use api() unless you need the status code. */
+async function apiRequest(url, opts) {
+    const resp = await fetch(url, withClientHeader(opts));
     const text = await resp.text();
     let data = {};
 
@@ -140,7 +152,73 @@ async function api(url, opts) {
         data.error = `Request failed (${resp.status})`;
     }
 
+    return {resp, data};
+}
+
+async function api(url, opts) {
+    const {data} = await apiRequest(url, opts);
     return data;
+}
+
+// ── Job polling ──
+const JOB_TERMINAL_STATUSES = new Set(['done', 'complete', 'error']);
+
+function jobError(message, code) {
+    const err = new Error(message);
+    err.code = code;
+    return err;
+}
+
+/**
+ * Poll a job-status URL until it reaches done/complete/error.
+ * Resolves with the final job (including status 'error' — callers decide).
+ * Rejects on timeout (err.code 'timeout'), on a 404 / "Job not found"
+ * (err.code 'lost'), on HTTP errors, and on network failures.
+ * onUpdate(job, pollCount) is called with every status response.
+ */
+function pollJob(url, {interval = 2000, maxMs = 5 * 60 * 1000, onUpdate} = {}) {
+    const startedAt = Date.now();
+    let polls = 0;
+    return new Promise((resolve, reject) => {
+        const tick = async () => {
+            polls++;
+            let resp;
+            let data;
+            try {
+                const result = await apiRequest(url);
+                resp = result.resp;
+                data = result.data;
+            } catch (e) {
+                reject(e);
+                return;
+            }
+            if (resp.status === 404 || data.error === 'Job not found') {
+                reject(jobError('Job lost — server restarted?', 'lost'));
+                return;
+            }
+            if (!resp.ok || (!data.status && data.error)) {
+                reject(jobError(data.error || `Request failed (${resp.status})`, 'http'));
+                return;
+            }
+            if (typeof onUpdate === 'function') {
+                try {
+                    onUpdate(data, polls);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+            if (JOB_TERMINAL_STATUSES.has(data.status)) {
+                resolve(data);
+                return;
+            }
+            if (Date.now() - startedAt >= maxMs) {
+                reject(jobError(`Job timed out after ${Math.round(maxMs / 1000)}s`, 'timeout'));
+                return;
+            }
+            setTimeout(tick, interval);
+        };
+        tick();
+    });
 }
 
 // ── Bank Tabs ──
@@ -927,81 +1005,73 @@ async function executeRunAll() {
     }
 }
 
-function waitForVibeJob(jobId) {
-    return new Promise((resolve, reject) => {
-        state.vibeJobRunning = true;
+const VIBE_JOB_MAX_MS = 5 * 60 * 1000;
+const FETCH_JOB_MAX_MS = 5 * 60 * 1000;
+const SPLIT_JOB_MAX_MS = 30 * 60 * 1000;
+
+async function waitForVibeJob(jobId) {
+    state.vibeJobRunning = true;
+    reconcileActionState();
+    try {
+        let status;
+        try {
+            status = await pollJob(`/api/vibe/populate-status/${jobId}`, {
+                interval: 2000,
+                maxMs: VIBE_JOB_MAX_MS,
+                onUpdate: (job, polls) => showProgress(job.progress || 'Drafting...', 20 + Math.min(polls, 40)),
+            });
+        } catch (e) {
+            if (e.code === 'timeout') throw new Error('Draft timed out');
+            throw e;
+        }
+        if (status.status === 'error') {
+            throw new Error(status.progress || 'Draft failed');
+        }
+        return status;
+    } finally {
+        state.vibeJobRunning = false;
         reconcileActionState();
-        let polls = 0;
-        const interval = setInterval(async () => {
-            polls++;
-            if (polls > 150) {
-                clearInterval(interval);
-                state.vibeJobRunning = false;
-                reconcileActionState();
-                reject(new Error('Draft timed out'));
-                return;
-            }
-            try {
-                const status = await api(`/api/vibe/populate-status/${jobId}`);
-                showProgress(status.progress || 'Drafting...', 20 + Math.min(polls, 40));
-                if (status.status === 'done') {
-                    clearInterval(interval);
-                    state.vibeJobRunning = false;
-                    reconcileActionState();
-                    resolve(status);
-                } else if (status.status === 'error') {
-                    clearInterval(interval);
-                    state.vibeJobRunning = false;
-                    reconcileActionState();
-                    reject(new Error(status.progress || 'Draft failed'));
-                }
-            } catch (e) {
-                clearInterval(interval);
-                state.vibeJobRunning = false;
-                reconcileActionState();
-                reject(e);
-            }
-        }, 2000);
-    });
+    }
 }
 
-async function pollFetchStatus(jobId, label, _retries = 0) {
-    const maxRetries = 200;
-    try {
-        const data = await api(`/api/pipeline/status/${jobId}`);
-
-        if (data.status === 'running' || data.status === 'starting') {
-            if (_retries >= maxRetries) {
-                state.fetchJobId = null;
-                state.pipelineJobRunning = false;
-                updateBankToolbarState();
-                hideProgress();
-                toast('Fetch timed out — check server logs', 'error');
-                return;
-            }
-            const pct = data.percent || 10;
-            showProgress(data.progress || 'Starting...', pct);
-            setTimeout(() => pollFetchStatus(jobId, label, _retries + 1), 1500);
-        } else {
-            state.fetchJobId = null;
-            state.pipelineJobRunning = false;
-            updateBankToolbarState();
-            showProgress(data.progress || 'Finishing...', 100);
-            setTimeout(hideProgress, 800);
-            if (data.status === 'done') {
-                toast(`Fetch complete: ${data.result}`, 'success');
-            } else {
-                toast(`Fetch error: ${data.result || data.error || 'Unknown fetch failure'}`, 'error');
-            }
-            await refreshBanks();
-        }
-    } catch (e) {
+async function pollFetchStatus(jobId, label) {
+    const finish = () => {
         state.fetchJobId = null;
         state.pipelineJobRunning = false;
         updateBankToolbarState();
+    };
+
+    let data;
+    try {
+        data = await pollJob(`/api/pipeline/status/${jobId}`, {
+            interval: 1500,
+            maxMs: FETCH_JOB_MAX_MS,
+            onUpdate: (job) => {
+                if (job.status === 'running' || job.status === 'starting') {
+                    showProgress(job.progress || 'Starting...', job.percent || 10);
+                }
+            },
+        });
+    } catch (e) {
+        finish();
         hideProgress();
-        toast(`Fetch status failed: ${e.message}`, 'error');
+        if (e.code === 'timeout') {
+            toast('Fetch timed out — check server logs', 'error');
+        } else {
+            toast(`Fetch status failed: ${e.message}`, 'error');
+        }
+        return;
     }
+
+    finish();
+    showProgress(data.progress || 'Finishing...', 100);
+    setTimeout(hideProgress, 800);
+    if (data.status === 'done' || data.status === 'complete') {
+        toast(`Fetch complete: ${data.result}`, 'success');
+    } else {
+        toast(`Fetch error: ${data.result || data.error || 'Unknown fetch failure'}`, 'error');
+    }
+    await refreshBanks();
 }
 
 async function buildAll() {
@@ -1213,51 +1283,49 @@ function toggleSettingsMenu() {
 
 /* generateVibeSuggestions and generateFetchBank removed — superseded by stepped workflow */
 
-function pollPopulateJob(jobId, bankLetter, doneLabel, onDone) {
+async function pollPopulateJob(jobId, bankLetter, doneLabel, onDone) {
     state.vibeJobRunning = true;
     updateBankToolbarState();
-    let pollCount = 0;
-    const maxPolls = 150;
 
+    let finished = false;
     function finish() {
+        if (finished) return;
+        finished = true;
         state.vibeJobRunning = false;
         updateBankToolbarState();
         hideProgress();
         if (typeof onDone === 'function') onDone();
     }
 
-    const pollInterval = setInterval(async () => {
-        pollCount++;
-        if (pollCount > maxPolls) {
-            clearInterval(pollInterval);
-            finish();
+    let status;
+    try {
+        status = await pollJob(`/api/vibe/populate-status/${jobId}`, {
+            interval: 2000,
+            maxMs: VIBE_JOB_MAX_MS,
+            onUpdate: (job) => showProgress(job.progress || 'Generating bank draft...', vibeProgressPercent(job.status)),
+        });
+    } catch (e) {
+        finish();
+        if (e.code === 'timeout') {
             toast(`${doneLabel} timed out — check server logs`, 'error');
-            return;
-        }
-        try {
-            const status = await api(`/api/vibe/populate-status/${jobId}`);
-            showProgress(status.progress || 'Generating bank draft...', vibeProgressPercent(status.status));
-            if (status.status === 'done') {
-                clearInterval(pollInterval);
-                finish();
-                const doneMessage = status.fallback_used
-                    ? `${doneLabel} completed with fallback parsing. ${status.fetched || ''}`
-                    : `${doneLabel} completed. ${status.fetched || ''}`;
-                toast(doneMessage.trim(), status.fallback_used ? 'error' : 'success');
-                await refreshBanks();
-                const updated = state.banks.find((item) => item.letter === bankLetter);
-                if (updated) switchBank(updated);
-            } else if (status.status === 'error') {
-                clearInterval(pollInterval);
-                finish();
-                toast(`${doneLabel} error: ${status.progress}`, 'error');
-            }
-        } catch (e) {
-            clearInterval(pollInterval);
-            finish();
+        } else {
             toast(`${doneLabel} status failed: ${e.message}`, 'error');
         }
-    }, 2000);
+        return;
+    }
+
+    finish();
+    if (status.status === 'error') {
+        toast(`${doneLabel} error: ${status.progress}`, 'error');
+        return;
+    }
+    const doneMessage = status.fallback_used
+        ? `${doneLabel} completed with fallback parsing. ${status.fetched || ''}`
+        : `${doneLabel} completed. ${status.fetched || ''}`;
+    toast(doneMessage.trim(), status.fallback_used ? 'error' : 'success');
+    await refreshBanks();
+    const updated = state.banks.find((item) => item.letter === bankLetter);
+    if (updated) switchBank(updated);
 }
 
 /* renderVibeResults and populateBankFromVibe removed — superseded by stepped workflow */
@@ -1771,9 +1839,19 @@ async function toggleWatcher() {
     }
 }
 
+function watcherFeedVisible() {
+    const feed = document.getElementById('watcher-feed');
+    return !!feed && !feed.classList.contains('hidden');
+}
+
+// The status poll only runs while the activity feed is open.
 function startWatcherPolling() {
-    if (watcherPolling) return;
+    if (watcherPolling || !watcherFeedVisible()) return;
     watcherPolling = setInterval(async () => {
+        if (!watcherFeedVisible()) {
+            stopWatcherPolling();
+            return;
+        }
         try {
             const result = await api('/api/pipeline/watcher/status');
             updateWatcherUI(result.running, result.recent || []);
@@ -1796,6 +1874,7 @@ function toggleWatcherFeed() {
         startWatcherPolling();
     } else {
         feed.classList.add('hidden');
+        stopWatcherPolling();
     }
 }
 
@@ -2065,8 +2144,8 @@ async function uploadToPad(bankLetter, padNum, file) {
     formData.append('file', file);
 
     try {
-        const resp = await fetch('/api/audio/upload', { method: 'POST', body: formData });
-        const result = await resp.json();
+        // No Content-Type header: the browser sets the multipart boundary itself.
+        const result = await api('/api/audio/upload', { method: 'POST', body: formData });
         if (result.ok) {
             toast(result.message, 'success');
             const updated = await api(`/api/banks/${bankLetter}`);
@@ -2599,53 +2678,55 @@ async function searchMyMusic(query) {
 }
 
 async function splitTrack(trackId, btn) {
+    const resetBtn = (label = 'Split') => {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = label;
+        }
+    };
     if (btn) {
         btn.disabled = true;
         btn.textContent = 'Splitting...';
     }
 
+    let data;
     try {
-        const data = await api('/api/music/split', {
+        data = await api('/api/music/split', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({track_id: trackId}),
         });
-
-        if (data.error) {
-            toast(`Split error: ${data.error}`, 'error');
-            if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
-            return;
-        }
-
-        const jobId = data.job_id;
-        toast(`Splitting: ${data.track}...`);
-
-        const poll = setInterval(async () => {
-            try {
-                const status = await api(`/api/music/split/status/${jobId}`);
-                if (status.status === 'done') {
-                    clearInterval(poll);
-                    const stems = status.result.stems;
-                    toast(`Split into ${stems.length} stems (${status.result.source})`, 'success');
-                    if (btn) { btn.disabled = false; btn.textContent = 'Done'; }
-                } else if (status.status === 'error') {
-                    clearInterval(poll);
-                    toast(`Split error: ${status.result}`, 'error');
-                    if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
-                } else if (status.error || !status.status) {
-                    clearInterval(poll);
-                    toast(`Split error: ${status.error || 'Job not found'}`, 'error');
-                    if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
-                }
-            } catch (e) {
-                clearInterval(poll);
-                toast(`Split status failed: ${e.message}`, 'error');
-                if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
-            }
-        }, 2000);
     } catch (e) {
         toast(`Split failed: ${e.message}`, 'error');
-        if (btn) { btn.disabled = false; btn.textContent = 'Split'; }
+        resetBtn();
+        return;
+    }
+
+    if (data.error) {
+        toast(`Split error: ${data.error}`, 'error');
+        resetBtn();
+        return;
+    }
+
+    toast(`Splitting: ${data.track}...`);
+
+    try {
+        const status = await pollJob(`/api/music/split/status/${data.job_id}`, {
+            interval: 2000,
+            maxMs: SPLIT_JOB_MAX_MS,
+        });
+        if (status.status === 'error') {
+            toast(`Split error: ${status.result || status.error || 'unknown error'}`, 'error');
+            resetBtn();
+            return;
+        }
+        const result = status.result || {};
+        const stems = result.stems || [];
+        toast(`Split into ${stems.length} stems (${result.source})`, 'success');
+        resetBtn('Done');
+    } catch (e) {
+        toast(`Split status failed: ${e.message}`, 'error');
+        resetBtn();
     }
 }
 
