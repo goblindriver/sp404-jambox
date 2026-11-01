@@ -245,8 +245,8 @@ def find_mpv(name="mpv"):
     if found or os.name != "nt" or name != "mpv":
         return found or name
     for base in (os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
-        for sub in (r"MPV Player\mpv.exe", r"Programs\mpv\mpv.exe", r"mpv\mpv.exe"):
-            path = os.path.join(base or "", sub)
+        for sub in (("MPV Player", "mpv.exe"), ("Programs", "mpv", "mpv.exe"), ("mpv", "mpv.exe")):
+            path = os.path.join(base or "", *sub)
             if base and os.path.isfile(path):
                 return path
     return name
