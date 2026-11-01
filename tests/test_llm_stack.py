@@ -428,6 +428,29 @@ class FileAndRowStayTogetherTests(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.lib, q_rel)))
         self.assertEqual(db[q_rel]["quality_votes"], [2, 1])
 
+    def test_a_user_set_quality_survives_a_low_model_score(self):
+        rel = "SFX/Stabs-Hits/Seinfeld_George_Answering_Machine.mp3"
+        self._file(rel, {"type_code": "VOX", "quality_score": 3, "quality_source": "user", "quality_votes": [1, 1]})
+        scores = {os.path.basename(rel): [1]}
+        with patch.object(smart_retag, "_llm_tag_with_repair", side_effect=_scripted_llm(scores)):
+            smart_retag.retag_batch([(rel, os.path.join(self.lib, rel))], load_tag_db(self.tags),
+                                    verbose=False, workers=1)
+        db = load_tag_db(self.tags)
+
+        self.assertEqual(set(db), {rel})                      # not quarantined
+        self.assertTrue(os.path.exists(os.path.join(self.lib, rel)))
+        row = db[rel]
+        self.assertEqual((row["quality_score"], row["quality_source"]), (3, "user"))
+        self.assertEqual(row["model_quality_score"], 1)       # the model's verdict, kept beside it
+        self.assertEqual(scores[os.path.basename(rel)], [])   # one call: no second vote was asked
+
+    def test_merge_keeps_a_user_set_quality_and_only_that(self):
+        existing = {"quality_score": 4, "quality_source": "user"}
+        entry = smart_retag._merge_tags(existing, _reply(2), None, "Drums/Kicks/k.wav")
+        self.assertEqual((entry["quality_score"], entry["model_quality_score"]), (4, 2))
+        model_only = smart_retag._merge_tags({"quality_score": 4}, _reply(2), None, "Drums/Kicks/k.wav")
+        self.assertEqual(model_only["quality_score"], 2)
+
     def _quarantined(self):
         q_rel = "_QUARANTINE/Drums/Percussion/rim.wav"
         self._file(q_rel, {"type_code": "RIM", "tag_source": "smart_retag_v1", "quality_score": 2,
