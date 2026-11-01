@@ -24,12 +24,14 @@ Keys (global via pynput when installed; otherwise type in this console + Enter):
   n                  next song      q  quit
 Space / arrows / seeking work in the mpv window as usual; clock + drops follow.
 
-Needs: mpv on PATH (winget shinchiro.mpv); pip: mido python-rtmidi (pynput optional).
+Needs: mpv (winget shinchiro.mpv; found in its install folder if not on PATH);
+pip install -r deck/requirements.txt (mido + pygame for MIDI; pynput optional).
 """
 import argparse
 import json
 import os
 import queue
+import shutil
 import socket
 import subprocess
 import sys
@@ -134,7 +136,7 @@ class Mpv:
                 if os.name == "nt":
                     self._fh = open(path, "r+b", buffering=0)
                     self._send_raw = self._fh.write
-                    self._recv_raw = self._fh.readline
+                    self._recv_raw = self._pipe_read
                 else:
                     sock = socket.socket(socket.AF_UNIX)
                     sock.connect(path)
@@ -163,25 +165,50 @@ class Mpv:
         except OSError:
             self.closed.set()
 
+    def _pipe_read(self):
+        """Whatever bytes mpv has sent, without blocking in ReadFile.
+
+        The pipe handle is synchronous, and Windows runs I/O on such a handle one
+        request at a time: a pending read holds up every write until mpv next
+        sends something, which while paused is never (resume, key shift and quit
+        all hung). So wait for data with PeekNamedPipe and read only what's there.
+        """
+        import _winapi
+        import msvcrt
+        handle = msvcrt.get_osfhandle(self._fh.fileno())
+        while not self.closed.is_set():
+            available = _winapi.PeekNamedPipe(handle, 0)[0]   # OSError once mpv exits
+            if available:
+                return self._fh.read(available)
+            time.sleep(0.005)
+        return b""
+
     def _reader(self):
+        buf = b""
         while not self.closed.is_set():
             try:
-                line = self._recv_raw()
+                chunk = self._recv_raw()
             except OSError:
                 break
-            if not line:
+            if not chunk:
                 break
-            try:
-                ev = json.loads(line)
-            except ValueError:
-                continue
-            if ev.get("event") == "property-change" and ev.get("name") in self.state:
-                self.state[ev["name"]] = ev.get("data")
-                if ev["name"] == "time-pos":
-                    self.state_at = time.monotonic()
-            elif ev.get("event") in ("end-file", "shutdown"):
+            buf += chunk
+            *lines, buf = buf.split(b"\n")
+            if any(self._handle_event(line) for line in lines):
                 break
         self.closed.set()
+
+    def _handle_event(self, line):
+        """Apply one IPC line; True once mpv says the file ended."""
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            return False
+        if ev.get("event") == "property-change" and ev.get("name") in self.state:
+            self.state[ev["name"]] = ev.get("data")
+            if ev["name"] == "time-pos":
+                self.state_at = time.monotonic()
+        return ev.get("event") in ("end-file", "shutdown")
 
     def position(self):
         """time-pos extrapolated between IPC updates (smooth enough for 24 PPQN)."""
@@ -195,13 +222,43 @@ class Mpv:
 
 # ── MIDI ─────────────────────────────────────────────────────────────
 
+def load_mido():
+    """mido on a backend that installs everywhere.
+
+    mido defaults to python-rtmidi, which has no Windows wheel for Python 3.13
+    (it needs the MSVC build tools), so without it use pygame's PortMidi.
+    MIDO_BACKEND, if set, wins.
+    """
+    import mido
+    if not os.environ.get("MIDO_BACKEND"):
+        try:
+            import rtmidi  # noqa: F401
+        except ImportError:
+            os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+            mido.set_backend("mido.backends.pygame")
+    return mido
+
+
+def find_mpv(name="mpv"):
+    """mpv on PATH, else winget's install folder (shinchiro.mpv doesn't add itself to PATH)."""
+    found = shutil.which(name)
+    if found or os.name != "nt" or name != "mpv":
+        return found or name
+    for base in (os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
+        for sub in (r"MPV Player\mpv.exe", r"Programs\mpv\mpv.exe", r"mpv\mpv.exe"):
+            path = os.path.join(base or "", sub)
+            if base and os.path.isfile(path):
+                return path
+    return name
+
+
 class MidiOut:
     def __init__(self, port_hint=None, dry_run=False):
         self.dry = dry_run
         self.port = None
         if dry_run:
             return
-        import mido
+        mido = load_mido()
         self.mido = mido
         names = mido.get_output_names()
         match = [n for n in names if port_hint and port_hint.lower() in n.lower()] or names
@@ -418,14 +475,20 @@ def pick_queue(songs):
     return picks
 
 
-def list_ports():
+def list_ports(mpv="mpv"):
     try:
-        import mido
-        print("MIDI outputs:", *mido.get_output_names(), sep="\n  ")
+        mido = load_mido()
+        print("MIDI outputs (%s):" % mido.backend.name, *mido.get_output_names(), sep="\n  ")
     except ImportError:
-        print("mido not installed: py -m pip install mido python-rtmidi")
+        print("MIDI libraries missing: py -m pip install -r deck/requirements.txt")
     print("\nAudio devices (use the M6 'USB Audio CODEC' id with --audio-device):")
-    subprocess.run(["mpv", "--audio-device=help"])
+    # Captured and reprinted: the Windows mpv.exe prints nothing into an
+    # inherited stdout, only into a pipe.
+    try:
+        found = subprocess.run([mpv, "--audio-device=help"], capture_output=True, text=True, timeout=30)
+        print((found.stdout or found.stderr).rstrip())
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"  mpv not runnable ({exc}); install it or pass --mpv")
 
 
 def main(argv=None):
@@ -443,9 +506,10 @@ def main(argv=None):
     ap.add_argument("--list-ports", action="store_true")
     ap.add_argument("songs", nargs="*", help="song folder names (skip the picker)")
     args = ap.parse_args(argv)
+    args.mpv = find_mpv(args.mpv)
 
     if args.list_ports:
-        list_ports()
+        list_ports(args.mpv)
         return 0
     songs = load_index(args.root)
     if args.songs:

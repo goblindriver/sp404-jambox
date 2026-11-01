@@ -181,7 +181,7 @@ def _norm(text):
     return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
 
 
-def find_choruses(lines, *, min_repeats=2, min_block=2):
+def find_choruses(lines, *, min_repeats=2, min_block=2, max_gap_s=10.0):
     """Find repeated multi-line blocks (choruses / hooks) in synced lyrics.
 
     A line that shows up ``min_repeats``+ times is "hooky". Consecutive hooky
@@ -190,25 +190,28 @@ def find_choruses(lines, *, min_repeats=2, min_block=2):
     Returns ``[(start_s, end_s), ...]`` sorted by time. ``end_s`` is the
     start of the line after the block (or the last line + 4s).
     """
-    sung = [ln for ln in lines if _norm(ln.text)]
+    seq = sorted(lines, key=lambda ln: ln.t)
+    sung = [ln for ln in seq if _norm(ln.text)]
     if len(sung) < 3:
         return []
     counts = Counter(_norm(ln.text) for ln in sung)
-    hooky = [counts[_norm(ln.text)] >= min_repeats for ln in sung]
+    # Empty lines (instrumental gaps) and long silences break a block, so a
+    # chorus after a solo isn't merged into the one before it.
+    hooky = [bool(_norm(ln.text)) and counts[_norm(ln.text)] >= min_repeats for ln in seq]
 
     blocks = []
     i = 0
-    while i < len(sung):
+    while i < len(seq):
         if not hooky[i]:
             i += 1
             continue
         j = i
-        while j + 1 < len(sung) and hooky[j + 1]:
+        while j + 1 < len(seq) and hooky[j + 1] and seq[j + 1].t - seq[j].t <= max_gap_s:
             j += 1
         size = j - i + 1
-        if size >= min_block or counts[_norm(sung[i].text)] >= 3:
-            start = sung[i].t
-            end = sung[j + 1].t if j + 1 < len(sung) else sung[j].t + 4.0
+        if size >= min_block or counts[_norm(seq[i].text)] >= 3:
+            start = seq[i].t
+            end = seq[j + 1].t if j + 1 < len(seq) else seq[j].t + 4.0
             blocks.append((round(start, 3), round(end, 3)))
         i = j + 1
     return blocks
