@@ -308,11 +308,12 @@ def _cosine_scorer(vectors):
 
 
 def _duplicate_pairs(paths, fingerprints, durations, threshold, cache_entries, workers):
-    """Path pairs scoring >= threshold, comparing only files of comparable length.
+    """(path, path, match) for pairs scoring >= threshold, comparing only files of comparable length.
 
-    fpcalc fingerprints are compared with each other. Python fingerprints
-    (files fpcalc could not read) are compared with each other and with a
-    Python fingerprint of each fpcalc file of comparable length.
+    fpcalc fingerprints are compared with each other: match "fpcalc". Python
+    fingerprints (files fpcalc could not read) are compared with each other
+    and with a Python fingerprint of each fpcalc file of comparable length:
+    match "fallback".
     """
     chroma, frames = [], []
     for i, p in enumerate(paths):
@@ -328,7 +329,7 @@ def _duplicate_pairs(paths, fingerprints, durations, threshold, cache_entries, w
     if len(chroma) > 1:
         score_block, pair_cost = _chromaprint_scorer(frames)
         for a, b in _matching_pairs(durations[chroma], score_block, pair_cost, threshold):
-            pairs.append((paths[chroma[a]], paths[chroma[b]]))
+            pairs.append((paths[chroma[a]], paths[chroma[b]], "fpcalc"))
 
     if python:
         near = [chroma[k] for k in np.flatnonzero(_has_comparable(durations[chroma], durations[python]))] if chroma else []
@@ -344,8 +345,28 @@ def _duplicate_pairs(paths, fingerprints, durations, threshold, cache_entries, w
             score_block, pair_cost = _cosine_scorer([vectors[paths[i]] for i in members])
             for a, b in _matching_pairs(durations[members], score_block, pair_cost, threshold):
                 if members[a] in native or members[b] in native:  # fpcalc pairs were scored above
-                    pairs.append((paths[members[a]], paths[members[b]]))
+                    pairs.append((paths[members[a]], paths[members[b]], "fallback"))
     return pairs
+
+
+def _connected_groups(paths, adjacency):
+    groups = []
+    visited = set()
+    for rel_path in paths:
+        if rel_path in visited or not adjacency[rel_path]:
+            continue
+        stack = [rel_path]
+        group = []
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            group.append(current)
+            stack.extend(sorted(adjacency[current] - visited, reverse=True))
+        if len(group) > 1:
+            groups.append(group)
+    return groups
 
 
 def _llm_tag_filename(rel_path):
@@ -386,6 +407,11 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
     Only files of comparable duration (tag row "duration") are compared.
     Files neither fpcalc nor the Python fallback can read are skipped and
     counted in stats["unreadable"], never reported as duplicates.
+
+    Each group's "match" says what found it. "fpcalc" groups are chromaprint
+    matches, the only ones safe to move files on. "fallback" groups come
+    from the Python fingerprint, which calls most short one-shots alike:
+    report them for review, never act on them.
     """
     entries = list(db.items())
     if type_code:
@@ -405,31 +431,17 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
     t0 = time.time()
     paths = list(fingerprints.keys())
     durations = np.array([_entry_duration(db.get(rel_path)) for rel_path in paths], dtype=np.float64)
-    adjacency = {rel_path: set() for rel_path in paths}
-    for rel_path, compare_path in _duplicate_pairs(paths, fingerprints, durations, threshold, cache_entries, workers):
-        adjacency[rel_path].add(compare_path)
-        adjacency[compare_path].add(rel_path)
+    # Separate graphs: a fallback match never joins files into a chromaprint group.
+    adjacency = {match: {rel_path: set() for rel_path in paths} for match in ("fpcalc", "fallback")}
+    for rel_path, compare_path, match in _duplicate_pairs(paths, fingerprints, durations, threshold, cache_entries, workers):
+        adjacency[match][rel_path].add(compare_path)
+        adjacency[match][compare_path].add(rel_path)
     stats["compare_seconds"] = round(time.time() - t0, 1)
 
-    groups = []
-    visited = set()
-    for rel_path in paths:
-        if rel_path in visited or not adjacency[rel_path]:
-            continue
-        stack = [rel_path]
-        group = []
-        while stack:
-            current = stack.pop()
-            if current in visited:
-                continue
-            visited.add(current)
-            group.append(current)
-            stack.extend(sorted(adjacency[current] - visited, reverse=True))
-        if len(group) > 1:
-            groups.append(group)
-
+    groups = [(match, group) for match in ("fpcalc", "fallback")
+              for group in _connected_groups(paths, adjacency[match])]
     reports = []
-    for group in groups:
+    for match, group in groups:
         members = []
         for rel_path in group:
             full_path = os.path.join(LIBRARY, rel_path)
@@ -445,16 +457,20 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
             "keep": members[0]["path"],
             "duplicates": [item["path"] for item in members[1:]],
             "members": members,
+            "match": match,
         })
     return reports
 
 
 def apply_clean(report_groups, db):
+    """Move each chromaprint group's duplicates into _DUPES. Fallback groups are left alone."""
     from jambox_config import delete_tag_paths
     os.makedirs(DUPES_DIR, exist_ok=True)
     updated_db = dict(db)
     removed = []
     for group in report_groups:
+        if group.get("match") != "fpcalc":
+            continue
         for rel_path in group["duplicates"]:
             src = os.path.join(LIBRARY, rel_path)
             if not os.path.exists(src):
@@ -488,12 +504,16 @@ def build_report(args, db=None):
             except (TypeError, ValueError):
                 unknown_tags[rel_path] = []
 
+    duplicates = [group for group in groups if group["match"] == "fpcalc"]
+    possible = [group for group in groups if group["match"] != "fpcalc"]  # review only, never moved
     report = {
         "created_at": datetime.now().isoformat(),
         "library": LIBRARY,
         "threshold": args.threshold,
-        "duplicate_groups": groups,
-        "duplicates_found": sum(len(group["duplicates"]) for group in groups),
+        "duplicate_groups": duplicates,
+        "duplicates_found": sum(len(group["duplicates"]) for group in duplicates),
+        "possible_duplicate_groups": possible,
+        "possible_duplicates_found": sum(len(group["duplicates"]) for group in possible),
         "llm_tag_suggestions": unknown_tags,
     }
     return report

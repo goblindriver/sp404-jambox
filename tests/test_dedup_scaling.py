@@ -123,18 +123,37 @@ class BucketedDedupTests(unittest.TestCase):
             with open(os.path.join(self.tmp.name, name), "wb") as handle:
                 handle.write(b"data")
 
-    def _groups(self, db, **kwargs):
+    def _matches(self, db, **kwargs):
         reports = deduplicate_samples.find_duplicate_groups(db, threshold=THRESHOLD, **kwargs)
-        return {frozenset([r["keep"], *r["duplicates"]]) for r in reports}
+        return {frozenset([r["keep"], *r["duplicates"]]): r["match"] for r in reports}
+
+    def _groups(self, db, **kwargs):
+        return set(self._matches(db, **kwargs))
 
     def test_finds_the_same_groups_as_brute_force(self):
         self._write(self.lib.files)
         expected = self.lib.brute_force_groups()
 
-        self.assertEqual(self._groups(self.lib.db()), expected)
+        matches = self._matches(self.lib.db())
+        self.assertEqual(set(matches), expected)
         self.assertEqual(len(expected), 6)
-        self.assertIn(frozenset({"loop03.wav", "loop03_a.wav", "loop03_b.wav"}), expected)
-        self.assertIn(frozenset({"loop04.wav", "loop04_python_only.wav"}), expected)
+        self.assertEqual(matches[frozenset({"loop03.wav", "loop03_a.wav", "loop03_b.wav"})], "fpcalc")
+        # Python-fingerprint groups, including fpcalc-vs-python: review only, never acted on
+        self.assertEqual(matches[frozenset({"shot00.wav", "shot00_copy.wav"})], "fallback")
+        self.assertEqual(matches[frozenset({"loop04.wav", "loop04_python_only.wav"})], "fallback")
+        self.assertEqual(sorted(matches.values()).count("fpcalc"), 4)
+
+    def test_a_fallback_match_never_joins_a_chromaprint_group(self):
+        seconds, _frames_unused, vector = self.lib.files["loop00.wav"]
+        self.lib.files["loop00_python_only.wav"] = (seconds, None, vector.copy())
+        names = ["loop00.wav", "loop00_copy.wav", "loop00_python_only.wav"]
+        self._write(names)
+        db = {name: row for name, row in self.lib.db().items() if name in names}
+
+        matches = self._matches(db)
+
+        self.assertEqual(matches[frozenset({"loop00.wav", "loop00_copy.wav"})], "fpcalc")
+        self.assertEqual(matches[frozenset(names)], "fallback")
 
     def test_a_perturbed_copy_is_still_caught(self):
         original, perturbed = self.lib.fpcalc("loop01.wav"), self.lib.fpcalc("loop01_perturbed.wav")

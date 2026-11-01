@@ -494,6 +494,7 @@ class DedupeTests(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["keep"], "a.wav")
         self.assertEqual(groups[0]["duplicates"], ["b.wav"])
+        self.assertEqual(groups[0]["match"], "fpcalc")
 
     def test_find_duplicate_groups_merges_transitive_matches(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -563,6 +564,7 @@ class DedupeTests(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["keep"], "a.wav")
         self.assertEqual(groups[0]["duplicates"], ["b.wav"])
+        self.assertEqual(groups[0]["match"], "fallback")  # fpcalc vs python is never a chromaprint match
 
     def test_apply_clean_moves_files_and_updates_tag_db(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -570,6 +572,8 @@ class DedupeTests(unittest.TestCase):
             db = {
                 "keep.wav": {"tags": ["keep"]},
                 "dupe.wav": {"tags": ["dupe"]},
+                "shot.wav": {"tags": []},
+                "shot_alike.wav": {"tags": []},
             }
             for name in db:
                 with open(os.path.join(tempdir, name), "wb") as handle:
@@ -578,7 +582,8 @@ class DedupeTests(unittest.TestCase):
 
             with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch.object(deduplicate_samples, "TAGS_FILE", tags_path), patch.object(deduplicate_samples, "DUPES_DIR", os.path.join(tempdir, "_DUPES")):
                 updated = deduplicate_samples.apply_clean(
-                    [{"keep": "keep.wav", "duplicates": ["dupe.wav"], "members": []}],
+                    [{"keep": "keep.wav", "duplicates": ["dupe.wav"], "members": [], "match": "fpcalc"},
+                     {"keep": "shot.wav", "duplicates": ["shot_alike.wav"], "members": [], "match": "fallback"}],
                     db,
                 )
 
@@ -589,6 +594,9 @@ class DedupeTests(unittest.TestCase):
             persisted = jambox_config.load_tag_db(tags_path)
             self.assertIn("keep.wav", persisted)
             self.assertNotIn("dupe.wav", persisted)
+            # a fallback-fingerprint group is only a suggestion: nothing moves
+            self.assertIn("shot_alike.wav", persisted)
+            self.assertTrue(os.path.exists(os.path.join(tempdir, "shot_alike.wav")))
 
     def test_llm_tag_filename_returns_tags_from_chat_response(self):
         with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_llm_chat", return_value={"tags": ["kick", "808"]}):
