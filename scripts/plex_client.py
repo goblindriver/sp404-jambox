@@ -700,6 +700,51 @@ class PlexMusicDB:
         finally:
             conn.close()
 
+    def playlist_tracks(self, playlist):
+        """Tracks in a playlist, in playlist order.
+
+        ``playlist`` is a playlist id (int / digit string) or a title
+        (case-insensitive). Returns a list of dicts with id, title, artist,
+        album, duration and file_path, or ``None`` if no playlist matches.
+        """
+        conn = self._connect()
+        try:
+            if str(playlist).isdigit():
+                pl = conn.execute(
+                    "SELECT id FROM metadata_items WHERE id=? AND metadata_type=?",
+                    (int(playlist), TYPE_PLAYLIST)).fetchone()
+            else:
+                pl = conn.execute(
+                    "SELECT id FROM metadata_items WHERE metadata_type=? "
+                    "AND lower(title)=lower(?) ORDER BY id LIMIT 1",
+                    (TYPE_PLAYLIST, str(playlist))).fetchone()
+            if not pl:
+                return None
+            rows = conn.execute("""
+                SELECT mi.id, mi.title, mi.duration,
+                       album.title as album, artist.title as artist,
+                       mp.file as file_path
+                FROM play_queue_generators pqg
+                JOIN metadata_items mi ON mi.id = pqg.metadata_item_id
+                LEFT JOIN metadata_items album ON mi.parent_id = album.id
+                LEFT JOIN metadata_items artist ON album.parent_id = artist.id
+                LEFT JOIN media_items mitem ON mitem.metadata_item_id = mi.id
+                LEFT JOIN media_parts mp ON mp.media_item_id = mitem.id
+                WHERE pqg.playlist_id=? AND mi.metadata_type=?
+                GROUP BY pqg.id
+                ORDER BY pqg."order"
+            """, (pl['id'], TYPE_TRACK)).fetchall()
+            return [{
+                'id': r['id'],
+                'title': r['title'],
+                'artist': r['artist'],
+                'album': r['album'],
+                'duration': r['duration'],
+                'file_path': r['file_path'],
+            } for r in rows]
+        finally:
+            conn.close()
+
     def most_played(self, limit=50):
         """Get most-played tracks (from Plex play history)."""
         conn = self._connect()

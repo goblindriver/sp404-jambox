@@ -85,6 +85,35 @@ def detect_bpm(y, sr):
     return None
 
 
+def detect_beat_grid(y, sr):
+    """Detect tempo and the time of the first beat.
+
+    Karaoke sync needs both: MIDI clock runs at ``bpm`` and the Start message
+    goes out at ``first_beat_s`` so the sampler's BPM-synced FX land on the
+    song's grid. Returns ``{'bpm': float|None, 'first_beat_s': float|None,
+    'beats': [float, ...]}``.
+    """
+    empty = {'bpm': None, 'first_beat_s': None, 'beats': []}
+    if not LIBROSA_AVAILABLE or y is None or len(y) / sr < 1.0:
+        return empty
+    try:
+        tempo, frames = librosa.beat.beat_track(y=y, sr=sr)
+        if hasattr(tempo, '__len__'):
+            tempo = float(tempo[0]) if len(tempo) > 0 else None
+        else:
+            tempo = float(tempo)
+        beats = [round(float(t), 3) for t in librosa.frames_to_time(frames, sr=sr)]
+        if not tempo or not (40 <= tempo <= 250):
+            tempo = None
+        return {
+            'bpm': round(tempo, 1) if tempo else None,
+            'first_beat_s': beats[0] if beats else None,
+            'beats': beats,
+        }
+    except Exception:
+        return empty
+
+
 def detect_key(y, sr):
     """Detect musical key using chroma features and Krumhansl-Schmuckler algorithm.
 

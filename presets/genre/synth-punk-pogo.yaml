@@ -1,0 +1,37 @@
+name: Synth-Punk Pogo
+slug: synth-punk-pogo
+author: jambox
+bpm: 150
+key: Am
+vibe: Home Front energy — oi! choruses over new-wave synths, punk drums you can dance to
+notes: 'Built around Home Front (Edmonton synth-punk): street-punk gang vocals,
+  chorus-drenched jangle guitar, bright analog synth hooks, driving eighth-note
+  bass, drum-machine punch. Fast but never sludgy, it bounces. Am keeps it
+  diatonic to the default set (harmonizes with Disco Inferno / Dub Cooldown);
+  150 halves to 75 for a cooldown and sits near Riot Mode (160) for a punk run.
+  Pads 9-10 are the hooks: play the synth stab chromatically over any karaoke
+  song in A minor / C major.
+
+  '
+source: curated
+tags:
+- punk
+- new-wave
+- synth-punk
+- post-punk
+- danceable
+- hype
+energy: high
+pads:
+  1: KIK punchy digital one-shot
+  2: SNR gated punchy one-shot
+  3: HAT tight crispy one-shot
+  4: CLP gang hype one-shot
+  5: BRK punk driving loop
+  6: BRK new-wave dance loop
+  7: GTR chorus bright loop
+  8: SYN new-wave bright loop
+  9: BAS punk driving loop
+  10: SYN analog stab chromatic
+  11: VOX gang shout one-shot
+  12: RSR hype riser transition
