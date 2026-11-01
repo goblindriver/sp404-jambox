@@ -199,7 +199,7 @@ def _build_prompt(filepath, features):
 
 _llm_stats = {'calls': 0, 'success': 0, 'timeout': 0, 'http_error': 0,
               'empty': 0, 'parse_fail': 0, 'incomplete': 0,
-              'connection_error': 0, 'invalid_json': 0}
+              'connection_error': 0, 'invalid_json': 0, 'fallback': 0}
 _llm_stats_lock = threading.Lock()
 
 
@@ -272,6 +272,7 @@ def _call_llm(prompt, model, retries=None, timeout=None, raise_errors=False):
             LLM_ENDPOINT,
             model,
             messages,
+            fallback_endpoint=SETTINGS.get("LLM_FALLBACK_ENDPOINT"),
             timeout=timeout,
             retries=retries,
             json_mode=True,
@@ -1214,6 +1215,8 @@ def run(args):
             s['calls'], s['success'],
             s['success'] / max(s['calls'], 1) * 100,
             s['incomplete'], s['timeout'], s['parse_fail'], s['empty'], s['http_error']))
+        if s.get('fallback'):
+            print("  LLM fallback: %d calls went to %s" % (s['fallback'], SETTINGS.get("LLM_FALLBACK_ENDPOINT")))
 
 
 def run_revibe(args):

@@ -454,6 +454,7 @@ def _llm_tag_filename(rel_path):
                     "content": json.dumps({"filename": rel_path, "directory": os.path.dirname(rel_path)}),
                 },
             ],
+            fallback_endpoint=SETTINGS.get("LLM_FALLBACK_ENDPOINT"),
             timeout=SETTINGS.get("LLM_TIMEOUT", 30),
             temperature=0.2,
             json_mode=True,

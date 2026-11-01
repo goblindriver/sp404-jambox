@@ -9,6 +9,7 @@ from __future__ import annotations
 import http.client
 import json
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -18,6 +19,14 @@ from urllib.parse import urlsplit
 # native /api/chat endpoint in backend="auto" mode.
 OLLAMA_DEFAULT_PORT = 11434
 LLM_BACKENDS = ("auto", "ollama", "openai")
+# A fallback endpoint takes over when the primary can't be reached at all
+# (refused, offline peer, timed out), never on a reply it didn't like. After
+# such a failure the primary is skipped for PRIMARY_RETRY_SECONDS, so a batch
+# doesn't wait out a timeout on every file while the primary is away.
+FALLBACK_ON = ("connection_error", "timeout")
+PRIMARY_RETRY_SECONDS = 300
+_primary_down_until = {}
+_primary_down_lock = threading.Lock()
 
 
 class LLMError(RuntimeError):
@@ -177,7 +186,40 @@ def resolve_backend(endpoint, backend="auto"):
     return endpoint, False
 
 
-def call_llm_chat(
+def _primary_is_down(endpoint):
+    with _primary_down_lock:
+        return _primary_down_until.get(endpoint, 0) > time.monotonic()
+
+
+def _mark_primary_down(endpoint):
+    with _primary_down_lock:
+        _primary_down_until[endpoint] = time.monotonic() + PRIMARY_RETRY_SECONDS
+
+
+def call_llm_chat(endpoint, model, messages, *, fallback_endpoint=None, on_stat=None, **kwargs):
+    """Call a chat-completions endpoint with retries and JSON repair (see _call_endpoint).
+
+    fallback_endpoint, if set, serves the call when the primary can't be
+    reached (FALLBACK_ON), and every call for PRIMARY_RETRY_SECONDS after.
+    Each fallback use is counted as on_stat("fallback").
+    """
+    if not endpoint:
+        return None
+    if not fallback_endpoint or fallback_endpoint == endpoint:
+        return _call_endpoint(endpoint, model, messages, on_stat=on_stat, **kwargs)
+    if not _primary_is_down(endpoint):
+        try:
+            return _call_endpoint(endpoint, model, messages, on_stat=on_stat, **kwargs)
+        except LLMError as exc:
+            if exc.code not in FALLBACK_ON:
+                raise
+            _mark_primary_down(endpoint)
+    if on_stat:
+        on_stat("fallback")
+    return _call_endpoint(fallback_endpoint, model, messages, on_stat=on_stat, **kwargs)
+
+
+def _call_endpoint(
     endpoint,
     model,
     messages,
@@ -191,7 +233,7 @@ def call_llm_chat(
     backend="auto",
     num_ctx=None,
 ):
-    """Call a chat-completions endpoint with retries and JSON repair.
+    """Call one chat-completions endpoint with retries and JSON repair.
 
     Args:
         endpoint: Full URL to chat completions endpoint

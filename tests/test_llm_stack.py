@@ -88,6 +88,63 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "empty_response")
 
 
+PRIMARY = "http://100.71.235.42:11434"
+FALLBACK = "http://100.67.11.60:11434"
+
+
+class FallbackTests(unittest.TestCase):
+    def setUp(self):
+        llm_client._primary_down_until.clear()
+        self.urls = []
+
+    def _serve(self, down=(), code="connection_error"):
+        def endpoint(url, _payload, timeout):
+            self.urls.append(url)
+            if any(url.startswith(d) for d in down):
+                raise LLMError(code, "unreachable")
+            return {"message": {"content": '{"ok": true}'}}
+        return patch.object(llm_client, "call_json_endpoint", side_effect=endpoint)
+
+    def test_an_unreachable_primary_falls_back_then_is_skipped_for_a_while(self):
+        stats = []
+        with self._serve(down=[PRIMARY]):
+            self.assertEqual(call_llm_chat(PRIMARY, "m", [], fallback_endpoint=FALLBACK, on_stat=stats.append), {"ok": True})
+            self.assertEqual(call_llm_chat(PRIMARY, "m", [], fallback_endpoint=FALLBACK), {"ok": True})
+        self.assertEqual(self.urls, [PRIMARY + "/api/chat", FALLBACK + "/api/chat", FALLBACK + "/api/chat"])
+        self.assertIn("fallback", stats)
+
+    def test_the_primary_is_tried_again_after_the_retry_window(self):
+        with self._serve(down=[PRIMARY]):
+            call_llm_chat(PRIMARY, "m", [], fallback_endpoint=FALLBACK)
+        llm_client._primary_down_until[PRIMARY] = 0
+        self.urls.clear()
+        with self._serve():
+            call_llm_chat(PRIMARY, "m", [], fallback_endpoint=FALLBACK)
+        self.assertEqual(self.urls, [PRIMARY + "/api/chat"])
+
+    def test_a_timeout_falls_back_but_an_http_error_does_not(self):
+        with self._serve(down=[PRIMARY], code="timeout"):
+            self.assertEqual(call_llm_chat(PRIMARY, "m", [], fallback_endpoint=FALLBACK), {"ok": True})
+        llm_client._primary_down_until.clear()
+        with self._serve(down=[PRIMARY], code="http_error"):
+            with self.assertRaises(LLMError):
+                call_llm_chat(PRIMARY, "m", [], fallback_endpoint=FALLBACK)
+
+    def test_without_a_fallback_the_error_surfaces(self):
+        with self._serve(down=[PRIMARY]):
+            with self.assertRaises(LLMError):
+                call_llm_chat(PRIMARY, "m", [])
+
+    def test_vibe_fallback_only_backs_up_the_base_model(self):
+        settings = {"LLM_ENDPOINT": PRIMARY, "LLM_MODEL": "qwen3.5:9b", "LLM_FALLBACK_ENDPOINT": FALLBACK,
+                    "VIBE_PARSER_MODE": "fine_tuned", "FINE_TUNED_LLM_ENDPOINT": "http://127.0.0.1:8080",
+                    "FINE_TUNED_LLM_MODEL": "jambox-lora"}
+        with patch.dict(vibe_generate.SETTINGS, settings):
+            self.assertEqual(vibe_generate._parser_runtime()["fallback_endpoint"], "")
+            vibe_generate.SETTINGS["VIBE_PARSER_MODE"] = "rag"
+            self.assertEqual(vibe_generate._parser_runtime()["fallback_endpoint"], FALLBACK)
+
+
 class RetryTests(unittest.TestCase):
     def _attempts(self, error, retries=3):
         calls = []
