@@ -117,6 +117,20 @@ class PatternRoleTests(unittest.TestCase):
                 4: "HAT tick one-shot", 5: "PRC conga loop"}
         self.assertEqual(gen_patterns.drum_roles(pads), {1: 2, 2: 3, 3: 4})
 
+    def test_legacy_type_codes_count_as_drums_everywhere(self):
+        # bank_config.yaml and 12 presets still write HHT / TOM.
+        pads = {1: "KIK punch one-shot", 2: "SNR crack one-shot",
+                3: "HHT open shimmery disco offbeat one-shot", 4: "TOM floor deep thunder roll one-shot"}
+        self.assertEqual(gen_patterns.drum_roles(pads), {1: 1, 2: 2, 3: 3, 4: 4})
+        self.assertEqual(gen_padinfo.pad_mode(pads[3], 3), (False, True))
+        self.assertEqual(gen_padinfo.pad_mode(pads[4], 4), (False, True))
+        self.assertEqual(gen_padinfo.pad_mode("GLT buffer stutter rhythmic chopped loop", 8), (True, False))
+
+        query = fetch_samples.parse_pad_query(pads[4])
+        self.assertEqual((query["type_code"], "tom" in query["keywords"]), ("PRC", True))
+        # Lowercase words stay keywords: "bass" is not BASS -> BAS.
+        self.assertEqual(fetch_samples.parse_pad_query("SYN bass warm loop")["type_code"], "SYN")
+
     def test_banks_without_kick_and_snare_get_no_pattern(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = os.path.join(tmp, "bank_config.yaml")
