@@ -43,6 +43,7 @@ from jambox_config import (
     load_settings_for_script,
     merge_tag_fields,
     upsert_tag_entries,
+    write_tag_changes,
 )
 from audio_analysis import extract_features, is_available as librosa_available
 from llm_client import LLMError, call_llm_chat
@@ -323,6 +324,14 @@ def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2,
         if _enrichment_usable(validated):
             return validated, model, False
     return validated, model, False
+
+
+def _second_quality_opinion(full_path, features, verbose=False):
+    """Score a file again: (quality_score, validated tags), or (None, {}) without a usable reply."""
+    tags, _model, _skipped = _llm_tag_with_repair(full_path, features, verbose=verbose)
+    if not _enrichment_usable(tags):
+        return None, {}
+    return tags['quality_score'], tags
 
 
 def _normalize_vocab_token(dim, token):
@@ -702,6 +711,22 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
     entry['retag_model'] = used_model if (usable and LLM_ENDPOINT) else None
 
     qs = entry.get('quality_score')
+    confirmed_low = False
+    if usable and qs is not None and qs <= 2:
+        # A single temperature-0.3 score is close to a coin flip at the 2/3
+        # line, so a file is quarantined only on two low votes. A passing
+        # second reply replaces the first; an unanswered one moves nothing.
+        votes = [qs]
+        second, second_tags = _second_quality_opinion(full_path, features, verbose)
+        if second is not None:
+            votes.append(second)
+        if second is not None and second > 2:
+            llm_tags = second_tags
+            entry = _merge_tags(existing, llm_tags, features, rel_path)
+            entry['retag_model'] = used_model
+            qs = second
+        confirmed_low = second is not None and second <= 2
+        entry['quality_votes'] = votes
     tc = entry.get('type_code', '?')
 
     result = {
@@ -717,7 +742,7 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
         "tc": tc,
     }
 
-    if usable and qs is not None and qs <= 2:
+    if confirmed_low:
         result["status"] = "low_quality"
     elif usable:
         result["status"] = "tagged"
@@ -1382,6 +1407,143 @@ def run_retry_llm_failures(args):
     print("  Time: %.1f min" % (elapsed / 60))
 
 
+QUARANTINE_PREFIX = "_QUARANTINE/"
+
+
+def _vote_majority(votes):
+    """'keep' or 'quarantine' once two quality votes agree, else None."""
+    high = sum(1 for v in votes if v > 2)
+    if high >= 2:
+        return "keep"
+    if len(votes) - high >= 2:
+        return "quarantine"
+    return None
+
+
+def _recheck_candidates(tag_db, type_code=None):
+    """Quarantined smart-retag rows whose single low score was never confirmed.
+
+    Yields (q_rel, rel, entry, votes) for files still in _QUARANTINE/ whose
+    original slot is free; rows already settled by two agreeing votes are skipped.
+    """
+    for q_rel, entry in tag_db.items():
+        if not q_rel.startswith(QUARANTINE_PREFIX) or not isinstance(entry, dict):
+            continue
+        if not str(entry.get('tag_source') or '').startswith('smart_retag'):
+            continue
+        qs = entry.get('quality_score')
+        if not isinstance(qs, int) or qs > 2:
+            continue
+        if type_code and entry.get('type_code') != type_code:
+            continue
+        votes = [v for v in (entry.get('quality_votes') or [qs]) if isinstance(v, int)]
+        if _vote_majority(votes):
+            continue
+        rel = q_rel[len(QUARANTINE_PREFIX):]
+        if rel in tag_db or os.path.exists(os.path.join(LIBRARY, rel)):
+            continue
+        if os.path.exists(os.path.join(LIBRARY, q_rel)):
+            yield q_rel, rel, entry, votes
+
+
+def _recheck_one(q_rel, rel, entry, votes, verbose=False):
+    """Collect votes until two agree. Returns (verdict, votes, tags of the last passing reply).
+
+    Scored under the file's original path, so the prompt sees the folder it
+    was first judged in rather than _QUARANTINE/.
+    """
+    features = _get_stored_features({q_rel: entry}, q_rel)
+    if not features or features.get('spectral_centroid') is None:
+        features = extract_features(os.path.join(LIBRARY, q_rel))
+    if not features:
+        return "no_features", votes, {}
+    keep_tags = {}
+    while _vote_majority(votes) is None:
+        score, tags = _second_quality_opinion(os.path.join(LIBRARY, rel), features, verbose)
+        if score is None:
+            return "llm_fail", votes, {}
+        votes = votes + [score]
+        if score > 2:
+            keep_tags = tags
+    return _vote_majority(votes), votes, keep_tags
+
+
+def _restore_from_quarantine(q_rel, rel, entry, votes, keep_tags):
+    """Move a file back to its original folder and re-key its row in one write."""
+    restored = _merge_tags(entry, keep_tags, None, rel)
+    restored['quality_score'] = sorted(votes)[len(votes) // 2]
+    restored['quality_votes'] = votes
+    restored['retag_model'] = LLM_MODEL
+    src, dest = os.path.join(LIBRARY, q_rel), os.path.join(LIBRARY, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.move(src, dest)
+    try:
+        with _persist_lock:
+            write_tag_changes(TAGS_FILE, deletes=[q_rel], upserts={rel: _json_safe(restored)})
+    except Exception:
+        shutil.move(dest, src)
+        raise
+    return restored
+
+
+def run_recheck_quarantine(args):
+    """Second opinion on quarantined files: restore those that score >= 3 on a majority of votes.
+
+    A dry run unless --apply: the votes are still collected (and cost LLM calls),
+    but nothing is moved or written, so an --apply run votes afresh.
+    """
+    if not LLM_ENDPOINT:
+        print("ERROR: SP404_LLM_ENDPOINT not set.")
+        sys.exit(1)
+
+    tag_db = _load_tags()
+    candidates = list(_recheck_candidates(tag_db, type_code=args.type))
+    print("Quarantined files with one unconfirmed low score: %d" % len(candidates))
+    if args.limit:
+        candidates = candidates[:args.limit]
+        print("Limited to %d" % args.limit)
+    if not candidates:
+        return
+    print("%s | LLM: %s | workers: %d\n" % (
+        "APPLY" if args.apply else "DRY RUN (add --apply to move files)", LLM_MODEL, args.workers))
+
+    counts = {"keep": 0, "quarantine": 0, "llm_fail": 0, "no_features": 0, "error": 0}
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {pool.submit(_recheck_one, q_rel, rel, entry, votes): (q_rel, rel, entry)
+                   for q_rel, rel, entry, votes in candidates}
+        for i, fut in enumerate(as_completed(futures), 1):
+            q_rel, rel, entry = futures[fut]
+            try:
+                verdict, votes, keep_tags = fut.result()
+                if args.apply and verdict == "keep":
+                    _restore_from_quarantine(q_rel, rel, entry, votes, keep_tags)
+                elif args.apply and verdict == "quarantine":
+                    with _persist_lock:
+                        merge_tag_fields(TAGS_FILE, {q_rel: {"quality_votes": votes}})
+            except Exception as exc:
+                print("  ERROR %s: %s" % (q_rel, exc), file=sys.stderr)
+                counts["error"] += 1
+                continue
+            counts[verdict] += 1
+            if not args.quiet:
+                label = {"keep": "RESTORE", "quarantine": "STAYS"}.get(verdict, verdict.upper())
+                print("  %s votes=%s %s: %s" % (label, votes, entry.get('type_code', '?'), rel), flush=True)
+            if i % BATCH_SIZE == 0:
+                rate = i / max(time.time() - t0, 1e-6)
+                print("=== Recheck %d/%d  |  %.0f/min ===" % (i, len(candidates), rate * 60), flush=True)
+
+    if args.apply and (counts["keep"] or counts["quarantine"]):
+        export_tags_json(TAGS_FILE)
+
+    print("\n" + "=" * 60)
+    print("Quarantine recheck %s" % ("complete" if args.apply else "(dry run)"))
+    print("  %s: %d  Stay quarantined: %d  LLM failures: %d  No features: %d  Errors: %d" % (
+        "Restored" if args.apply else "Would restore", counts["keep"], counts["quarantine"],
+        counts["llm_fail"], counts["no_features"], counts["error"]))
+    print("  Time: %.1f min" % ((time.time() - t0) / 60))
+
+
 def run_validate(args):
     """Stratified validation: process up to N files per type code, report quality."""
     per_type = args.limit or 5
@@ -1454,6 +1616,10 @@ def main():
                         help='Re-vibe pass: re-interpret stored features with updated prompt')
     parser.add_argument('--retry-llm-failures', action='store_true',
                         help='Re-run LLM on files that have features but no LLM enrichment')
+    parser.add_argument('--recheck-quarantine', action='store_true',
+                        help='Re-score quarantined files and restore those a majority of votes rates >= 3')
+    parser.add_argument('--apply', action='store_true',
+                        help='With --recheck-quarantine: move files back and write the DB (default is a dry run)')
     args = parser.parse_args()
     args.workers = (
         SMART_RETAG_WORKERS_DEFAULT
@@ -1467,6 +1633,10 @@ def main():
 
     if args.retry_llm_failures:
         run_retry_llm_failures(args)
+        return
+
+    if args.recheck_quarantine:
+        run_recheck_quarantine(args)
         return
 
     if args.validate:
