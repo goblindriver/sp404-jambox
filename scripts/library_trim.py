@@ -407,8 +407,8 @@ def _pass_duration(db, active_keys, min_duration, trash):
 
 
 def _pass_dedup(db, active_keys, threshold, trash):
-    """Pass 2: fingerprint-based dedup, keep best quality."""
-    print("\n--- Pass 2: Dedup (threshold=%.2f) ---" % threshold)
+    """Pass 2: fingerprint-based dedup, keep best quality. Unreadable files are skipped."""
+    print("\n--- Pass 2: Dedup (threshold=%.2f) ---" % threshold, flush=True)
     stats = _new_stats()
 
     try:
@@ -417,8 +417,14 @@ def _pass_dedup(db, active_keys, threshold, trash):
         print("  SKIP: deduplicate_samples not importable")
         return stats
 
-    subset_db = {k: db[k] for k in active_keys if k in db}
-    groups = find_duplicate_groups(subset_db, threshold=threshold)
+    # Pass 1 left a resolved "duration" on these rows: dedup only compares similar lengths.
+    subset_db = {k: db[k] for k in sorted(active_keys) if k in db}
+    dedup_stats = {}
+    groups = find_duplicate_groups(subset_db, threshold=threshold, stats=dedup_stats)
+    stats["unreadable"] = dedup_stats.get("unreadable", 0)
+    print("  Fingerprinted %d files in %.1fs (%d unreadable, skipped); compared in %.1fs" % (
+        dedup_stats.get("fingerprinted", 0), dedup_stats.get("fingerprint_seconds", 0),
+        stats["unreadable"], dedup_stats.get("compare_seconds", 0)))
     print("  Found %d duplicate groups" % len(groups))
 
     for group in groups:

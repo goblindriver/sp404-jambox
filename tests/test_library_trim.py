@@ -105,6 +105,38 @@ class LibraryTrimTests(unittest.TestCase):
         for rel in self.rows:
             self.assertTrue(os.path.exists(os.path.join(self.lib, rel)))
 
+    def test_dedup_pass_trashes_the_copy_and_restore_brings_it_back(self):
+        import deduplicate_samples
+
+        copy_row = {"duration": 1, "type_code": "HAT"}
+        with open(os.path.join(self.lib, "Drums", "good_copy.wav"), "wb") as fh:
+            fh.write(b"RIFF")
+        with open(os.path.join(self.lib, "Drums", "good.wav"), "wb") as fh:
+            fh.write(b"RIFF" * 10)  # the bigger copy is kept
+        upsert_tag_entries(self.tags, {"Drums/good_copy.wav": copy_row})
+        vectors = {"good.wav": [1.0, 0.0, 1.0], "good_copy.wav": [1.0, 0.0, 1.0], "silent.wav": [0.0, 1.0, 0.0]}
+
+        with patch.object(deduplicate_samples, "LIBRARY", self.lib), \
+             patch("deduplicate_samples._fingerprint_with_fpcalc", return_value=None), \
+             patch("deduplicate_samples._fingerprint_with_python",
+                   side_effect=lambda path: ({"kind": "python", "value": vectors[os.path.basename(path)]}
+                                             if os.path.basename(path) in vectors else None)), \
+             patch("sys.stderr", io.StringIO()):
+            self._run(apply=True, skip_dedup=False, skip_audio_quality=True)
+
+        remaining = set(load_tag_db(self.tags))
+        self.assertNotIn("Drums/good_copy.wav", remaining)
+        self.assertTrue({"Drums/good.wav", "Drums/unreadable.wav", "Drums/silent.wav"} <= remaining)
+        run_id = os.listdir(os.path.join(self.lib, "_TRASH"))[0]
+        with open(os.path.join(self.lib, "_TRASH", run_id, "manifest.jsonl"), encoding="utf-8") as fh:
+            manifest = {item["rel_path"]: item for item in map(json.loads, fh)}
+        self.assertEqual(manifest["Drums/good_copy.wav"]["reason"], "dedup")
+
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(library_trim.run_restore(argparse.Namespace(run_id=run_id)), 0)
+        self.assertEqual(load_tag_db(self.tags)["Drums/good_copy.wav"], copy_row)
+        self.assertTrue(os.path.exists(os.path.join(self.lib, "Drums", "good_copy.wav")))
+
     def test_refuses_to_run_without_ffmpeg(self):
         with patch.object(library_trim, "resolve_command", return_value=None), \
              redirect_stdout(io.StringIO()), patch("sys.stderr", io.StringIO()):
