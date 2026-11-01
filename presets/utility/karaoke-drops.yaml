@@ -1,0 +1,36 @@
+name: Karaoke Drops
+slug: karaoke-drops
+author: jambox
+bpm: 120
+key: XX
+vibe: Crowd-pleasing one-shots that land on any song, any key, any tempo
+notes: 'Bank A (internal memory) on karaoke night. Every pad is a one-shot so it
+  works over arbitrary songs: no loops to clash with the key or drift off the
+  tempo. Pad order is fixed: scripts/karaoke_drops.py drafts drop sheets
+  against these pad numbers (1 cheer, 2 applause, 3 air horn, 4 choir stab,
+  5 crash, 6 rewind, 7 riser, 8 impact, 9 hype vox, 10 scratch, 11 laser,
+  12 gong). Mic 2 and the drops share one fader (M6 CH2), so build this bank a
+  few dB under the vocal.
+
+  '
+source: curated
+tags:
+- karaoke
+- utility
+- fx
+- hype
+- one-shot
+energy: high
+pads:
+  1: FX crowd cheer one-shot
+  2: FX crowd applause one-shot
+  3: FX hype airhorn one-shot
+  4: VOX choir stab one-shot
+  5: CYM crash bright one-shot
+  6: FX rewind transition
+  7: RSR riser build transition
+  8: FX impact boom one-shot
+  9: VOX hype shout one-shot
+  10: FX scratch one-shot
+  11: FX laser zap one-shot
+  12: FX gong impact one-shot

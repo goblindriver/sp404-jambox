@@ -326,6 +326,24 @@ for tc, relatives in _RELATED_TYPE_CODES_RAW.items():
         _RELATED_TYPE_CODES.setdefault(rel, set()).add(tc)
 
 
+# Legacy / hand-written type codes that appear in presets but aren't in the
+# canonical vocab (scripts/tag_vocab.py). Without this they fall through as
+# plain keywords and the pad loses its type filter entirely. Each alias maps
+# to (canonical_code, extra_keyword_or_None) so the specific meaning survives.
+TYPE_CODE_ALIASES = {
+    "SMP": ("BRK", None),
+    "HHT": ("HAT", None),
+    "TOM": ("PRC", "tom"),
+    "CHR": ("VOX", "choir"),
+    "BASS": ("BAS", None),
+    "FDL": ("STR", "fiddle"),
+    "HAR": ("WND", "harmonica"),
+    "GLT": ("FX", "glitch"),
+    "TEX": ("AMB", "texture"),
+    "SKA": ("HRN", "ska"),
+}
+
+
 def parse_pad_query(query):
     """Parse a pad description into structured search terms.
 
@@ -351,9 +369,15 @@ def parse_pad_query(query):
         upper = word.upper()
         lower = word.lower()
 
-        # Type code (always uppercase in pad descriptions)
-        if upper == "SMP":
-            upper = "BRK"
+        # Type code (always uppercase in pad descriptions). Aliases only
+        # apply to all-caps words so lowercase keywords like "bass" or "ska"
+        # stay keywords.
+        if word == upper and upper in TYPE_CODE_ALIASES and not result["type_code"]:
+            canonical, extra = TYPE_CODE_ALIASES[upper]
+            result["type_code"] = canonical
+            if extra:
+                result["keywords"].add(extra)
+            continue
         if upper in TYPE_CODES and not result["type_code"]:
             result["type_code"] = upper
             continue

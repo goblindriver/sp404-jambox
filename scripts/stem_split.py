@@ -83,8 +83,11 @@ def source_id(filepath):
     return hashlib.md5(rel.encode()).hexdigest()[:12]
 
 
-def run_demucs(input_path, output_dir, model="htdemucs"):
+def run_demucs(input_path, output_dir, model="htdemucs", two_stems=None, timeout=600):
     """Run demucs on an audio file.
+
+    two_stems: optional stem name (e.g. "vocals") to split into just
+    ``{stem}`` + ``no_{stem}`` — what karaoke prep uses for backing tracks.
 
     Returns list of (stem_name, stem_path) tuples on success, or empty list.
     """
@@ -98,7 +101,7 @@ def run_demucs(input_path, output_dir, model="htdemucs"):
             FFMPEG, "-y", "-i", input_path,
             "-ar", "44100", "-ac", "2", "-sample_fmt", "s16",
             "-c:a", "pcm_s16le", clean_wav,
-        ], capture_output=True, timeout=30)
+        ], capture_output=True, timeout=120)
         if preconvert.returncode != 0:
             print(f"    Pre-convert failed")
             return []
@@ -107,11 +110,14 @@ def run_demucs(input_path, output_dir, model="htdemucs"):
             print(f"    Pre-convert failed")
             return []
 
-        cmd = [PYTHON, "-m", "demucs", "-n", model, "-o", output_dir, clean_wav]
+        cmd = [PYTHON, "-m", "demucs", "-n", model, "-o", output_dir]
+        if two_stems:
+            cmd.append(f"--two-stems={two_stems}")
+        cmd.append(clean_wav)
 
         print(f"    Running demucs ({model})...")
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=600,
+            cmd, capture_output=True, text=True, timeout=timeout,
         )
 
         if result.returncode != 0:
