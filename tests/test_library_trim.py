@@ -186,9 +186,15 @@ class LibraryTrimTests(unittest.TestCase):
         dedup_section = out.split("--- Pass 2")[1].split("--- Pass")[0]
         self.assertIn("Found 1 duplicate groups on chromaprint", dedup_section)
         self.assertIn("Would trash: 1 files", dedup_section)
+        self.assertIn("Drums/good_copy.wav  (copy of Drums/good.wav)", dedup_section)
         self.assertIn("Possible duplicates (fallback fingerprint, not moved): 1 files in 1 groups", dedup_section)
         self.assertIn("1 flagged for review only (not moved)", out)
         self.assertEqual(len(load_tag_db(self.tags)), len(self.rows) + 2)  # dry run: nothing moved
+        # the dry-run report names each copy it would trash and the file it duplicates
+        dedup = self._report()["passes"]["dedup"]
+        self.assertEqual(dedup["duplicates"], [{"keep": "Drums/good.wav", "duplicates": ["Drums/good_copy.wav"]}])
+        self.assertEqual(dedup["possible_duplicates"],
+                         [{"keep": "Drums/silent.wav", "duplicates": ["Drums/silent_copy.wav"]}])
 
     def test_refuses_to_run_without_ffmpeg(self):
         with patch.object(library_trim, "resolve_command", return_value=None), \
