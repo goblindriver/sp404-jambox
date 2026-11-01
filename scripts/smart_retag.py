@@ -245,7 +245,15 @@ INGEST_LLM_BACKOFF_SECONDS = 300
 _llm_unavailable_until = 0.0
 
 
-def _call_llm(prompt, model, retries=None, timeout=None, raise_errors=False):
+# Tagging is greedy (temperature 0): the same file gets the same tags on every
+# run. At 0.3, a 200-file re-run on identical inputs changed about a quarter of
+# quality scores and one in seven type codes (iMac, 2026-11-01). Quarantine
+# votes stay sampled; at 0 a second opinion would only repeat the first.
+TAG_TEMPERATURE = 0.0
+VOTE_TEMPERATURE = 0.3
+
+
+def _call_llm(prompt, model, retries=None, timeout=None, raise_errors=False, temperature=TAG_TEMPERATURE):
     """Send prompt to the LLM and parse JSON response. Retries on timeout / 5xx.
 
     Thin wrapper around llm_client.call_llm_chat() that injects the smart-retag
@@ -276,7 +284,7 @@ def _call_llm(prompt, model, retries=None, timeout=None, raise_errors=False):
             timeout=timeout,
             retries=retries,
             json_mode=True,
-            temperature=0.3,
+            temperature=temperature,
             max_tokens=SETTINGS.get("SMART_RETAG_MAX_TOKENS", 400),
             on_stat=_bump_llm_stat,
             backend=SETTINGS.get("LLM_BACKEND", "auto"),
@@ -291,7 +299,7 @@ def _call_llm(prompt, model, retries=None, timeout=None, raise_errors=False):
 
 
 def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2,
-                         retries=None, timeout=None):
+                         retries=None, timeout=None, temperature=TAG_TEMPERATURE):
     """Call LLM; if output is too thin for fetch, retry with stricter instructions.
 
     The repair pass only follows a reply that came back incomplete: when the
@@ -311,7 +319,8 @@ def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2,
     model = LLM_MODEL
     prompt = _build_prompt(full_path, features)
     try:
-        raw = _call_llm(prompt, model=model, retries=retries, timeout=timeout, raise_errors=True)
+        raw = _call_llm(prompt, model=model, retries=retries, timeout=timeout, raise_errors=True,
+                        temperature=temperature)
     except LLMError:
         return {}, model, False
     validated = _validate_llm_tags(raw) if raw else {}
@@ -322,7 +331,8 @@ def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2,
             print("  LLM repair pass (incomplete JSON / missing dimensions)...", flush=True)
         try:
             raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX, model=model,
-                             retries=retries, timeout=timeout, raise_errors=True)
+                             retries=retries, timeout=timeout, raise_errors=True,
+                             temperature=temperature)
         except LLMError:
             break
         validated = _validate_llm_tags(raw2) if raw2 else {}
@@ -333,7 +343,8 @@ def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2,
 
 def _second_quality_opinion(full_path, features, verbose=False):
     """Score a file again: (quality_score, validated tags), or (None, {}) without a usable reply."""
-    tags, _model, _skipped = _llm_tag_with_repair(full_path, features, verbose=verbose)
+    tags, _model, _skipped = _llm_tag_with_repair(full_path, features, verbose=verbose,
+                                                  temperature=VOTE_TEMPERATURE)
     if not _enrichment_usable(tags):
         return None, {}
     return tags['quality_score'], tags
@@ -782,8 +793,8 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
     confirmed_low = unconfirmed_low = False
     # A user-set score is never voted on: the retag doesn't quarantine it either way.
     if usable and qs is not None and qs <= 2 and not _user_set_quality(existing):
-        # A single temperature-0.3 score is close to a coin flip at the 2/3
-        # line, so a file is quarantined only on two low votes. A passing
+        # A single score is close to a coin flip at the 2/3 line, so a file
+        # is quarantined only on two low votes (the second one sampled). A passing
         # second reply replaces the first; an unanswered one moves nothing
         # and leaves the row queued, so the next run votes again.
         votes = [qs]

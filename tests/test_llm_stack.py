@@ -444,6 +444,23 @@ class FileAndRowStayTogetherTests(unittest.TestCase):
         self.assertEqual(row["model_quality_score"], 1)       # the model's verdict, kept beside it
         self.assertEqual(scores[os.path.basename(rel)], [])   # one call: no second vote was asked
 
+    def test_tagging_is_greedy_and_the_quarantine_vote_is_sampled(self):
+        rel = "Drums/Percussion/rim.wav"
+        self._file(rel, {"type_code": "RIM"})
+        replies, temperatures = [_reply(2), _reply(4)], []
+
+        def fake_chat(*_args, temperature, **_kwargs):
+            temperatures.append(temperature)
+            return replies.pop(0)
+
+        with patch.object(smart_retag, "call_llm_chat", side_effect=fake_chat):
+            smart_retag.retag_batch([(rel, os.path.join(self.lib, rel))], load_tag_db(self.tags),
+                                    verbose=False, workers=1)
+
+        self.assertEqual(temperatures, [smart_retag.TAG_TEMPERATURE, smart_retag.VOTE_TEMPERATURE])
+        self.assertEqual(temperatures, [0.0, 0.3])
+        self.assertEqual(load_tag_db(self.tags)[rel]["quality_score"], 4)  # the passing vote wins, as before
+
     def test_merge_keeps_a_user_set_quality_and_only_that(self):
         existing = {"quality_score": 4, "quality_source": "user"}
         entry = smart_retag._merge_tags(existing, _reply(2), None, "Drums/Kicks/k.wav")
