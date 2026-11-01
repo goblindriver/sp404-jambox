@@ -230,7 +230,7 @@ class DurationWindowTests(unittest.TestCase):
         self.assertGreater(len(scored), 10)
         self.assertLess(sum(scored), len(durations) ** 2 / 4)  # nowhere near all pairs
 
-    def test_vectorized_scores_match_fingerprint_similarity_exactly(self):
+    def _assert_scores_match_fingerprint_similarity(self):
         rng = np.random.default_rng(9)
         arrays = [_frames(rng, rng.uniform(0, 8)) for _ in range(30)]
         arrays += [_flip_bits(rng, arr, 0.02) for arr in arrays[:10]]
@@ -242,6 +242,26 @@ class DurationWindowTests(unittest.TestCase):
 
         for i, j in itertools.product(range(len(arrays)), repeat=2):
             self.assertEqual(scores[i, j], deduplicate_samples.fingerprint_similarity(arrays[i], arrays[j]))
+
+    def test_vectorized_scores_match_fingerprint_similarity_exactly(self):
+        self._assert_scores_match_fingerprint_similarity()
+
+    def test_scores_are_the_same_without_numpy_2_bitwise_count(self):
+        # The iMac venv is numpy 1.26 (laion_clap pins numpy<2).
+        with patch.object(deduplicate_samples, "_popcount32", deduplicate_samples._popcount32_swar):
+            self._assert_scores_match_fingerprint_similarity()
+
+    def test_swar_popcount_counts_every_bit(self):
+        rng = np.random.default_rng(5)
+        x = rng.integers(0, 2**32, size=(3, 4, 50), dtype=np.uint64).astype(np.uint32)
+        x[0, 0, :2] = [0, 0xFFFFFFFF]
+
+        counts = deduplicate_samples._popcount32_swar(x)
+
+        expected = np.unpackbits(x.view(np.uint8)).reshape(x.shape + (32,)).sum(axis=-1)
+        np.testing.assert_array_equal(counts, expected)
+        self.assertEqual(counts.dtype, np.uint32)
+        self.assertEqual(counts[0, 0, :2].tolist(), [0, 32])
 
 
 if __name__ == "__main__":
