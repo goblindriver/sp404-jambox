@@ -8,6 +8,7 @@ Usage:
 
 import numpy as np
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -46,6 +47,12 @@ COPY_MFCC_DISTANCE = 0.5
 # Which copy to keep: the library's storage format first (FLAC), then other
 # lossless, then the best-tagged and largest file.
 _FORMAT_RANK = {".flac": 2, ".wav": 1, ".aif": 1, ".aiff": 1}
+# Bit-identical decoded audio is a copy whatever the fingerprints say: the
+# only match ingest acts on, and how the trim catches one-shots too short for
+# chromaprint (806 of them on the iMac, mostly packs downloaded twice).
+# Silence is left out, since equal-length silent files hash alike.
+SILENT_PEAK = 1 << 16  # int32 peak under one 16-bit step (about -90 dBFS)
+ACTIONABLE_MATCHES = ("exact", "fpcalc")  # group kinds that may move files; the rest are review-only
 _BLOCK_ELEMENTS = 1 << 22  # rows x cols x frames scored per numpy step (~16 MB of uint32)
 _CACHE_SAVE_SECONDS = 120  # checkpoint the fingerprint cache so a killed run keeps its work
 
@@ -169,6 +176,57 @@ def _fingerprint_files(rel_paths, cache_entries, workers, python_only=False):
     elapsed = time.time() - t0
     _log("    Fingerprinted %d files in %.1fs (%.0f files/sec)" % (len(jobs), elapsed, len(jobs) / max(elapsed, 0.01)))
     return found
+
+
+def pcm_hash(filepath):
+    """sha1 of the decoded samples, sample rate and channel count, or None.
+
+    None when soundfile can't decode the file, or the audio is near-silent.
+    """
+    try:
+        import soundfile
+        data, rate = soundfile.read(filepath, dtype="int32", always_2d=True)
+    except Exception:
+        return None
+    if not data.size or max(int(data.max()), -int(data.min())) < SILENT_PEAK:
+        return None
+    digest = hashlib.sha1(("%d:%d:" % (rate, data.shape[1])).encode())
+    digest.update(np.ascontiguousarray(data).tobytes())
+    return digest.hexdigest()
+
+
+def _pcm_hashes(rel_paths, cache_entries, workers):
+    """{rel_path: pcm_hash or None}, cached per file marker beside the fingerprints."""
+    hashes, jobs = {}, {}
+    for rel_path in rel_paths:
+        full_path = os.path.join(LIBRARY, rel_path)
+        marker = file_marker(full_path)
+        if not marker:
+            continue
+        cached = get_cached_fingerprint(cache_entries, rel_path, marker, "pcm")
+        if cached is not None:
+            hashes[rel_path] = cached.get("value")
+        else:
+            jobs[rel_path] = (full_path, marker)
+    if jobs:
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            futures = {pool.submit(pcm_hash, full_path): rel_path for rel_path, (full_path, _m) in jobs.items()}
+            for future in as_completed(futures):
+                rel_path = futures[future]
+                hashes[rel_path] = future.result()
+                put_cached_fingerprint(cache_entries, rel_path, jobs[rel_path][1], "pcm",
+                                       {"kind": "pcm", "value": hashes[rel_path]})
+        save_fingerprint_cache(LIBRARY, cache_entries)
+    return hashes
+
+
+def _exact_groups(paths, hashes):
+    """Files with identical decoded audio, grouped (paths order kept)."""
+    by_hash = {}
+    for rel_path in paths:
+        if hashes.get(rel_path):
+            by_hash.setdefault(hashes[rel_path], []).append(rel_path)
+    return [members for members in by_hash.values() if len(members) > 1]
 
 
 def _fpcalc_frames(value):
@@ -476,9 +534,10 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
     Files neither fpcalc nor the Python fallback can read are skipped and
     counted in stats["unreadable"], never reported as duplicates.
 
-    Each group's "match" says what found it. "fpcalc" groups are the only
-    ones safe to move files on: each duplicate matches the kept file directly
-    on chromaprint and is also a confirmed copy (_confirmed_copy). Other
+    Each group's "match" says what found it. "exact" and "fpcalc" groups are
+    the only ones safe to move files on. "exact": identical decoded audio
+    (pcm_hash). "fpcalc": each duplicate matches the kept file directly on
+    chromaprint and is also a confirmed copy (_confirmed_copy). Other
     chromaprint matches are "fpcalc_review". "fallback" groups come from the
     Python fingerprint, which calls most short one-shots alike. Report both
     for review; never act on them.
@@ -490,9 +549,33 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
         entries = entries[:limit]
     stats = {} if stats is None else stats
 
-    t0 = time.time()
     cache_entries = load_fingerprint_cache(LIBRARY)
     present = [rel_path for rel_path, _entry in entries if os.path.exists(os.path.join(LIBRARY, rel_path))]
+    sizes = {}
+
+    def member(rel_path):
+        if rel_path not in sizes:
+            full_path = os.path.join(LIBRARY, rel_path)
+            sizes[rel_path] = os.path.getsize(full_path) if os.path.exists(full_path) else 0
+        entry = db.get(rel_path, {})
+        return {"path": rel_path, "size": sizes[rel_path], "tag_count": len(entry.get("tags", [])),
+                "type_code": entry.get("type_code")}
+
+    def item_rank(item):
+        return _FORMAT_RANK.get(os.path.splitext(item["path"])[1].lower(), 0), item["tag_count"], item["size"]
+
+    def rank(rel_path):
+        return item_rank(member(rel_path))
+
+    # Identical audio first: each group's best copy goes on to the fingerprint
+    # pass, the other copies are settled here.
+    t0 = time.time()
+    exact = [sorted(group, key=rank, reverse=True) for group in _exact_groups(present, _pcm_hashes(present, cache_entries, workers))]
+    exact_copies = {rel_path for group in exact for rel_path in group[1:]}
+    present = [rel_path for rel_path in present if rel_path not in exact_copies]
+    stats.update(hash_seconds=round(time.time() - t0, 1), exact_copies=len(exact_copies))
+
+    t0 = time.time()
     found = _fingerprint_files(present, cache_entries, workers)
     fingerprints = {rel_path: found[rel_path] for rel_path in present if rel_path in found}  # db order
     stats.update(fingerprinted=len(fingerprints), unreadable=len(present) - len(fingerprints),
@@ -510,23 +593,8 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
         adjacency[match][compare_path].add(rel_path)
     stats["compare_seconds"] = round(time.time() - t0, 1)
 
-    sizes = {}
-
-    def member(rel_path):
-        if rel_path not in sizes:
-            full_path = os.path.join(LIBRARY, rel_path)
-            sizes[rel_path] = os.path.getsize(full_path) if os.path.exists(full_path) else 0
-        entry = db.get(rel_path, {})
-        return {"path": rel_path, "size": sizes[rel_path], "tag_count": len(entry.get("tags", [])),
-                "type_code": entry.get("type_code")}
-
-    def item_rank(item):
-        return _FORMAT_RANK.get(os.path.splitext(item["path"])[1].lower(), 0), item["tag_count"], item["size"]
-
-    def rank(rel_path):
-        return item_rank(member(rel_path))
-
-    groups = [("fpcalc", group) for group in _direct_groups(paths, adjacency["fpcalc"], rank)]
+    groups = [("exact", group) for group in exact]
+    groups += [("fpcalc", group) for group in _direct_groups(paths, adjacency["fpcalc"], rank)]
     groups += [(match, group) for match in ("fpcalc_review", "fallback")
                for group in _connected_groups(paths, adjacency[match])]
     reports = []
@@ -544,13 +612,13 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
 
 
 def apply_clean(report_groups, db):
-    """Move each chromaprint group's duplicates into _DUPES. Fallback groups are left alone."""
+    """Move each confirmed group's duplicates into _DUPES. Review-only groups are left alone."""
     from jambox_config import delete_tag_paths
     os.makedirs(DUPES_DIR, exist_ok=True)
     updated_db = dict(db)
     removed = []
     for group in report_groups:
-        if group.get("match") != "fpcalc":
+        if group.get("match") not in ACTIONABLE_MATCHES:
             continue
         for rel_path in group["duplicates"]:
             src = os.path.join(LIBRARY, rel_path)

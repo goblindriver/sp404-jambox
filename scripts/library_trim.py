@@ -340,14 +340,16 @@ class TrashRun:
     put both the file and its tags back, even after a crash mid-run.
     """
 
-    def __init__(self, run_id=None):
+    def __init__(self, run_id=None, library=None, tags_file=None):
         self.run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.root = os.path.join(LIBRARY, TRASH_DIRNAME, self.run_id)
+        self.library = library or LIBRARY
+        self.tags_file = tags_file or TAGS_FILE
+        self.root = os.path.join(self.library, TRASH_DIRNAME, self.run_id)
         self.manifest = os.path.join(self.root, "manifest.jsonl")
         self._pending_deletes = []
 
     def move(self, rel_path, entry, reason):
-        src = os.path.join(LIBRARY, rel_path)
+        src = os.path.join(self.library, rel_path)
         os.makedirs(self.root, exist_ok=True)
         if os.path.exists(src):
             dest = os.path.join(self.root, rel_path)
@@ -361,7 +363,7 @@ class TrashRun:
 
     def flush(self):
         if self._pending_deletes:
-            delete_tag_paths(TAGS_FILE, self._pending_deletes)
+            delete_tag_paths(self.tags_file, self._pending_deletes)
             self._pending_deletes = []
 
 
@@ -409,8 +411,9 @@ def _pass_duration(db, active_keys, min_duration, trash):
 def _pass_dedup(db, active_keys, threshold, trash):
     """Pass 2: fingerprint-based dedup, keep best quality. Unreadable files are skipped.
 
-    Only confirmed copies are trashed: a chromaprint (fpcalc) match on the
-    kept file itself, with the same length and stored timbre. Other
+    Only confirmed copies are trashed: identical decoded audio, or a
+    chromaprint (fpcalc) match on the kept file itself with the same length
+    and stored timbre. Other
     chromaprint matches, and matches on the Python fallback fingerprint
     (which calls most short one-shots alike), are listed in the report for
     review and nothing is moved.
@@ -419,7 +422,7 @@ def _pass_dedup(db, active_keys, threshold, trash):
     stats = _new_stats()
 
     try:
-        from deduplicate_samples import find_duplicate_groups
+        from deduplicate_samples import ACTIONABLE_MATCHES, find_duplicate_groups
     except ImportError:
         print("  SKIP: deduplicate_samples not importable")
         return stats
@@ -432,9 +435,20 @@ def _pass_dedup(db, active_keys, threshold, trash):
     print("  Fingerprinted %d files in %.1fs (%d unreadable, skipped); compared in %.1fs" % (
         dedup_stats.get("fingerprinted", 0), dedup_stats.get("fingerprint_seconds", 0),
         stats["unreadable"], dedup_stats.get("compare_seconds", 0)))
-    matched = [group for group in groups if group.get("match") == "fpcalc"]
-    review = [group for group in groups if group.get("match") != "fpcalc"]
-    print("  Found %d groups of confirmed copies (chromaprint + same length and timbre)" % len(matched))
+    matched = [group for group in groups if group.get("match") in ACTIONABLE_MATCHES]
+    review = [group for group in groups if group.get("match") not in ACTIONABLE_MATCHES]
+    exact = [group for group in matched if group["match"] == "exact"]
+    print("  Hashed audio in %.1fs: %d files are exact copies" % (
+        dedup_stats.get("hash_seconds", 0), dedup_stats.get("exact_copies", 0)))
+    print("  Found %d groups of exact copies and %d of confirmed copies (chromaprint + same length and timbre)" % (
+        len(exact), len(matched) - len(exact)))
+    # Identical audio tagged as different types: worth a look whichever copy is kept.
+    stats["type_conflicts"] = [
+        {item["path"]: item["type_code"] for item in group["members"]}
+        for group in exact if len({item["type_code"] for item in group["members"]}) > 1]
+    if stats["type_conflicts"]:
+        print("  %d exact-copy groups disagree on type code (listed in the report: passes.dedup.type_conflicts)"
+              % len(stats["type_conflicts"]))
 
     # What this pass trashes, and the copy each one duplicates: the report lists
     # it on a dry run too, so the cut can be spot-checked before --apply.

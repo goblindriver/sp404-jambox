@@ -44,6 +44,8 @@ _stem_futures = []
 # Recent fingerprints for fast inline dedup (capped)
 _recent_fingerprints = {}
 _fingerprint_lock = threading.Lock()
+_known_pcm = None     # {pcm_hash: rel_path}, loaded from the fingerprint cache on first use
+_ingest_trash = None  # this process's TrashRun for duplicates, made on first use
 _RECENT_FP_CAP = 1000
 
 # Patterns that identify sample pack folders (vs. music albums)
@@ -90,14 +92,15 @@ def set_downloads_path(path):
     return DOWNLOADS
 
 
-def _log_ingest(source_name, num_samples, categories, source_type='pack'):
-    """Write to ingest log and update watcher state."""
+def _log_ingest(source_name, num_samples, categories, source_type='pack', **extra):
+    """Write to ingest log and update watcher state (extra fields go into the entry)."""
     entry = {
         'timestamp': datetime.now().isoformat(),
         'source': source_name,
         'type': source_type,
         'samples': num_samples,
         'categories': categories,
+        **extra,
     }
 
     with file_lock(INGEST_LOG):

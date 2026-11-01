@@ -1,5 +1,6 @@
 """Ingest must never lose or half-write data: extraction, cleanup, copies, watcher."""
 import io
+import json
 import os
 import sys
 import tempfile
@@ -137,25 +138,34 @@ class IngestSafetyTests(unittest.TestCase):
             self.assertEqual(ingest_watcher.ingest_ready_file(bad), 0)
         self.assertIn("disk full", out.getvalue())
 
-    def test_duplicate_gets_no_tag_row_and_a_unique_dupes_name(self):
-        os.makedirs(os.path.join(self.library, "_DUPES"))
-        open(os.path.join(self.library, "_DUPES", "kick.flac"), "wb").close()
+    def test_duplicate_goes_to_a_restorable_trash_run_and_the_log(self):
         path = os.path.join(self.library, "kick.flac")
         open(path, "wb").close()
 
-        with patch.object(ingest_enrichment, "_is_recent_duplicate", return_value=True):
+        with patch.object(ingest_enrichment, "_duplicate_of", return_value="Drums/kick_orig.flac"), \
+             patch.object(ingest_state, "_ingest_trash", None), redirect_stdout(io.StringIO()):
             result = ingest_enrichment._route_and_process(path, "kick.flac")
 
         self.assertEqual(result, "duplicate")
-        self.assertEqual(sorted(os.listdir(os.path.join(self.library, "_DUPES"))), ["kick-2.flac", "kick.flac"])
+        self.assertFalse(os.path.exists(path))
         self.assertEqual(jambox_config.load_tag_db(self.tags), {})
+        run_id = os.listdir(os.path.join(self.library, "_TRASH"))[0]
+        self.assertTrue(run_id.startswith("ingest-"))
+        self.assertTrue(os.path.exists(os.path.join(self.library, "_TRASH", run_id, "kick.flac")))
+        with open(os.path.join(self.library, "_TRASH", run_id, "manifest.jsonl"), encoding="utf-8") as fh:
+            self.assertEqual(json.loads(fh.read()),
+                             {"rel_path": "kick.flac", "reason": "exact copy of Drums/kick_orig.flac", "tag_row": None})
+        with open(os.path.join(self.library, "_ingest_log.json"), encoding="utf-8") as fh:
+            logged = json.load(fh)[-1]
+        self.assertEqual((logged["type"], logged["duplicate_of"], logged["trash_run"]),
+                         ("duplicate", "Drums/kick_orig.flac", run_id))
 
     def test_ingest_writes_one_row_with_source_context(self):
         path = os.path.join(self.library, "Drums", "kick.flac")
         os.makedirs(os.path.dirname(path))
         open(path, "wb").close()
 
-        with patch.object(ingest_enrichment, "_is_recent_duplicate", return_value=False), \
+        with patch.object(ingest_enrichment, "_duplicate_of", return_value=None), \
              patch("tag_library.tag_file", return_value={"type_code": "KIK", "duration": 1}), \
              patch("smart_retag.retag_single", return_value=None), \
              patch.dict(sys.modules, {"clap_engine": None, "discogs_engine": None}):
@@ -167,12 +177,18 @@ class IngestSafetyTests(unittest.TestCase):
             {"Drums/kick.flac": {"type_code": "KIK", "duration": 1, "cowork_source": "from cowork"}},
         )
 
-    def _ingest_in_order(self, fingerprints):
-        """Route files through the real recent-duplicate check, in order; fingerprints keyed by name."""
+    def _ingest_in_order(self, fingerprints, audio=None):
+        """Route files through the real duplicate check, in order; fingerprints keyed by name.
+
+        audio maps a name to samples written as a real WAV, so the exact-audio
+        check can see it; other files are empty and only fingerprints match.
+        """
         import deduplicate_samples
+        import soundfile
 
         results = {}
         with patch.dict(ingest_state._recent_fingerprints, clear=True), \
+             patch.object(ingest_state, "_known_pcm", {}), patch.object(ingest_state, "_ingest_trash", None), \
              patch.object(deduplicate_samples, "compute_fingerprint",
                           side_effect=lambda path: fingerprints[os.path.basename(path)]), \
              patch("tag_library.tag_file", return_value={"type_code": "KIK", "duration": 1}), \
@@ -181,7 +197,10 @@ class IngestSafetyTests(unittest.TestCase):
              redirect_stdout(io.StringIO()) as out:
             for name in fingerprints:
                 path = os.path.join(self.library, name)
-                open(path, "wb").close()
+                if audio and name in audio:
+                    soundfile.write(path, audio[name], 44100, subtype="PCM_16")
+                else:
+                    open(path, "wb").close()
                 results[name] = ingest_enrichment._route_and_process(path, name)
         return results, out.getvalue()
 
@@ -195,14 +214,31 @@ class IngestSafetyTests(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.library, "_DUPES")))
         self.assertIn("Possible duplicate, kept (1.00): kick_b.flac ~ kick_a.flac", out)
 
-    def test_chromaprint_match_still_goes_to_dupes(self):
+    def test_a_chromaprint_match_alone_is_kept(self):
+        # Held notes from different synths score >= 0.99 on chromaprint.
         same = {"kind": "fpcalc", "value": "1,2,3,4"}
 
-        results, _out = self._ingest_in_order({"loop_a.flac": same, "loop_b.flac": dict(same)})
+        results, out = self._ingest_in_order({"pad_a.flac": same, "pad_b.flac": dict(same)})
 
-        self.assertEqual(results, {"loop_a.flac": "keep", "loop_b.flac": "duplicate"})
-        self.assertEqual(set(jambox_config.load_tag_db(self.tags)), {"loop_a.flac"})
-        self.assertEqual(os.listdir(os.path.join(self.library, "_DUPES")), ["loop_b.flac"])
+        self.assertEqual(results, {"pad_a.flac": "keep", "pad_b.flac": "keep"})
+        self.assertEqual(set(jambox_config.load_tag_db(self.tags)), {"pad_a.flac", "pad_b.flac"})
+        self.assertFalse(os.path.exists(os.path.join(self.library, "_TRASH")))
+        self.assertIn("Possible duplicate, kept (1.00): pad_b.flac ~ pad_a.flac", out)
+
+    def test_identical_audio_is_trashed_whatever_the_fingerprints_say(self):
+        import numpy as np
+
+        tone = (9000 * np.sin(np.arange(22050) * 0.05)).astype(np.int16)
+        other = (9000 * np.sin(np.arange(22050) * 0.07)).astype(np.int16)
+        unrelated = [{"kind": "python", "value": [float(i), 1.0, 0.0]} for i in range(3)]
+
+        results, out = self._ingest_in_order(
+            {"hit.wav": unrelated[0], "hit_copy.wav": unrelated[1], "other.wav": unrelated[2]},
+            audio={"hit.wav": tone, "hit_copy.wav": tone.copy(), "other.wav": other})
+
+        self.assertEqual(results, {"hit.wav": "keep", "hit_copy.wav": "duplicate", "other.wav": "keep"})
+        self.assertEqual(set(jambox_config.load_tag_db(self.tags)), {"hit.wav", "other.wav"})
+        self.assertIn("Exact copy of hit.wav: hit_copy.wav", out)
 
 
 if __name__ == "__main__":
