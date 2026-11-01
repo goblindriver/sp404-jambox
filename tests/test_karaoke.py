@@ -281,6 +281,32 @@ class DeckTests(unittest.TestCase):
         self.assertIn("[vid1]null[vo]", self.deck.guide_graph(-9, True))
         self.assertAlmostEqual(self.deck.pitch_scale(12), 2.0)
 
+    def test_find_mpv_falls_back_to_wingets_install_folder(self):
+        d = self.deck
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = os.path.join(tmp, "MPV Player", "mpv.exe")
+            os.makedirs(os.path.dirname(exe))
+            open(exe, "wb").close()
+            with mock.patch.object(d.shutil, "which", return_value=None), \
+                 mock.patch.object(d.os, "name", "nt"), \
+                 mock.patch.dict(d.os.environ, {"ProgramFiles": tmp, "LOCALAPPDATA": ""}):
+                self.assertEqual(d.find_mpv(), exe)
+                self.assertEqual(d.find_mpv(r"C:\custom\mpv.exe"), r"C:\custom\mpv.exe")
+            with mock.patch.object(d.shutil, "which", return_value="/usr/bin/mpv"):
+                self.assertEqual(d.find_mpv(), "/usr/bin/mpv")
+
+    def test_mido_uses_pygame_without_rtmidi_unless_a_backend_is_set(self):
+        fake_mido = mock.MagicMock()
+        with mock.patch.dict(sys.modules, {"mido": fake_mido, "rtmidi": None}), \
+             mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MIDO_BACKEND", None)
+            self.assertIs(self.deck.load_mido(), fake_mido)
+            fake_mido.set_backend.assert_called_once_with("mido.backends.pygame")
+            fake_mido.set_backend.reset_mock()
+            os.environ["MIDO_BACKEND"] = "mido.backends.portmidi"
+            self.deck.load_mido()
+            fake_mido.set_backend.assert_not_called()
+
     def test_ipc_reader_joins_split_events_and_stops_at_end_file(self):
         mpv = object.__new__(self.deck.Mpv)
         mpv.state = {"time-pos": None, "pause": False, "speed": 1.0}

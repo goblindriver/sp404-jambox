@@ -1,3 +1,6 @@
 mido
-python-rtmidi
+# MIDI backend: pygame's PortMidi installs everywhere. python-rtmidi (mido's
+# default) is used instead when installed, but has no Windows wheel for
+# Python 3.13.
+pygame
 pynput
