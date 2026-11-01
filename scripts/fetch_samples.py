@@ -32,6 +32,7 @@ from tag_vocab import (
     TEXTURES as _VOCAB_TEXTURES,
     VIBES as _VOCAB_VIBES,
     GENRES as _VOCAB_GENRES,
+    TYPE_CODE_ALIASES,
     canonical_key,
 )
 from clap_engine import EmbeddingStore, embed_text, cosine_similarity
@@ -351,9 +352,15 @@ def parse_pad_query(query):
         upper = word.upper()
         lower = word.lower()
 
-        # Type code (always uppercase in pad descriptions)
-        if upper == "SMP":
-            upper = "BRK"
+        # Type code (always uppercase in pad descriptions). Aliases only
+        # apply to all-caps words so lowercase keywords like "bass" or "ska"
+        # stay keywords.
+        if word == upper and upper in TYPE_CODE_ALIASES and not result["type_code"]:
+            canonical, extra = TYPE_CODE_ALIASES[upper]
+            result["type_code"] = canonical
+            if extra:
+                result["keywords"].add(extra)
+            continue
         if upper in TYPE_CODES and not result["type_code"]:
             result["type_code"] = upper
             continue

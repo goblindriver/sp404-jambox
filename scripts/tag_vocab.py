@@ -115,14 +115,34 @@ def canonical_key(raw):
     return root.upper() + accidental + ("m" if minor else "")
 
 
+# Legacy / hand-written type codes that appear in presets but aren't in
+# TYPE_CODES. Without this they fall through as plain keywords and the pad
+# loses its type (fetch filter, PAD_INFO gate, pattern drum role). Each alias
+# maps to (canonical_code, extra_keyword_or_None) so the specific meaning
+# survives as a search keyword. Only all-caps words are aliases, so lowercase
+# keywords like "bass" or "ska" stay keywords.
+TYPE_CODE_ALIASES = {
+    "SMP": ("BRK", None),
+    "HHT": ("HAT", None),
+    "TOM": ("PRC", "tom"),
+    "CHR": ("VOX", "choir"),
+    "BASS": ("BAS", None),
+    "FDL": ("STR", "fiddle"),
+    "HAR": ("WND", "harmonica"),
+    "GLT": ("FX", "glitch"),
+    "TEX": ("AMB", "texture"),
+    "SKA": ("HRN", "ska"),
+}
+
+
 def pad_type_and_playability(description):
     """(type_code, playability) from a 'TYPE keywords playability' pad description."""
     type_code = playability = None
     for word in str(description or "").split():
         upper = word.upper()
-        if upper == "SMP":
-            upper = "BRK"
-        if type_code is None and upper in TYPE_CODES:
+        if type_code is None and word == upper and upper in TYPE_CODE_ALIASES:
+            type_code = TYPE_CODE_ALIASES[upper][0]
+        elif type_code is None and upper in TYPE_CODES:
             type_code = upper
         elif word.lower() in PLAYABILITIES:
             playability = word.lower()
