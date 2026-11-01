@@ -434,15 +434,25 @@ def _pass_dedup(db, active_keys, threshold, trash):
     review = [group for group in groups if group.get("match") != "fpcalc"]
     print("  Found %d duplicate groups on chromaprint" % len(matched))
 
+    # What this pass trashes, and the copy each one duplicates: the report lists
+    # it on a dry run too, so the cut can be spot-checked before --apply.
+    stats["duplicates"] = []
     for group in matched:
-        for dupe_path in group["duplicates"]:
-            if dupe_path in active_keys:
-                _trash_file_and_entry(dupe_path, db, stats, trash, reason="dedup")
-                active_keys.discard(dupe_path)
+        cut = [dupe_path for dupe_path in group["duplicates"] if dupe_path in active_keys]
+        for dupe_path in cut:
+            _trash_file_and_entry(dupe_path, db, stats, trash, reason="dedup")
+            active_keys.discard(dupe_path)
+        if cut:
+            stats["duplicates"].append({"keep": group["keep"], "duplicates": cut})
 
     stats["review_only"] = sum(len(group["duplicates"]) for group in review)
     stats["possible_duplicates"] = [{"keep": group["keep"], "duplicates": group["duplicates"]} for group in review]
     _print_pass_result(stats, trash)
+    pairs = [(dupe_path, item["keep"]) for item in stats["duplicates"] for dupe_path in item["duplicates"]]
+    for dupe_path, keep in pairs[:10]:
+        print("    %s  (copy of %s)" % (dupe_path, keep))
+    if len(pairs) > 10:
+        print("    ... %d more, listed in the report (passes.dedup.duplicates)" % (len(pairs) - 10))
     if review:
         print("  Possible duplicates (fallback fingerprint, not moved): %d files in %d groups, "
               "listed in the report for review" % (stats["review_only"], len(review)))
