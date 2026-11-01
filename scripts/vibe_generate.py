@@ -60,12 +60,16 @@ def _parser_runtime():
     mode = SETTINGS.get("VIBE_PARSER_MODE", "base")
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
     model = SETTINGS.get("LLM_MODEL", "qwen3.5:9b")
+    base = (endpoint, model)
     if mode == "fine_tuned":
         endpoint = SETTINGS.get("FINE_TUNED_LLM_ENDPOINT", "").strip() or endpoint
         model = SETTINGS.get("FINE_TUNED_LLM_MODEL", "").strip() or model
+    # The fallback serves the base model, so it only backs up the base endpoint.
+    fallback = SETTINGS.get("LLM_FALLBACK_ENDPOINT", "").strip() if (endpoint, model) == base else ""
     return {
         "mode": mode,
         "endpoint": endpoint,
+        "fallback_endpoint": fallback,
         "model": model,
         "retrieval_enabled": mode in {"rag", "fine_tuned"},
     }
@@ -101,6 +105,7 @@ def _call_llm(prompt, bpm=None, key=None, retrieval_context=None):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(user_prompt)},
         ],
+        fallback_endpoint=runtime["fallback_endpoint"],
         timeout=timeout,
         temperature=0.3,
         json_mode=True,
@@ -446,6 +451,7 @@ def inspire_bank_metadata(seed_genre=None):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_msg)},
             ],
+            fallback_endpoint=runtime["fallback_endpoint"],
             timeout=timeout,
             temperature=0.7,
             json_mode=True,
