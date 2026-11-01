@@ -34,6 +34,7 @@ if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
 from jambox_config import (
+    DROP_FIELD,
     LIBRARY_SKIP_DIRS,
     LONG_HOLD_DIRNAME,
     delete_tag_paths,
@@ -42,6 +43,7 @@ from jambox_config import (
     library_rel_path,
     load_settings_for_script,
     merge_tag_fields,
+    tag_rows,
     upsert_tag_entries,
     write_tag_changes,
 )
@@ -64,7 +66,6 @@ SMART_RETAG_LLM_TIMEOUT = SETTINGS.get("SMART_RETAG_LLM_TIMEOUT")
 SMART_RETAG_LLM_RETRIES = SETTINGS.get("SMART_RETAG_LLM_RETRIES")
 REPO_DIR = os.path.dirname(SCRIPTS_DIR)
 CHECKPOINT_PATH = os.path.join(REPO_DIR, "data", "retag_checkpoint.json")
-QUARANTINE_DIR = os.path.join(LIBRARY, "_QUARANTINE")
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
 SKIP_DIRS = LIBRARY_SKIP_DIRS
 
@@ -548,11 +549,41 @@ def _json_safe(entry):
 
 
 def _changed_fields(before, after):
-    """Fields of *after* whose values differ from *before* (one row)."""
-    return {k: v for k, v in after.items() if before.get(k, _MISSING) != v}
+    """Fields of *after* that differ from *before* (one row), plus DROP_FIELD for
+    keys *after* removed: a merge only sets keys, so a cleared flag such as
+    smart_retag_pending would otherwise stay in the DB and re-queue the row forever."""
+    changed = {k: v for k, v in after.items() if before.get(k, _MISSING) != v}
+    changed.update({k: DROP_FIELD for k in before if k not in after})
+    return changed
 
 
 _MISSING = object()
+
+
+def _move_file_and_row(src_rel, dest_rel, entry):
+    """Move a library file and re-key its tag row so the two never end up apart.
+
+    The row moves in one transaction once the file has moved. If that write
+    fails or is interrupted (Ctrl-C while SQLite waits on a busy DB), the file
+    goes back to wherever the DB still points. Refuses to overwrite a file or
+    row already at *dest_rel*.
+    """
+    src, dest = os.path.join(LIBRARY, src_rel), os.path.join(LIBRARY, dest_rel)
+    if os.path.exists(dest) or tag_rows(TAGS_FILE, [dest_rel]):
+        raise FileExistsError("%s is already taken" % dest_rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.move(src, dest)
+    try:
+        with _persist_lock:
+            write_tag_changes(TAGS_FILE, deletes=[src_rel], upserts={dest_rel: _json_safe(entry)})
+    except BaseException:
+        try:
+            landed = bool(tag_rows(TAGS_FILE, [dest_rel]))
+        except Exception:
+            landed = False
+        if not landed:
+            shutil.move(dest, src)
+        raise
 
 
 def _persist_tag_row(rel_path, entry, before=None):
@@ -727,11 +758,12 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
     entry['retag_model'] = used_model if (usable and LLM_ENDPOINT) else None
 
     qs = entry.get('quality_score')
-    confirmed_low = False
+    confirmed_low = unconfirmed_low = False
     if usable and qs is not None and qs <= 2:
         # A single temperature-0.3 score is close to a coin flip at the 2/3
         # line, so a file is quarantined only on two low votes. A passing
-        # second reply replaces the first; an unanswered one moves nothing.
+        # second reply replaces the first; an unanswered one moves nothing
+        # and leaves the row queued, so the next run votes again.
         votes = [qs]
         second, second_tags = _second_quality_opinion(full_path, features, verbose)
         if second is not None:
@@ -742,6 +774,9 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
             entry['retag_model'] = used_model
             qs = second
         confirmed_low = second is not None and second <= 2
+        unconfirmed_low = second is None
+        if unconfirmed_low:
+            entry['smart_retag_pending'] = True
         entry['quality_votes'] = votes
     tc = entry.get('type_code', '?')
 
@@ -760,6 +795,8 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
 
     if confirmed_low:
         result["status"] = "low_quality"
+    elif unconfirmed_low:
+        result["status"] = "incomplete"
     elif usable:
         result["status"] = "tagged"
     elif skipped_long:
@@ -862,26 +899,23 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                 except OSError:
                     pass
             else:
-                os.makedirs(QUARANTINE_DIR, exist_ok=True)
-                q_dest = os.path.join(QUARANTINE_DIR, rel_path)
-                if not os.path.exists(q_dest):
-                    os.makedirs(os.path.dirname(q_dest), exist_ok=True)
-                    try:
-                        shutil.move(full_path, q_dest)
-                        quarantined += 1
-                        q_rel = "_QUARANTINE/" + rel_path
-                        entry['path'] = q_rel
-                        with _tag_db_lock:
-                            tag_db.pop(rel_path, None)
-                            tag_db[q_rel] = entry
-                        if not dry_run:
-                            with _persist_lock:
-                                delete_tag_paths(TAGS_FILE, [rel_path])
-                            _persist_tag_row(q_rel, entry)
-                        if verbose:
-                            print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc), flush=True)
-                    except OSError:
-                        pass
+                q_rel = QUARANTINE_PREFIX + rel_path
+                q_entry = {**entry, 'path': q_rel}
+                try:
+                    _move_file_and_row(rel_path, q_rel, q_entry)
+                except FileExistsError:
+                    # That quarantine slot is taken: keep the file here, with its votes.
+                    _persist_tag_row(rel_path, entry, before=r.get("before"))
+                except Exception as exc:
+                    print("  QUARANTINE FAILED (file and row left as they were) %s: %s" % (
+                        rel_path, exc), file=sys.stderr)
+                else:
+                    quarantined += 1
+                    with _tag_db_lock:
+                        tag_db.pop(rel_path, None)
+                        tag_db[q_rel] = q_entry
+                    if verbose:
+                        print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc), flush=True)
             completed_rel_paths.append(rel_path)
             _apply_progress_delta(quarantined_add=1, tagged_add=1, processed_add=1)
             return
@@ -932,18 +966,29 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                             verbose, delete_low_quality): rel
                 for rel, full in files
             }
+            handled = set()
+
+            def _handle_future(fut):
+                nonlocal errors
+                handled.add(fut)
+                try:
+                    _handle_result(fut.result())
+                except Exception as exc:
+                    rel = futures[fut]
+                    print("  ERROR %s: %s" % (rel, exc), file=sys.stderr)
+                    errors += 1
+                    completed_rel_paths.append(rel)
+                    _apply_progress_delta(errors_add=1, processed_add=1)
+
             try:
                 for fut in _completed(futures):
-                    try:
-                        _handle_result(fut.result())
-                    except Exception as exc:
-                        rel = futures[fut]
-                        print("  ERROR %s: %s" % (rel, exc), file=sys.stderr)
-                        errors += 1
-                        completed_rel_paths.append(rel)
-                        _apply_progress_delta(errors_add=1, processed_add=1)
+                    _handle_future(fut)
             except KeyboardInterrupt:
                 _cancel_queued(pool)
+                pool.shutdown(wait=True)     # in-flight files finish; save them too
+                for fut in futures:
+                    if fut not in handled and not fut.cancelled():
+                        _handle_future(fut)
                 raise
     else:
         for rel_path, full_path in files:
@@ -1454,7 +1499,7 @@ def _recheck_candidates(tag_db, type_code=None):
         qs = entry.get('quality_score')
         if not isinstance(qs, int) or qs > 2:
             continue
-        if type_code and entry.get('type_code') != type_code:
+        if type_code and str(entry.get('type_code') or '').upper() != type_code.upper():
             continue
         votes = [v for v in (entry.get('quality_votes') or [qs]) if isinstance(v, int)]
         if _vote_majority(votes):
@@ -1494,15 +1539,7 @@ def _restore_from_quarantine(q_rel, rel, entry, votes, keep_tags):
     restored['quality_score'] = sorted(votes)[len(votes) // 2]
     restored['quality_votes'] = votes
     restored['retag_model'] = LLM_MODEL
-    src, dest = os.path.join(LIBRARY, q_rel), os.path.join(LIBRARY, rel)
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    shutil.move(src, dest)
-    try:
-        with _persist_lock:
-            write_tag_changes(TAGS_FILE, deletes=[q_rel], upserts={rel: _json_safe(restored)})
-    except Exception:
-        shutil.move(dest, src)
-        raise
+    _move_file_and_row(q_rel, rel, restored)
     return restored
 
 

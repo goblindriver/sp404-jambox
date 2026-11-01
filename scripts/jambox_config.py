@@ -604,12 +604,32 @@ def load_tag_db(tags_file):
     return payload if isinstance(payload, dict) else {}
 
 
+DROP_FIELD = object()  # as a merge value: remove that key from the row
+
+
+def tag_rows(tags_file, rel_paths):
+    """{rel_path: entry} for those of *rel_paths* that have a row (read-only)."""
+    import sqlite3
+    rel_paths = [p for p in rel_paths if p]
+    db_path = _tags_sqlite_path(tags_file)
+    if not rel_paths or not os.path.exists(db_path):
+        return {}
+    conn = sqlite3.connect(db_path, timeout=_TAGS_BUSY_TIMEOUT_S)
+    try:
+        marks = ",".join("?" * len(rel_paths))
+        rows = conn.execute(f"SELECT rel_path, data FROM tags WHERE rel_path IN ({marks})", rel_paths).fetchall()
+    finally:
+        conn.close()
+    return {rel: json.loads(data) for rel, data in rows}
+
+
 def write_tag_changes(tags_file, *, upserts=None, merges=None, deletes=None):
     """Apply row-level changes to the tag DB in one transaction.
 
     upserts: {rel_path: entry}  -- replace whole rows (new rows, re-keys).
-    merges:  {rel_path: fields} -- update only these fields of existing rows;
-             rows that no longer exist are skipped, never resurrected.
+    merges:  {rel_path: fields} -- update only these fields of existing rows
+             (a DROP_FIELD value removes the key); rows that no longer exist
+             are skipped, never resurrected.
     deletes: iterable of rel_paths -- the only way rows are ever removed.
 
     Rows not named here are never touched. Deletes apply first, so a re-key is
@@ -644,7 +664,11 @@ def write_tag_changes(tags_file, *, upserts=None, merges=None, deletes=None):
                     entry = {}
                 if not isinstance(entry, dict):
                     entry = {}
-                entry.update(fields)
+                for key, value in fields.items():
+                    if value is DROP_FIELD:
+                        entry.pop(key, None)
+                    else:
+                        entry[key] = value
                 conn.execute(
                     "UPDATE tags SET data=? WHERE rel_path=?", (json.dumps(entry), rel_path)
                 )
@@ -655,7 +679,10 @@ def write_tag_changes(tags_file, *, upserts=None, merges=None, deletes=None):
             )
             conn.execute("COMMIT")
         except BaseException:
-            conn.execute("ROLLBACK")
+            # Not after COMMIT went through (e.g. Ctrl-C right after it): there is
+            # nothing to roll back, and trying raises, hiding the real exception.
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
             raise
     finally:
         conn.close()

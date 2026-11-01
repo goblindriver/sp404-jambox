@@ -2,11 +2,13 @@
 import _thread
 import http.client
 import os
+import sqlite3
 import sys
 import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -114,6 +116,19 @@ class RetryTests(unittest.TestCase):
             self.assertEqual(caught.exception.code, "connection_error")
             self.assertFalse(caught.exception.retryable)
 
+    def test_an_unreachable_host_fails_fast(self):
+        # A connect that times out (box asleep, Tailscale peer offline) comes back
+        # wrapped in URLError; it used to be retried 4x at the OS connect timeout.
+        with patch.object(llm_client.urllib.request, "urlopen",
+                          side_effect=urllib.error.URLError(TimeoutError("timed out"))):
+            with self.assertRaises(LLMError) as caught:
+                llm_client.call_json_endpoint(OLLAMA, {}, timeout=1)
+        self.assertEqual(caught.exception.code, "connection_error")
+        with patch.object(llm_client.urllib.request, "urlopen", side_effect=TimeoutError("slow reply")):
+            with self.assertRaises(LLMError) as caught:
+                llm_client.call_json_endpoint(OLLAMA, {}, timeout=1)
+        self.assertTrue(caught.exception.retryable)
+
     def test_client_errors_are_not_retried(self):
         self.assertEqual(self._attempts(LLMError("http_error", "404", status=404)), (1, 0))
 
@@ -169,18 +184,23 @@ class SmartRetagTests(unittest.TestCase):
             return {"rel_path": rel, "status": "error", "reason": "no_features"}
 
         files = [("f%02d.wav" % i, "f%02d.wav" % i) for i in range(30)]
+        progress = {"processed": 0}
         timer = threading.Timer(0.5, _thread.interrupt_main)
         t0 = time.time()
         with patch.object(smart_retag, "_process_single_file", side_effect=slow), \
+             patch.object(smart_retag, "_save_slim_checkpoint"), \
              patch("sys.stderr"):
             timer.start()
             with self.assertRaises(KeyboardInterrupt):
-                smart_retag.retag_batch(files, {}, verbose=False, workers=2)
+                smart_retag.retag_batch(files, {}, verbose=False, workers=2,
+                                        progress=progress, checkpoint_meta={"t0": t0})
         timer.cancel()
 
         # Unfixed, the pool drained all 30 files (~4.5 s) before the interrupt surfaced.
         self.assertLess(time.time() - t0, 2.5)
         self.assertLess(len(started), 10)
+        # Every file that started was handled, including the ones in flight at Ctrl-C.
+        self.assertEqual(progress["processed"], len(started))
 
     def test_requeue_rule_counts_sonic_description_and_quality_only(self):
         done = {"tag_source": "smart_retag_v1", "sonic_description": "deep thud", "quality_score": 4}
@@ -226,9 +246,11 @@ class QuarantineVoteTests(unittest.TestCase):
         self.assertEqual(overturned["entry"]["sonic_description"], "dry rim click q4")
         self.assertEqual(overturned["entry"]["quality_votes"], [2, 4])
 
+        # No second vote (server dropped mid-run): stays put but queued for the next run.
         unanswered = self._process([2, 0])
-        self.assertEqual(unanswered["status"], "tagged")
+        self.assertEqual(unanswered["status"], "incomplete")
         self.assertEqual(unanswered["entry"]["quality_votes"], [2])
+        self.assertTrue(smart_retag._entry_needs_smart_retag(unanswered["entry"]))
 
     def test_passing_scores_take_one_call(self):
         result = self._process([3])
@@ -289,6 +311,104 @@ class QuarantineRecheckTests(unittest.TestCase):
         self.assertEqual(db, before)
         self.assertTrue(os.path.exists(os.path.join(self.lib, "_QUARANTINE/Drums/Percussion/restore.wav")))
         self.assertFalse(os.path.exists(os.path.join(self.lib, "Drums/Percussion/restore.wav")))
+
+    def test_type_filter_ignores_case(self):
+        with patch.object(smart_retag, "LIBRARY", self.lib):
+            found = list(smart_retag._recheck_candidates(load_tag_db(self.tags), type_code="rim"))
+        self.assertEqual(len(found), 3)   # settled.wav already has two low votes
+
+
+class FileAndRowStayTogetherTests(unittest.TestCase):
+    """A file and its tag row move together or not at all (review of PR #3)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.lib = self.tmp.name
+        self.tags = os.path.join(self.lib, "_tags.json")
+        self.patches = [patch.object(smart_retag, "LIBRARY", self.lib),
+                        patch.object(smart_retag, "TAGS_FILE", self.tags),
+                        patch.object(smart_retag, "LLM_ENDPOINT", OLLAMA),
+                        patch("sys.stderr"), patch("builtins.print")]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def _file(self, rel, row):
+        os.makedirs(os.path.dirname(os.path.join(self.lib, rel)), exist_ok=True)
+        with open(os.path.join(self.lib, rel), "wb") as fh:
+            fh.write(b"RIFF")
+        upsert_tag_entries(self.tags, {rel: {"features": {"spectral_centroid": 2100.0}, "duration": 0.3, **row}})
+
+    def _retag(self, rel, scores):
+        with patch.object(smart_retag, "_llm_tag_with_repair",
+                          side_effect=_scripted_llm({os.path.basename(rel): scores})):
+            smart_retag.retag_batch([(rel, os.path.join(self.lib, rel))], load_tag_db(self.tags),
+                                    verbose=False, workers=1)
+        return load_tag_db(self.tags)
+
+    def test_a_successful_retag_clears_the_pending_flag(self):
+        self._file("Drums/Kicks/kick.wav", {"type_code": "KIK", "smart_retag_pending": True})
+        row = self._retag("Drums/Kicks/kick.wav", [4])["Drums/Kicks/kick.wav"]
+        self.assertNotIn("smart_retag_pending", row)
+        self.assertFalse(smart_retag._entry_needs_smart_retag(row))
+
+    def test_quarantine_keeps_file_and_row_together_when_the_db_write_fails(self):
+        rel, q_rel = "Drums/Percussion/rim.wav", "_QUARANTINE/Drums/Percussion/rim.wav"
+        self._file(rel, {"type_code": "RIM"})
+        with patch.object(smart_retag, "write_tag_changes",
+                          side_effect=sqlite3.OperationalError("database is locked")):
+            db = self._retag(rel, [2, 1])
+        self.assertTrue(os.path.exists(os.path.join(self.lib, rel)))
+        self.assertFalse(os.path.exists(os.path.join(self.lib, q_rel)))
+        self.assertEqual(set(db), {rel})
+
+        db = self._retag(rel, [2, 1])          # and normally it moves both
+        self.assertEqual(set(db), {q_rel})
+        self.assertTrue(os.path.exists(os.path.join(self.lib, q_rel)))
+        self.assertEqual(db[q_rel]["quality_votes"], [2, 1])
+
+    def _quarantined(self):
+        q_rel = "_QUARANTINE/Drums/Percussion/rim.wav"
+        self._file(q_rel, {"type_code": "RIM", "tag_source": "smart_retag_v1", "quality_score": 2,
+                           "sonic_description": "thin click", "path": q_rel})
+        return q_rel, "Drums/Percussion/rim.wav", load_tag_db(self.tags)[q_rel]
+
+    def test_ctrl_c_during_a_restore_leaves_file_and_row_together(self):
+        q_rel, rel, entry = self._quarantined()
+        real_write = smart_retag.write_tag_changes
+
+        # Before the commit (e.g. waiting on a busy DB): both stay in quarantine.
+        with patch.object(smart_retag, "write_tag_changes", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                smart_retag._restore_from_quarantine(q_rel, rel, entry, [2, 4, 4], _reply(4))
+        self.assertTrue(os.path.exists(os.path.join(self.lib, q_rel)))
+        self.assertEqual(set(load_tag_db(self.tags)), {q_rel})
+
+        # Right after the commit: both stay restored.
+        def write_then_interrupt(*args, **kwargs):
+            real_write(*args, **kwargs)
+            raise KeyboardInterrupt
+
+        with patch.object(smart_retag, "write_tag_changes", side_effect=write_then_interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                smart_retag._restore_from_quarantine(q_rel, rel, entry, [2, 4, 4], _reply(4))
+        self.assertTrue(os.path.exists(os.path.join(self.lib, rel)))
+        self.assertEqual(set(load_tag_db(self.tags)), {rel})
+
+    def test_restore_never_overwrites_a_slot_filled_since_the_scan(self):
+        q_rel, rel, entry = self._quarantined()
+        os.makedirs(os.path.dirname(os.path.join(self.lib, rel)), exist_ok=True)
+        with open(os.path.join(self.lib, rel), "wb") as fh:
+            fh.write(b"NEWER")
+        with self.assertRaises(FileExistsError):
+            smart_retag._restore_from_quarantine(q_rel, rel, entry, [2, 4, 4], _reply(4))
+        with open(os.path.join(self.lib, rel), "rb") as fh:
+            self.assertEqual(fh.read(), b"NEWER")
+        self.assertTrue(os.path.exists(os.path.join(self.lib, q_rel)))
 
 
 class ModelLabelTests(unittest.TestCase):

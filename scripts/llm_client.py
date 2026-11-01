@@ -65,8 +65,9 @@ def call_json_endpoint(url, payload, *, timeout, headers=None):
         detail = exc.read().decode("utf-8", errors="replace")
         raise LLMError("http_error", f"Request failed: {exc.code}", detail=detail, status=exc.code) from exc
     except urllib.error.URLError as exc:
-        if isinstance(exc.reason, TimeoutError):
-            raise LLMError("timeout", "Request timed out") from exc
+        # urllib wraps only connecting and sending; a reply that's slow to arrive
+        # raises a bare TimeoutError above. So a timeout here means the host
+        # never answered (asleep, offline peer): server down, not worth retrying.
         raise LLMError("connection_error", f"Request failed: {exc.reason}") from exc
     except (ConnectionError, http.client.HTTPException) as exc:
         # A server that dies mid-request surfaces as a reset or RemoteDisconnected
