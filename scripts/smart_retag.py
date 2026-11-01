@@ -441,6 +441,18 @@ Recommended keys (include when confident, omit otherwise — do not invent):
 """
 
 
+def _user_set_quality(entry):
+    """A quality score a person set (quality_source "user") outranks the model's."""
+    return (entry or {}).get('quality_source') == 'user' and (entry or {}).get('quality_score') is not None
+
+
+def _keep_user_quality(entry, existing_entry, llm_tags):
+    """Put the person's score back; the model's goes next to it, as model_quality_score."""
+    if 'quality_score' in llm_tags:
+        entry['model_quality_score'] = llm_tags['quality_score']
+    entry['quality_score'] = existing_entry['quality_score']
+
+
 def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_complete=True):
     """Merge validated LLM tags and features into a tag entry.
 
@@ -458,6 +470,8 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
                 'type_code', 'playability', 'instrument_hint'):
         if key in llm_tags:
             entry[key] = llm_tags[key]
+    if _user_set_quality(existing_entry):
+        _keep_user_quality(entry, existing_entry, llm_tags)
 
     # Audio features. A BPM or key read from the filename ("140BPM C Maj") is the
     # pack's own label and beats librosa's estimate, which is often half/double time.
@@ -766,7 +780,8 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
 
     qs = entry.get('quality_score')
     confirmed_low = unconfirmed_low = False
-    if usable and qs is not None and qs <= 2:
+    # A user-set score is never voted on: the retag doesn't quarantine it either way.
+    if usable and qs is not None and qs <= 2 and not _user_set_quality(existing):
         # A single temperature-0.3 score is close to a coin flip at the 2/3
         # line, so a file is quarantined only on two low votes. A passing
         # second reply replaces the first; an unanswered one moves nothing
@@ -1318,9 +1333,12 @@ def run_revibe(args):
 
         # Only overwrite subjective fields — preserve type_code, playability, etc.
         old_vibe = entry.get('vibe', [])
+        existing = dict(entry)
         for field in REVIBE_FIELDS:
             if field in llm_tags:
                 entry[field] = llm_tags[field]
+        if _user_set_quality(existing):
+            _keep_user_quality(entry, existing, llm_tags)
 
         # Rebuild flat tags
         tags = set()
