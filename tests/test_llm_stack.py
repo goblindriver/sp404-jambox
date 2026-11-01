@@ -37,7 +37,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(resolve_backend("http://box:11434/api/chat"), ("http://box:11434/api/chat", True))
 
     def test_a_bare_base_url_gets_the_chat_path(self):
-        self.assertEqual(resolve_backend("http://100.71.235.42:11434"), ("http://100.71.235.42:11434/api/chat", True))
+        self.assertEqual(resolve_backend("http://gpu-box:11434"), ("http://gpu-box:11434/api/chat", True))
         self.assertEqual(resolve_backend("http://box:11434/"), ("http://box:11434/api/chat", True))
         self.assertEqual(resolve_backend("http://box:8080"), ("http://box:8080/v1/chat/completions", False))
         self.assertEqual(resolve_backend("http://box:11434", "openai"), ("http://box:11434/v1/chat/completions", False))
@@ -88,8 +88,9 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "empty_response")
 
 
-PRIMARY = "http://100.71.235.42:11434"
-FALLBACK = "http://100.67.11.60:11434"
+# Placeholder hosts: real fleet addresses live only in each machine's .env.
+PRIMARY = "http://gpu-box:11434"
+FALLBACK = "http://batch-box:11434"
 
 
 class FallbackTests(unittest.TestCase):
