@@ -6,6 +6,7 @@ Handles retries, JSON repair, markdown stripping, and structured failures.
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import time
@@ -67,6 +68,10 @@ def call_json_endpoint(url, payload, *, timeout, headers=None):
         if isinstance(exc.reason, TimeoutError):
             raise LLMError("timeout", "Request timed out") from exc
         raise LLMError("connection_error", f"Request failed: {exc.reason}") from exc
+    except (ConnectionError, http.client.HTTPException) as exc:
+        # A server that dies mid-request surfaces as a reset or RemoteDisconnected
+        # rather than URLError; it is the same "server down" as a refusal.
+        raise LLMError("connection_error", f"Connection lost: {exc!r}") from exc
     except json.JSONDecodeError as exc:
         raise LLMError("invalid_json", "Endpoint returned invalid JSON") from exc
 

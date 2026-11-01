@@ -26,7 +26,7 @@ import shutil
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -634,6 +634,22 @@ def _sort_by_demand(files, tag_db):
 
 # ── Core batch processing ──
 
+def _completed(futures, poll=1.0):
+    """as_completed() that wakes every *poll* seconds so Ctrl-C reaches the main
+    thread; a bare wait can't be interrupted on Windows."""
+    pending = set(futures)
+    while pending:
+        done, pending = wait(pending, timeout=poll, return_when=FIRST_COMPLETED)
+        yield from done
+
+
+def _cancel_queued(pool):
+    """On Ctrl-C, drop files not started yet, so leaving the pool waits only for in-flight ones."""
+    pool.shutdown(wait=False, cancel_futures=True)
+    print("\nInterrupted: finishing in-flight files, dropping the rest of the queue.",
+          file=sys.stderr, flush=True)
+
+
 def _entry_needs_smart_retag(entry):
     """False only for rows that already have full LLM enrichment (fetch-ready).
 
@@ -916,15 +932,19 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                             verbose, delete_low_quality): rel
                 for rel, full in files
             }
-            for fut in as_completed(futures):
-                try:
-                    _handle_result(fut.result())
-                except Exception as exc:
-                    rel = futures[fut]
-                    print("  ERROR %s: %s" % (rel, exc), file=sys.stderr)
-                    errors += 1
-                    completed_rel_paths.append(rel)
-                    _apply_progress_delta(errors_add=1, processed_add=1)
+            try:
+                for fut in _completed(futures):
+                    try:
+                        _handle_result(fut.result())
+                    except Exception as exc:
+                        rel = futures[fut]
+                        print("  ERROR %s: %s" % (rel, exc), file=sys.stderr)
+                        errors += 1
+                        completed_rel_paths.append(rel)
+                        _apply_progress_delta(errors_add=1, processed_add=1)
+            except KeyboardInterrupt:
+                _cancel_queued(pool)
+                raise
     else:
         for rel_path, full_path in files:
             try:
@@ -1509,39 +1529,48 @@ def run_recheck_quarantine(args):
 
     counts = {"keep": 0, "quarantine": 0, "llm_fail": 0, "no_features": 0, "error": 0}
     t0 = time.time()
+    interrupted = False
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(_recheck_one, q_rel, rel, entry, votes): (q_rel, rel, entry)
                    for q_rel, rel, entry, votes in candidates}
-        for i, fut in enumerate(as_completed(futures), 1):
-            q_rel, rel, entry = futures[fut]
-            try:
-                verdict, votes, keep_tags = fut.result()
-                if args.apply and verdict == "keep":
-                    _restore_from_quarantine(q_rel, rel, entry, votes, keep_tags)
-                elif args.apply and verdict == "quarantine":
-                    with _persist_lock:
-                        merge_tag_fields(TAGS_FILE, {q_rel: {"quality_votes": votes}})
-            except Exception as exc:
-                print("  ERROR %s: %s" % (q_rel, exc), file=sys.stderr)
-                counts["error"] += 1
-                continue
-            counts[verdict] += 1
-            if not args.quiet:
-                label = {"keep": "RESTORE", "quarantine": "STAYS"}.get(verdict, verdict.upper())
-                print("  %s votes=%s %s: %s" % (label, votes, entry.get('type_code', '?'), rel), flush=True)
-            if i % BATCH_SIZE == 0:
-                rate = i / max(time.time() - t0, 1e-6)
-                print("=== Recheck %d/%d  |  %.0f/min ===" % (i, len(candidates), rate * 60), flush=True)
+        try:
+            for i, fut in enumerate(_completed(futures), 1):
+                q_rel, rel, entry = futures[fut]
+                try:
+                    verdict, votes, keep_tags = fut.result()
+                    if args.apply and verdict == "keep":
+                        _restore_from_quarantine(q_rel, rel, entry, votes, keep_tags)
+                    elif args.apply and verdict == "quarantine":
+                        with _persist_lock:
+                            merge_tag_fields(TAGS_FILE, {q_rel: {"quality_votes": votes}})
+                except Exception as exc:
+                    print("  ERROR %s: %s" % (q_rel, exc), file=sys.stderr)
+                    counts["error"] += 1
+                    continue
+                counts[verdict] += 1
+                if not args.quiet:
+                    label = {"keep": "RESTORE", "quarantine": "STAYS"}.get(verdict, verdict.upper())
+                    print("  %s votes=%s %s: %s" % (label, votes, entry.get('type_code', '?'), rel), flush=True)
+                if i % BATCH_SIZE == 0:
+                    rate = i / max(time.time() - t0, 1e-6)
+                    print("=== Recheck %d/%d  |  %.0f/min ===" % (i, len(candidates), rate * 60), flush=True)
+        except KeyboardInterrupt:
+            # Every restore so far is already written; summarize them, then stop.
+            _cancel_queued(pool)
+            interrupted = True
 
     if args.apply and (counts["keep"] or counts["quarantine"]):
         export_tags_json(TAGS_FILE)
 
     print("\n" + "=" * 60)
-    print("Quarantine recheck %s" % ("complete" if args.apply else "(dry run)"))
+    print("Quarantine recheck %s" % (
+        "interrupted" if interrupted else "complete" if args.apply else "(dry run)"))
     print("  %s: %d  Stay quarantined: %d  LLM failures: %d  No features: %d  Errors: %d" % (
         "Restored" if args.apply else "Would restore", counts["keep"], counts["quarantine"],
         counts["llm_fail"], counts["no_features"], counts["error"]))
     print("  Time: %.1f min" % ((time.time() - t0) / 60))
+    if interrupted:
+        raise KeyboardInterrupt
 
 
 def run_validate(args):
@@ -1651,4 +1680,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Stopped. Every finished file is saved; run the same command again "
+              "(--resume for --all) to continue.", file=sys.stderr)
+        sys.exit(130)

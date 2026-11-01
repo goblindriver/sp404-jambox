@@ -1,7 +1,11 @@
 """LLM client routing, parsing, retries, and the smart-retag paths that use it."""
+import _thread
+import http.client
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -99,6 +103,17 @@ class RetryTests(unittest.TestCase):
     def test_server_down_fails_fast(self):
         self.assertEqual(self._attempts(LLMError("connection_error", "refused")), (1, 0))
 
+    def test_a_server_dying_mid_request_is_a_connection_error(self):
+        # Seen when llama-server stopped under a live retag: resets and
+        # RemoteDisconnected escaped as raw exceptions and skipped the stats.
+        for raw in (ConnectionResetError(54, "Connection reset by peer"),
+                    http.client.RemoteDisconnected("Remote end closed connection without response")):
+            with patch.object(llm_client.urllib.request, "urlopen", side_effect=raw):
+                with self.assertRaises(LLMError) as caught:
+                    llm_client.call_json_endpoint(OLLAMA, {}, timeout=1)
+            self.assertEqual(caught.exception.code, "connection_error")
+            self.assertFalse(caught.exception.retryable)
+
     def test_client_errors_are_not_retried(self):
         self.assertEqual(self._attempts(LLMError("http_error", "404", status=404)), (1, 0))
 
@@ -144,6 +159,28 @@ class SmartRetagTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertTrue(first["smart_retag_pending"])
         self.assertTrue(second["smart_retag_pending"])
+
+    def test_ctrl_c_stops_a_batch_after_the_in_flight_files(self):
+        started = []
+
+        def slow(rel, *_args):
+            started.append(rel)
+            time.sleep(0.3)
+            return {"rel_path": rel, "status": "error", "reason": "no_features"}
+
+        files = [("f%02d.wav" % i, "f%02d.wav" % i) for i in range(30)]
+        timer = threading.Timer(0.5, _thread.interrupt_main)
+        t0 = time.time()
+        with patch.object(smart_retag, "_process_single_file", side_effect=slow), \
+             patch("sys.stderr"):
+            timer.start()
+            with self.assertRaises(KeyboardInterrupt):
+                smart_retag.retag_batch(files, {}, verbose=False, workers=2)
+        timer.cancel()
+
+        # Unfixed, the pool drained all 30 files (~4.5 s) before the interrupt surfaced.
+        self.assertLess(time.time() - t0, 2.5)
+        self.assertLess(len(started), 10)
 
     def test_requeue_rule_counts_sonic_description_and_quality_only(self):
         done = {"tag_source": "smart_retag_v1", "sonic_description": "deep thud", "quality_score": 4}
