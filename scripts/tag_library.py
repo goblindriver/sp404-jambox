@@ -40,6 +40,7 @@ from jambox_config import (
     load_settings_for_script,
     write_tag_changes,
 )
+from library_walker import AUDIO_EXTENSIONS, is_appledouble
 
 try:
     from audio_analysis import analyze_audio, is_available as librosa_available
@@ -50,7 +51,7 @@ except ImportError:
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 TAGS_FILE = SETTINGS["TAGS_FILE"]
-AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
+AUDIO_EXTS = AUDIO_EXTENSIONS  # same set ingest accepts, so no ingested file goes untagged
 FFPROBE = SETTINGS["FFPROBE_BIN"]
 SKIP_DIRS = LIBRARY_SKIP_DIRS
 
@@ -732,6 +733,8 @@ def walk_library(path_filter=None, skip_dirs=None):
             ext = os.path.splitext(f)[1].lower()
             if ext in AUDIO_EXTS:
                 full = os.path.join(root, f)
+                if is_appledouble(full):
+                    continue
                 rel = library_rel_path(full, LIBRARY)
                 if rel:
                     files.append((rel, full))

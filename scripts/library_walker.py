@@ -9,6 +9,22 @@ import os
 from jambox_config import LIBRARY_SKIP_DIRS as SKIP_DIRS
 
 AUDIO_EXTENSIONS = {".flac", ".wav", ".mp3", ".aif", ".aiff", ".ogg"}
+APPLEDOUBLE_MAGIC = b"\x00\x05\x16\x07"
+
+
+def is_appledouble(path):
+    """True for a macOS resource-fork stub that only looks like audio.
+
+    Zips made on a Mac carry ._name files with the real file's extension, and
+    ingest used to flatten them into Pack_._name.mp3, past every dot-file check.
+    """
+    if "._" not in os.path.basename(path):
+        return False
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(4) == APPLEDOUBLE_MAGIC
+    except OSError:
+        return False
 
 
 def walk_library_audio(library_root, skip_dirs=None, extensions=None):
@@ -25,7 +41,9 @@ def walk_library_audio(library_root, skip_dirs=None, extensions=None):
     for dirpath, dirnames, filenames in os.walk(library_root):
         dirnames[:] = [d for d in dirnames if d not in skip]
         for fn in filenames:
-            if os.path.splitext(fn)[1].lower() in exts:
+            if not fn.startswith(".") and os.path.splitext(fn)[1].lower() in exts:
                 abs_path = os.path.join(dirpath, fn)
+                if is_appledouble(abs_path):
+                    continue
                 rel_path = os.path.relpath(abs_path, library_root).replace(os.sep, "/")
                 yield rel_path, abs_path

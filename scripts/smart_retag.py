@@ -26,7 +26,7 @@ import shutil
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +34,7 @@ if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
 from jambox_config import (
+    DROP_FIELD,
     LIBRARY_SKIP_DIRS,
     LONG_HOLD_DIRNAME,
     delete_tag_paths,
@@ -42,9 +43,12 @@ from jambox_config import (
     library_rel_path,
     load_settings_for_script,
     merge_tag_fields,
+    tag_rows,
     upsert_tag_entries,
+    write_tag_changes,
 )
 from audio_analysis import extract_features, is_available as librosa_available
+from library_walker import AUDIO_EXTENSIONS, is_appledouble
 from llm_client import LLMError, call_llm_chat
 
 SETTINGS = load_settings_for_script(__file__)
@@ -63,8 +67,7 @@ SMART_RETAG_LLM_TIMEOUT = SETTINGS.get("SMART_RETAG_LLM_TIMEOUT")
 SMART_RETAG_LLM_RETRIES = SETTINGS.get("SMART_RETAG_LLM_RETRIES")
 REPO_DIR = os.path.dirname(SCRIPTS_DIR)
 CHECKPOINT_PATH = os.path.join(REPO_DIR, "data", "retag_checkpoint.json")
-QUARANTINE_DIR = os.path.join(LIBRARY, "_QUARANTINE")
-AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
+AUDIO_EXTS = AUDIO_EXTENSIONS  # same set ingest accepts, so no ingested file goes untagged
 SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 BATCH_SIZE = 50
@@ -233,19 +236,29 @@ def _skip_llm_for_duration(duration_sec):
     return float(duration_sec) >= float(SMART_RETAG_SKIP_ABOVE_SECONDS)
 
 
-def _call_llm(prompt, model, retries=None):
-    """Send prompt to Ollama and parse JSON response. Retries on timeout.
+# Ingest retags one file at a time inline, so a stalled or stopped Ollama
+# must cost seconds, not minutes, per file.
+INGEST_LLM_TIMEOUT = max(int(LLM_TIMEOUT), 120)
+INGEST_LLM_BACKOFF_SECONDS = 300
+_llm_unavailable_until = 0.0
+
+
+def _call_llm(prompt, model, retries=None, timeout=None, raise_errors=False):
+    """Send prompt to the LLM and parse JSON response. Retries on timeout / 5xx.
 
     Thin wrapper around llm_client.call_llm_chat() that injects the smart-retag
     system prompt and uses the long-running read timeout for big libraries.
+    With raise_errors, transport failures raise LLMError instead of returning
+    None, so callers can tell "server down" from "unparseable reply".
     """
     if not LLM_ENDPOINT:
         return None
 
     if retries is None:
         retries = _retag_llm_retries()
-    # Use long read timeout for retag (model latency + librosa contention)
-    timeout = _retag_llm_read_timeout_seconds()
+    if timeout is None:
+        # Long read timeout for batch retag (model latency + librosa contention)
+        timeout = _retag_llm_read_timeout_seconds()
 
     messages = [
         {"role": "system", "content": TAGGER_SYSTEM_PROMPT},
@@ -261,17 +274,26 @@ def _call_llm(prompt, model, retries=None):
             retries=retries,
             json_mode=True,
             temperature=0.3,
-            max_tokens=SETTINGS.get("SMART_RETAG_MAX_TOKENS", 2048),
+            max_tokens=SETTINGS.get("SMART_RETAG_MAX_TOKENS", 400),
             on_stat=_bump_llm_stat,
+            backend=SETTINGS.get("LLM_BACKEND", "auto"),
+            num_ctx=SETTINGS.get("LLM_NUM_CTX"),
         )
     except LLMError as exc:
         # All retries exhausted; log and return None to match legacy contract
         print("  LLM %s: %s" % (exc.code, exc.message), file=sys.stderr)
+        if raise_errors:
+            raise
         return None
 
 
-def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):
+def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2,
+                         retries=None, timeout=None):
     """Call LLM; if output is too thin for fetch, retry with stricter instructions.
+
+    The repair pass only follows a reply that came back incomplete: when the
+    server can't be reached or times out, asking again with a stricter prompt
+    can't help, so it gives up at once.
 
     Returns (validated_tags_dict, ollama_model_used_or_None, skipped_due_to_duration).
     """
@@ -285,18 +307,33 @@ def _llm_tag_with_repair(full_path, features, verbose=True, repair_attempts=2):
 
     model = LLM_MODEL
     prompt = _build_prompt(full_path, features)
-    raw = _call_llm(prompt, model=model)
+    try:
+        raw = _call_llm(prompt, model=model, retries=retries, timeout=timeout, raise_errors=True)
+    except LLMError:
+        return {}, model, False
     validated = _validate_llm_tags(raw) if raw else {}
     if _enrichment_usable(validated):
         return validated, model, False
     for _ in range(repair_attempts):
         if verbose:
             print("  LLM repair pass (incomplete JSON / missing dimensions)...", flush=True)
-        raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX, model=model)
+        try:
+            raw2 = _call_llm(prompt + SMART_RETAG_REPAIR_SUFFIX, model=model,
+                             retries=retries, timeout=timeout, raise_errors=True)
+        except LLMError:
+            break
         validated = _validate_llm_tags(raw2) if raw2 else {}
         if _enrichment_usable(validated):
             return validated, model, False
     return validated, model, False
+
+
+def _second_quality_opinion(full_path, features, verbose=False):
+    """Score a file again: (quality_score, validated tags), or (None, {}) without a usable reply."""
+    tags, _model, _skipped = _llm_tag_with_repair(full_path, features, verbose=verbose)
+    if not _enrichment_usable(tags):
+        return None, {}
+    return tags['quality_score'], tags
 
 
 def _normalize_vocab_token(dim, token):
@@ -513,11 +550,41 @@ def _json_safe(entry):
 
 
 def _changed_fields(before, after):
-    """Fields of *after* whose values differ from *before* (one row)."""
-    return {k: v for k, v in after.items() if before.get(k, _MISSING) != v}
+    """Fields of *after* that differ from *before* (one row), plus DROP_FIELD for
+    keys *after* removed: a merge only sets keys, so a cleared flag such as
+    smart_retag_pending would otherwise stay in the DB and re-queue the row forever."""
+    changed = {k: v for k, v in after.items() if before.get(k, _MISSING) != v}
+    changed.update({k: DROP_FIELD for k in before if k not in after})
+    return changed
 
 
 _MISSING = object()
+
+
+def _move_file_and_row(src_rel, dest_rel, entry):
+    """Move a library file and re-key its tag row so the two never end up apart.
+
+    The row moves in one transaction once the file has moved. If that write
+    fails or is interrupted (Ctrl-C while SQLite waits on a busy DB), the file
+    goes back to wherever the DB still points. Refuses to overwrite a file or
+    row already at *dest_rel*.
+    """
+    src, dest = os.path.join(LIBRARY, src_rel), os.path.join(LIBRARY, dest_rel)
+    if os.path.exists(dest) or tag_rows(TAGS_FILE, [dest_rel]):
+        raise FileExistsError("%s is already taken" % dest_rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.move(src, dest)
+    try:
+        with _persist_lock:
+            write_tag_changes(TAGS_FILE, deletes=[src_rel], upserts={dest_rel: _json_safe(entry)})
+    except BaseException:
+        try:
+            landed = bool(tag_rows(TAGS_FILE, [dest_rel]))
+        except Exception:
+            landed = False
+        if not landed:
+            shutil.move(dest, src)
+        raise
 
 
 def _persist_tag_row(rel_path, entry, before=None):
@@ -579,6 +646,8 @@ def _walk_library(path_filter=None):
                 continue
             if os.path.splitext(f)[1].lower() in AUDIO_EXTS:
                 full = os.path.join(dirpath, f)
+                if is_appledouble(full):
+                    continue
                 rel = library_rel_path(full, LIBRARY)
                 if rel:
                     files.append((rel, full))
@@ -599,17 +668,36 @@ def _sort_by_demand(files, tag_db):
 
 # ── Core batch processing ──
 
+def _completed(futures, poll=1.0):
+    """as_completed() that wakes every *poll* seconds so Ctrl-C reaches the main
+    thread; a bare wait can't be interrupted on Windows."""
+    pending = set(futures)
+    while pending:
+        done, pending = wait(pending, timeout=poll, return_when=FIRST_COMPLETED)
+        yield from done
+
+
+def _cancel_queued(pool):
+    """On Ctrl-C, drop files not started yet, so leaving the pool waits only for in-flight ones."""
+    pool.shutdown(wait=False, cancel_futures=True)
+    print("\nInterrupted: finishing in-flight files, dropping the rest of the queue.",
+          file=sys.stderr, flush=True)
+
+
 def _entry_needs_smart_retag(entry):
-    """False only for rows that already have full LLM enrichment (fetch-ready)."""
-    if entry.get('tag_source') != 'smart_retag_v1':
+    """False only for rows that already have full LLM enrichment (fetch-ready).
+
+    Enrichment means sonic_description + quality_score: the post-CLAP prompt
+    returns only those, so requiring vibe/texture/genre too re-queued rows
+    (DRM/HRN/UNK, revibed rows) on every --all run forever.
+    """
+    if not str(entry.get('tag_source') or '').startswith('smart_retag'):
         return True
     if entry.get('smart_retag_pending'):
         return True
     if not (entry.get('sonic_description') or '').strip():
         return True
     if entry.get('quality_score') is None:
-        return True
-    if not (entry.get('vibe') or entry.get('texture') or entry.get('genre')):
         return True
     return False
 
@@ -673,6 +761,26 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
     entry['retag_model'] = used_model if (usable and LLM_ENDPOINT) else None
 
     qs = entry.get('quality_score')
+    confirmed_low = unconfirmed_low = False
+    if usable and qs is not None and qs <= 2:
+        # A single temperature-0.3 score is close to a coin flip at the 2/3
+        # line, so a file is quarantined only on two low votes. A passing
+        # second reply replaces the first; an unanswered one moves nothing
+        # and leaves the row queued, so the next run votes again.
+        votes = [qs]
+        second, second_tags = _second_quality_opinion(full_path, features, verbose)
+        if second is not None:
+            votes.append(second)
+        if second is not None and second > 2:
+            llm_tags = second_tags
+            entry = _merge_tags(existing, llm_tags, features, rel_path)
+            entry['retag_model'] = used_model
+            qs = second
+        confirmed_low = second is not None and second <= 2
+        unconfirmed_low = second is None
+        if unconfirmed_low:
+            entry['smart_retag_pending'] = True
+        entry['quality_votes'] = votes
     tc = entry.get('type_code', '?')
 
     result = {
@@ -688,8 +796,10 @@ def _process_single_file(rel_path, full_path, tag_db, dry_run, verbose,
         "tc": tc,
     }
 
-    if usable and qs is not None and qs <= 2:
+    if confirmed_low:
         result["status"] = "low_quality"
+    elif unconfirmed_low:
+        result["status"] = "incomplete"
     elif usable:
         result["status"] = "tagged"
     elif skipped_long:
@@ -792,26 +902,23 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                 except OSError:
                     pass
             else:
-                os.makedirs(QUARANTINE_DIR, exist_ok=True)
-                q_dest = os.path.join(QUARANTINE_DIR, rel_path)
-                if not os.path.exists(q_dest):
-                    os.makedirs(os.path.dirname(q_dest), exist_ok=True)
-                    try:
-                        shutil.move(full_path, q_dest)
-                        quarantined += 1
-                        q_rel = "_QUARANTINE/" + rel_path
-                        entry['path'] = q_rel
-                        with _tag_db_lock:
-                            tag_db.pop(rel_path, None)
-                            tag_db[q_rel] = entry
-                        if not dry_run:
-                            with _persist_lock:
-                                delete_tag_paths(TAGS_FILE, [rel_path])
-                            _persist_tag_row(q_rel, entry)
-                        if verbose:
-                            print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc), flush=True)
-                    except OSError:
-                        pass
+                q_rel = QUARANTINE_PREFIX + rel_path
+                q_entry = {**entry, 'path': q_rel}
+                try:
+                    _move_file_and_row(rel_path, q_rel, q_entry)
+                except FileExistsError:
+                    # That quarantine slot is taken: keep the file here, with its votes.
+                    _persist_tag_row(rel_path, entry, before=r.get("before"))
+                except Exception as exc:
+                    print("  QUARANTINE FAILED (file and row left as they were) %s: %s" % (
+                        rel_path, exc), file=sys.stderr)
+                else:
+                    quarantined += 1
+                    with _tag_db_lock:
+                        tag_db.pop(rel_path, None)
+                        tag_db[q_rel] = q_entry
+                    if verbose:
+                        print("  QUARANTINE q=%d %s: %s — %s" % (qs, tc, fname, desc), flush=True)
             completed_rel_paths.append(rel_path)
             _apply_progress_delta(quarantined_add=1, tagged_add=1, processed_add=1)
             return
@@ -862,7 +969,11 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                             verbose, delete_low_quality): rel
                 for rel, full in files
             }
-            for fut in as_completed(futures):
+            handled = set()
+
+            def _handle_future(fut):
+                nonlocal errors
+                handled.add(fut)
                 try:
                     _handle_result(fut.result())
                 except Exception as exc:
@@ -871,6 +982,17 @@ def retag_batch(files, tag_db, dry_run=False, verbose=True, workers=1,
                     errors += 1
                     completed_rel_paths.append(rel)
                     _apply_progress_delta(errors_add=1, processed_add=1)
+
+            try:
+                for fut in _completed(futures):
+                    _handle_future(fut)
+            except KeyboardInterrupt:
+                _cancel_queued(pool)
+                pool.shutdown(wait=True)     # in-flight files finish; save them too
+                for fut in futures:
+                    if fut not in handled and not fut.cancelled():
+                        _handle_future(fut)
+                raise
     else:
         for rel_path, full_path in files:
             try:
@@ -910,7 +1032,10 @@ def retag_single(rel_path, full_path, existing_entry=None):
     if not features:
         return None
 
-    if not LLM_ENDPOINT:
+    global _llm_unavailable_until
+    if not LLM_ENDPOINT or time.time() < _llm_unavailable_until:
+        # No LLM (or it just failed): store features now, LLM later via
+        # smart_retag --retry-llm-failures / --all.
         existing = existing_entry or {}
         entry = _merge_tags(
             existing, {}, features, rel_path,
@@ -918,8 +1043,15 @@ def retag_single(rel_path, full_path, existing_entry=None):
         )
         return entry
 
+    calls_before = _llm_stats_snapshot()
     llm_tags, used_model, _skipped = _llm_tag_with_repair(
-        full_path, features, verbose=False, repair_attempts=2)
+        full_path, features, verbose=False, repair_attempts=1,
+        retries=0, timeout=INGEST_LLM_TIMEOUT)
+    calls_after = _llm_stats_snapshot()
+    if any(calls_after.get(k, 0) > calls_before.get(k, 0) for k in ("connection_error", "timeout")):
+        # Server down or stalled: skip the LLM for the next files of this ingest.
+        _llm_unavailable_until = time.time() + INGEST_LLM_BACKOFF_SECONDS
+        print("  LLM unavailable; storing features only for the next %ds" % INGEST_LLM_BACKOFF_SECONDS)
     usable = _enrichment_usable(llm_tags)
     existing = existing_entry or {}
     entry = _merge_tags(
@@ -1343,6 +1475,144 @@ def run_retry_llm_failures(args):
     print("  Time: %.1f min" % (elapsed / 60))
 
 
+QUARANTINE_PREFIX = "_QUARANTINE/"
+
+
+def _vote_majority(votes):
+    """'keep' or 'quarantine' once two quality votes agree, else None."""
+    high = sum(1 for v in votes if v > 2)
+    if high >= 2:
+        return "keep"
+    if len(votes) - high >= 2:
+        return "quarantine"
+    return None
+
+
+def _recheck_candidates(tag_db, type_code=None):
+    """Quarantined smart-retag rows whose single low score was never confirmed.
+
+    Yields (q_rel, rel, entry, votes) for files still in _QUARANTINE/ whose
+    original slot is free; rows already settled by two agreeing votes are skipped.
+    """
+    for q_rel, entry in tag_db.items():
+        if not q_rel.startswith(QUARANTINE_PREFIX) or not isinstance(entry, dict):
+            continue
+        if not str(entry.get('tag_source') or '').startswith('smart_retag'):
+            continue
+        qs = entry.get('quality_score')
+        if not isinstance(qs, int) or qs > 2:
+            continue
+        if type_code and str(entry.get('type_code') or '').upper() != type_code.upper():
+            continue
+        votes = [v for v in (entry.get('quality_votes') or [qs]) if isinstance(v, int)]
+        if _vote_majority(votes):
+            continue
+        rel = q_rel[len(QUARANTINE_PREFIX):]
+        if rel in tag_db or os.path.exists(os.path.join(LIBRARY, rel)):
+            continue
+        if os.path.exists(os.path.join(LIBRARY, q_rel)):
+            yield q_rel, rel, entry, votes
+
+
+def _recheck_one(q_rel, rel, entry, votes, verbose=False):
+    """Collect votes until two agree. Returns (verdict, votes, tags of the last passing reply).
+
+    Scored under the file's original path, so the prompt sees the folder it
+    was first judged in rather than _QUARANTINE/.
+    """
+    features = _get_stored_features({q_rel: entry}, q_rel)
+    if not features or features.get('spectral_centroid') is None:
+        features = extract_features(os.path.join(LIBRARY, q_rel))
+    if not features:
+        return "no_features", votes, {}
+    keep_tags = {}
+    while _vote_majority(votes) is None:
+        score, tags = _second_quality_opinion(os.path.join(LIBRARY, rel), features, verbose)
+        if score is None:
+            return "llm_fail", votes, {}
+        votes = votes + [score]
+        if score > 2:
+            keep_tags = tags
+    return _vote_majority(votes), votes, keep_tags
+
+
+def _restore_from_quarantine(q_rel, rel, entry, votes, keep_tags):
+    """Move a file back to its original folder and re-key its row in one write."""
+    restored = _merge_tags(entry, keep_tags, None, rel)
+    restored['quality_score'] = sorted(votes)[len(votes) // 2]
+    restored['quality_votes'] = votes
+    restored['retag_model'] = LLM_MODEL
+    _move_file_and_row(q_rel, rel, restored)
+    return restored
+
+
+def run_recheck_quarantine(args):
+    """Second opinion on quarantined files: restore those that score >= 3 on a majority of votes.
+
+    A dry run unless --apply: the votes are still collected (and cost LLM calls),
+    but nothing is moved or written, so an --apply run votes afresh.
+    """
+    if not LLM_ENDPOINT:
+        print("ERROR: SP404_LLM_ENDPOINT not set.")
+        sys.exit(1)
+
+    tag_db = _load_tags()
+    candidates = list(_recheck_candidates(tag_db, type_code=args.type))
+    print("Quarantined files with one unconfirmed low score: %d" % len(candidates))
+    if args.limit:
+        candidates = candidates[:args.limit]
+        print("Limited to %d" % args.limit)
+    if not candidates:
+        return
+    print("%s | LLM: %s | workers: %d\n" % (
+        "APPLY" if args.apply else "DRY RUN (add --apply to move files)", LLM_MODEL, args.workers))
+
+    counts = {"keep": 0, "quarantine": 0, "llm_fail": 0, "no_features": 0, "error": 0}
+    t0 = time.time()
+    interrupted = False
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {pool.submit(_recheck_one, q_rel, rel, entry, votes): (q_rel, rel, entry)
+                   for q_rel, rel, entry, votes in candidates}
+        try:
+            for i, fut in enumerate(_completed(futures), 1):
+                q_rel, rel, entry = futures[fut]
+                try:
+                    verdict, votes, keep_tags = fut.result()
+                    if args.apply and verdict == "keep":
+                        _restore_from_quarantine(q_rel, rel, entry, votes, keep_tags)
+                    elif args.apply and verdict == "quarantine":
+                        with _persist_lock:
+                            merge_tag_fields(TAGS_FILE, {q_rel: {"quality_votes": votes}})
+                except Exception as exc:
+                    print("  ERROR %s: %s" % (q_rel, exc), file=sys.stderr)
+                    counts["error"] += 1
+                    continue
+                counts[verdict] += 1
+                if not args.quiet:
+                    label = {"keep": "RESTORE", "quarantine": "STAYS"}.get(verdict, verdict.upper())
+                    print("  %s votes=%s %s: %s" % (label, votes, entry.get('type_code', '?'), rel), flush=True)
+                if i % BATCH_SIZE == 0:
+                    rate = i / max(time.time() - t0, 1e-6)
+                    print("=== Recheck %d/%d  |  %.0f/min ===" % (i, len(candidates), rate * 60), flush=True)
+        except KeyboardInterrupt:
+            # Every restore so far is already written; summarize them, then stop.
+            _cancel_queued(pool)
+            interrupted = True
+
+    if args.apply and (counts["keep"] or counts["quarantine"]):
+        export_tags_json(TAGS_FILE)
+
+    print("\n" + "=" * 60)
+    print("Quarantine recheck %s" % (
+        "interrupted" if interrupted else "complete" if args.apply else "(dry run)"))
+    print("  %s: %d  Stay quarantined: %d  LLM failures: %d  No features: %d  Errors: %d" % (
+        "Restored" if args.apply else "Would restore", counts["keep"], counts["quarantine"],
+        counts["llm_fail"], counts["no_features"], counts["error"]))
+    print("  Time: %.1f min" % ((time.time() - t0) / 60))
+    if interrupted:
+        raise KeyboardInterrupt
+
+
 def run_validate(args):
     """Stratified validation: process up to N files per type code, report quality."""
     per_type = args.limit or 5
@@ -1415,6 +1685,10 @@ def main():
                         help='Re-vibe pass: re-interpret stored features with updated prompt')
     parser.add_argument('--retry-llm-failures', action='store_true',
                         help='Re-run LLM on files that have features but no LLM enrichment')
+    parser.add_argument('--recheck-quarantine', action='store_true',
+                        help='Re-score quarantined files and restore those a majority of votes rates >= 3')
+    parser.add_argument('--apply', action='store_true',
+                        help='With --recheck-quarantine: move files back and write the DB (default is a dry run)')
     args = parser.parse_args()
     args.workers = (
         SMART_RETAG_WORKERS_DEFAULT
@@ -1430,6 +1704,10 @@ def main():
         run_retry_llm_failures(args)
         return
 
+    if args.recheck_quarantine:
+        run_recheck_quarantine(args)
+        return
+
     if args.validate:
         run_validate(args)
         return
@@ -1442,4 +1720,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Stopped. Every finished file is saved; run the same command again "
+              "(--resume for --all) to continue.", file=sys.stderr)
+        sys.exit(130)

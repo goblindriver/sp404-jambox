@@ -65,6 +65,35 @@ class TagStoreTests(unittest.TestCase):
 
         self.assertEqual(set(load_tag_db(self.tags)), {"x.flac"})
 
+    def test_merge_can_drop_a_field_and_tag_rows_reads_only_what_it_names(self):
+        upsert_tag_entries(self.tags, {"a.wav": {"type_code": "KIK", "smart_retag_pending": True}, "b.wav": {}})
+        merge_tag_fields(self.tags, {"a.wav": {"smart_retag_pending": jambox_config.DROP_FIELD, "vibe": ["dark"]}})
+        self.assertEqual(load_tag_db(self.tags)["a.wav"], {"type_code": "KIK", "vibe": ["dark"]})
+        self.assertEqual(set(jambox_config.tag_rows(self.tags, ["a.wav", "gone.wav", ""])), {"a.wav"})
+
+    def test_an_interrupt_right_after_commit_keeps_the_write_and_its_exception(self):
+        # Used to run ROLLBACK with no transaction open, which raised
+        # OperationalError and hid the KeyboardInterrupt.
+        real_connect = jambox_config._connect_tags
+
+        class InterruptAfterCommit:
+            def __init__(self, conn):
+                self._conn = conn
+
+            def execute(self, sql, *args):
+                result = self._conn.execute(sql, *args)
+                if sql == "COMMIT":
+                    raise KeyboardInterrupt
+                return result
+
+            def __getattr__(self, name):
+                return getattr(self._conn, name)
+
+        with patch.object(jambox_config, "_connect_tags", lambda path: InterruptAfterCommit(real_connect(path))):
+            with self.assertRaises(KeyboardInterrupt):
+                upsert_tag_entries(self.tags, {"a.wav": {"type_code": "KIK"}})
+        self.assertIn("a.wav", load_tag_db(self.tags))
+
     def test_version_bumps_on_every_write(self):
         self.assertEqual(tags_version(self.tags), 0)
         upsert_tag_entries(self.tags, {"a.wav": {}})

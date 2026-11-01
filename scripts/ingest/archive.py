@@ -282,6 +282,21 @@ def archive_has_audio(filepath):
     return True
 
 
+def pack_audio_files(folder):
+    """Audio files in an extracted pack, without macOS metadata.
+
+    Zips made on a Mac carry __MACOSX/ and ._name stubs with the real file's
+    extension; the pack prefix used to flatten them into Pack_._name.mp3.
+    """
+    found = []
+    for root, dirs, files in os.walk(folder):
+        dirs[:] = [d for d in dirs if d != '__MACOSX' and not d.startswith('.')]
+        for f in files:
+            if not f.startswith('.') and os.path.splitext(f)[1].lower() in _state.AUDIO_EXTENSIONS:
+                found.append(os.path.join(root, f))
+    return found
+
+
 def should_ignore(filepath):
     """Check if a file should be ignored."""
     fname = os.path.basename(filepath)

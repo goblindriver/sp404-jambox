@@ -265,6 +265,20 @@ def _matching_pairs(durations, score_block, pair_cost, threshold):
     return pairs
 
 
+def _popcount32_swar(x):
+    """Set bits in each uint32 element, without np.bitwise_count.
+
+    np.bitwise_count is numpy 2.0+, and laion_clap pins numpy<2 on the iMac.
+    """
+    x = x - ((x >> 1) & np.uint32(0x55555555))
+    x = (x & np.uint32(0x33333333)) + ((x >> 2) & np.uint32(0x33333333))
+    x = (x + (x >> 4)) & np.uint32(0x0F0F0F0F)
+    return (x * np.uint32(0x01010101)) >> 24
+
+
+_popcount32 = getattr(np, "bitwise_count", _popcount32_swar)
+
+
 def _chromaprint_scorer(frame_arrays, max_offset=3):
     """fingerprint_similarity() for whole blocks of fingerprints at once."""
     lengths = np.array([len(f) for f in frame_arrays], dtype=np.int64)
@@ -285,7 +299,7 @@ def _chromaprint_scorer(frame_arrays, max_offset=3):
             a, b = max(0, offset), max(0, -offset)
             n = np.minimum(lr[:, None] - a, lc[None, :] - b)
             x = a_all[:, None, a:a + width] ^ b_all[None, :, b:b + width]
-            differing = np.bitwise_count(x).sum(axis=2, where=frame < n[:, :, None], dtype=np.int64)
+            differing = _popcount32(x).sum(axis=2, where=frame < n[:, :, None], dtype=np.int64)
             with np.errstate(divide="ignore", invalid="ignore"):
                 score = np.where(n > 0, 1.0 - differing / (32.0 * n), 0.0)
             np.maximum(best, score, out=best)
@@ -392,6 +406,7 @@ def _llm_tag_filename(rel_path):
             temperature=0.2,
             json_mode=True,
             max_tokens=SETTINGS.get("DEDUP_TAG_MAX_TOKENS", 200),
+            backend=SETTINGS.get("LLM_BACKEND", "auto"),
         )
     except LLMError:
         return []
