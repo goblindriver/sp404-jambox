@@ -10,7 +10,12 @@ from .archive import _copy_as_flac
 
 
 def _is_recent_duplicate(library_path, rel_path):
-    """Fingerprint the file and compare it against recently ingested ones."""
+    """Fingerprint the file and compare it against recently ingested ones.
+
+    Only a chromaprint (fpcalc) match counts. The Python fallback fingerprint
+    calls most short one-shots alike, so a match on it is logged and the file
+    is kept.
+    """
     try:
         from deduplicate_samples import compute_fingerprint, similarity
         fp = compute_fingerprint(library_path)
@@ -19,19 +24,25 @@ def _is_recent_duplicate(library_path, rel_path):
         return False
     if not fp:
         return False
+    possible = None
     with _state._fingerprint_lock:
         for other_path, other_fp in list(_state._recent_fingerprints.items()):
             if other_path == rel_path:
                 continue
             sim = similarity(fp, other_fp)
-            if sim is not None and sim >= 0.95:
+            if sim is None or sim < 0.95:
+                continue
+            if fp.get("kind") == other_fp.get("kind") == "fpcalc":
                 print(f"  [ROUTE] Duplicate detected ({sim:.2f}): {rel_path}")
                 print(f"          Matches: {other_path}")
                 return True
+            possible = possible or (other_path, sim)
         if len(_state._recent_fingerprints) >= _state._RECENT_FP_CAP:
             oldest = next(iter(_state._recent_fingerprints))
             del _state._recent_fingerprints[oldest]
         _state._recent_fingerprints[rel_path] = fp
+    if possible:
+        print(f"  [ROUTE] Possible duplicate, kept ({possible[1]:.2f}): {rel_path} ~ {possible[0]}")
     return False
 
 

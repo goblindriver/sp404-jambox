@@ -7,6 +7,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
 from flask import Flask
 
 
@@ -466,6 +467,11 @@ class PatternGeneratorTests(unittest.TestCase):
         self.assertEqual(result["path"], "/tmp/fallback.PTN")
 
 
+def _by_name(results):
+    """side_effect keyed by file name: fingerprinting runs on a thread pool, in any order."""
+    return lambda path: results[os.path.basename(path)]
+
+
 class DedupeTests(unittest.TestCase):
     def test_find_duplicate_groups_with_mocked_fingerprints(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -478,16 +484,17 @@ class DedupeTests(unittest.TestCase):
                 with open(os.path.join(tempdir, name), "wb") as handle:
                     handle.write(b"data")
 
-            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=[
-                {"kind": "fpcalc", "value": "1,2,3"},
-                {"kind": "fpcalc", "value": "1,2,3"},
-                {"kind": "fpcalc", "value": "9,9,9"},
-            ]):
+            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=_by_name({
+                "a.wav": {"kind": "fpcalc", "value": "1,2,3"},
+                "b.wav": {"kind": "fpcalc", "value": "1,2,3"},
+                "c.wav": {"kind": "fpcalc", "value": "9,9,9"},
+            })):
                 groups = deduplicate_samples.find_duplicate_groups(db, threshold=0.99)
 
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["keep"], "a.wav")
         self.assertEqual(groups[0]["duplicates"], ["b.wav"])
+        self.assertEqual(groups[0]["match"], "fpcalc")
 
     def test_find_duplicate_groups_merges_transitive_matches(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -500,16 +507,19 @@ class DedupeTests(unittest.TestCase):
                 with open(os.path.join(tempdir, name), "wb") as handle:
                     handle.write(b"data")
 
-            scores = {
-                ("a.wav", "b.wav"): 0.99,
-                ("a.wav", "c.wav"): 0.10,
-                ("b.wav", "c.wav"): 0.99,
-            }
+            # b differs from a in 4% of the bits, c from b in another 4%: a-b and
+            # b-c score 0.96, a-c only 0.92, so c joins through b.
+            rng = np.random.default_rng(3)
+            a = rng.integers(0, 2**32, size=100, dtype=np.uint64).astype(np.uint32)
+            b = a.copy()
+            b[:32] ^= np.uint32(0xF)
+            c = b.copy()
+            c[50:82] ^= np.uint32(0xF)
+            fps = {name: {"kind": "fpcalc", "value": ",".join(map(str, frames.tolist()))}
+                   for name, frames in (("a.wav", a), ("b.wav", b), ("c.wav", c))}
+            self.assertLess(deduplicate_samples.similarity(fps["a.wav"], fps["c.wav"]), 0.95)
 
-            def fake_pair_similarity(rel_path, compare_path, fingerprints, python_fingerprints, cache_entries):
-                return scores[(rel_path, compare_path)]
-
-            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", return_value={"kind": "fpcalc", "value": "stub"}), patch("deduplicate_samples._pair_similarity", side_effect=fake_pair_similarity):
+            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=_by_name(fps)):
                 groups = deduplicate_samples.find_duplicate_groups(db, threshold=0.95)
 
         self.assertEqual(len(groups), 1)
@@ -545,15 +555,16 @@ class DedupeTests(unittest.TestCase):
                 with open(os.path.join(tempdir, name), "wb") as handle:
                     handle.write(b"data")
 
-            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=[
-                {"kind": "fpcalc", "value": "1,2,3"},
-                {"kind": "python", "value": [1.0, 2.0, 3.0]},
-            ]), patch("deduplicate_samples._fingerprint_with_python", return_value={"kind": "python", "value": [1.0, 2.0, 3.0]}), patch("deduplicate_samples.dedup_library.cosine_similarity", return_value=0.999):
+            with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=_by_name({
+                "a.wav": {"kind": "fpcalc", "value": "1,2,3"},
+                "b.wav": {"kind": "python", "value": [1.0, 2.0, 3.0]},
+            })), patch("deduplicate_samples._fingerprint_with_python", return_value={"kind": "python", "value": [1.0, 2.0, 3.0]}), patch("deduplicate_samples.dedup_library.cosine_similarity", return_value=0.999):
                 groups = deduplicate_samples.find_duplicate_groups(db, threshold=0.95)
 
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["keep"], "a.wav")
         self.assertEqual(groups[0]["duplicates"], ["b.wav"])
+        self.assertEqual(groups[0]["match"], "fallback")  # fpcalc vs python is never a chromaprint match
 
     def test_apply_clean_moves_files_and_updates_tag_db(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -561,6 +572,8 @@ class DedupeTests(unittest.TestCase):
             db = {
                 "keep.wav": {"tags": ["keep"]},
                 "dupe.wav": {"tags": ["dupe"]},
+                "shot.wav": {"tags": []},
+                "shot_alike.wav": {"tags": []},
             }
             for name in db:
                 with open(os.path.join(tempdir, name), "wb") as handle:
@@ -569,7 +582,8 @@ class DedupeTests(unittest.TestCase):
 
             with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch.object(deduplicate_samples, "TAGS_FILE", tags_path), patch.object(deduplicate_samples, "DUPES_DIR", os.path.join(tempdir, "_DUPES")):
                 updated = deduplicate_samples.apply_clean(
-                    [{"keep": "keep.wav", "duplicates": ["dupe.wav"], "members": []}],
+                    [{"keep": "keep.wav", "duplicates": ["dupe.wav"], "members": [], "match": "fpcalc"},
+                     {"keep": "shot.wav", "duplicates": ["shot_alike.wav"], "members": [], "match": "fallback"}],
                     db,
                 )
 
@@ -580,6 +594,9 @@ class DedupeTests(unittest.TestCase):
             persisted = jambox_config.load_tag_db(tags_path)
             self.assertIn("keep.wav", persisted)
             self.assertNotIn("dupe.wav", persisted)
+            # a fallback-fingerprint group is only a suggestion: nothing moves
+            self.assertIn("shot_alike.wav", persisted)
+            self.assertTrue(os.path.exists(os.path.join(tempdir, "shot_alike.wav")))
 
     def test_llm_tag_filename_returns_tags_from_chat_response(self):
         with patch.dict(deduplicate_samples.SETTINGS, {"LLM_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions", "LLM_MODEL": "llama3", "LLM_TIMEOUT": 30}, clear=False), patch("deduplicate_samples.call_llm_chat", return_value={"tags": ["kick", "808"]}):

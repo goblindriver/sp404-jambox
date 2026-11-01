@@ -407,8 +407,13 @@ def _pass_duration(db, active_keys, min_duration, trash):
 
 
 def _pass_dedup(db, active_keys, threshold, trash):
-    """Pass 2: fingerprint-based dedup, keep best quality."""
-    print("\n--- Pass 2: Dedup (threshold=%.2f) ---" % threshold)
+    """Pass 2: fingerprint-based dedup, keep best quality. Unreadable files are skipped.
+
+    Only chromaprint (fpcalc) matches are trashed. Matches on the Python
+    fallback fingerprint, which calls most short one-shots alike, are listed
+    in the report for review and nothing is moved.
+    """
+    print("\n--- Pass 2: Dedup (threshold=%.2f) ---" % threshold, flush=True)
     stats = _new_stats()
 
     try:
@@ -417,17 +422,30 @@ def _pass_dedup(db, active_keys, threshold, trash):
         print("  SKIP: deduplicate_samples not importable")
         return stats
 
-    subset_db = {k: db[k] for k in active_keys if k in db}
-    groups = find_duplicate_groups(subset_db, threshold=threshold)
-    print("  Found %d duplicate groups" % len(groups))
+    # Pass 1 left a resolved "duration" on these rows: dedup only compares similar lengths.
+    subset_db = {k: db[k] for k in sorted(active_keys) if k in db}
+    dedup_stats = {}
+    groups = find_duplicate_groups(subset_db, threshold=threshold, stats=dedup_stats)
+    stats["unreadable"] = dedup_stats.get("unreadable", 0)
+    print("  Fingerprinted %d files in %.1fs (%d unreadable, skipped); compared in %.1fs" % (
+        dedup_stats.get("fingerprinted", 0), dedup_stats.get("fingerprint_seconds", 0),
+        stats["unreadable"], dedup_stats.get("compare_seconds", 0)))
+    matched = [group for group in groups if group.get("match") == "fpcalc"]
+    review = [group for group in groups if group.get("match") != "fpcalc"]
+    print("  Found %d duplicate groups on chromaprint" % len(matched))
 
-    for group in groups:
+    for group in matched:
         for dupe_path in group["duplicates"]:
             if dupe_path in active_keys:
                 _trash_file_and_entry(dupe_path, db, stats, trash, reason="dedup")
                 active_keys.discard(dupe_path)
 
+    stats["review_only"] = sum(len(group["duplicates"]) for group in review)
+    stats["possible_duplicates"] = [{"keep": group["keep"], "duplicates": group["duplicates"]} for group in review]
     _print_pass_result(stats, trash)
+    if review:
+        print("  Possible duplicates (fallback fingerprint, not moved): %d files in %d groups, "
+              "listed in the report for review" % (stats["review_only"], len(review)))
     return stats
 
 
@@ -567,6 +585,8 @@ def run_execute(args):
         cut = stats.get("trashed", 0) or stats.get("would_trash", 0)
         if cut:
             print("    %-18s -%d" % (name, cut))
+        if stats.get("review_only"):
+            print("    %-18s  %d flagged for review only (not moved)" % (name, stats["review_only"]))
     print("  Final files:     %6d" % final)
 
     if trash is None:
