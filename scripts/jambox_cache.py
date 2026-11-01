@@ -24,14 +24,14 @@ def _load_json(path):
     return payload if isinstance(payload, dict) else {}
 
 
-def _save_json(path, payload):
+def _save_json(path, payload, sort_keys=True):
     parent = os.path.dirname(path) or "."
     os.makedirs(parent, exist_ok=True)
 
     fd, temp_path = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=True)
+            json.dump(payload, handle, indent=2, sort_keys=sort_keys)
 
         try:
             os.replace(temp_path, path)
@@ -41,7 +41,7 @@ def _save_json(path, payload):
             fd2, temp_path2 = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=parent)
             try:
                 with os.fdopen(fd2, "w", encoding="utf-8") as handle:
-                    json.dump(payload, handle, indent=2, sort_keys=True)
+                    json.dump(payload, handle, indent=2, sort_keys=sort_keys)
                 os.replace(temp_path2, path)
             finally:
                 if os.path.exists(temp_path2):
@@ -60,17 +60,20 @@ def file_marker(path):
 
 
 def tags_freshness_marker(tags_path):
-    """Return a marker reflecting the most recent tag DB write.
+    """Return a marker that changes on every tag DB write.
 
-    Checks both JSON and SQLite (whichever is newer) so cache invalidates
-    correctly even when JSON writes are skipped for large databases.
+    Combines the DB's write counter (exact, bumped by every
+    jambox_config.write_tag_changes) with the SQLite file's stats as a
+    backstop for writes made outside that API.
     """
-    json_marker = file_marker(tags_path)
+    from jambox_config import tags_version
+
     sqlite_path = tags_path.rsplit(".", 1)[0] + ".sqlite"
     sqlite_marker = file_marker(sqlite_path)
-    if sqlite_marker.get("mtime_ns", 0) > json_marker.get("mtime_ns", 0):
-        return sqlite_marker
-    return json_marker
+    if not sqlite_marker:
+        # Not migrated yet: the legacy JSON file is the only store.
+        return {"json": file_marker(tags_path)}
+    return {"version": tags_version(tags_path), **sqlite_marker}
 
 
 def score_cache_key(parsed_query, bank_config, *, score_version, tags_marker, weights_hash=None):
@@ -81,6 +84,7 @@ def score_cache_key(parsed_query, bank_config, *, score_version, tags_marker, we
             "bpm": parsed_query.get("bpm"),
             "key": parsed_query.get("key"),
             "keywords": sorted(parsed_query.get("keywords", [])),
+            "energy": parsed_query.get("energy"),
         },
         "bank_config": {
             "bpm": bank_config.get("bpm"),
@@ -103,12 +107,13 @@ MAX_SCORE_CACHE_ENTRIES = 200
 
 
 def save_score_cache(library_root, entries):
-    # Prune to keep only the most recent entries
+    # Prune the oldest entries. Keys are written unsorted so the file keeps
+    # insertion order across load/save (sorted keys pruned alphabetically).
     if len(entries) > MAX_SCORE_CACHE_ENTRIES:
         keys = list(entries.keys())
         for k in keys[:-MAX_SCORE_CACHE_ENTRIES]:
             del entries[k]
-    _save_json(_cache_path(library_root, SCORE_CACHE_NAME), {"entries": entries})
+    _save_json(_cache_path(library_root, SCORE_CACHE_NAME), {"entries": entries}, sort_keys=False)
 
 
 def load_fingerprint_cache(library_root):

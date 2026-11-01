@@ -30,7 +30,7 @@ from jambox_config import (  # noqa: E402
     is_long_hold_rel_path,
     load_settings_for_script,
     load_tag_db,
-    save_tag_db,
+    write_tag_changes,
 )
 from tag_library import AUDIO_EXTS, get_duration  # noqa: E402
 
@@ -109,6 +109,7 @@ def main() -> int:
     moved = 0
     skipped = 0
     for full_path, rel_path, dest_rel, dur in planned:
+        moved_entry = None
         dest_abs = os.path.join(LIBRARY, dest_rel)
         if os.path.exists(dest_abs):
             print(f"SKIP (exists): {dest_rel}")
@@ -124,12 +125,13 @@ def main() -> int:
         entry = db.pop(rel_path, None)
         if entry is not None:
             entry["path"] = dest_rel
-            db[dest_rel] = entry
+            moved_entry = entry
         else:
-            db[dest_rel] = {"path": dest_rel, "duration": dur, "tag_source": "move_long_hold"}
+            moved_entry = {"path": dest_rel, "duration": dur, "tag_source": "move_long_hold"}
+        db[dest_rel] = moved_entry
+        write_tag_changes(TAGS_FILE, deletes=[rel_path], upserts={dest_rel: moved_entry})
         moved += 1
 
-    save_tag_db(TAGS_FILE, db)
     print(f"\nDone. Moved: {moved}  Skipped: {skipped}")
     return 0
 

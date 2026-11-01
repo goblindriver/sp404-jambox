@@ -9,13 +9,14 @@ Workflow:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
 import time
 from typing import Dict, List, Optional, Tuple
 
-from jambox_config import load_settings_for_script, load_tag_db, save_tag_db
+from jambox_config import diff_tag_db, load_settings_for_script, load_tag_db, write_tag_changes
 
 SETTINGS = load_settings_for_script(__file__)
 TAGS_FILE = SETTINGS["TAGS_FILE"]
@@ -155,9 +156,11 @@ def main() -> int:
     findings = _scan(db)
     changed = 0
     if args.apply and findings:
+        before = copy.deepcopy(db)
         db, changed = _apply(db, findings, limit=max(0, args.limit))
         if changed:
-            save_tag_db(TAGS_FILE, db)
+            upserts, merges = diff_tag_db(before, db)
+            write_tag_changes(TAGS_FILE, upserts=upserts, merges=merges)
 
     report = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

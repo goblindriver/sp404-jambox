@@ -129,14 +129,27 @@ class FetchSamplesScriptTests(unittest.TestCase):
 
             with patch.object(fetch_samples, "LIBRARY", tempdir), \
                  patch.object(fetch_samples, "TAGS_FILE", tags_path), \
+                 patch("fetch_samples.load_tag_db", return_value=tag_db), \
                  patch("fetch_samples._clap_available", return_value=False), \
                  patch("fetch_samples.score_from_tags", side_effect=score_mock) as score_spy:
-                first = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120}, tag_db=tag_db)
-                second = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120}, tag_db=tag_db)
+                first = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120})
+                second = fetch_samples.rank_library_matches("BRK dusty loop", bank_config={"bpm": 120})
 
         self.assertEqual(len(first), 2)
         self.assertEqual(len(second), 2)
         self.assertEqual(score_spy.call_count, 2)
+
+    def test_rank_library_matches_never_persists_scores_for_a_supplied_tag_db(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            tags_path = os.path.join(tempdir, "_tags.json")
+            fixture = {"Loops/a.wav": {"type_code": "BRK", "tags": [], "vibe": [], "genre": [], "texture": [], "duration": 2}}
+
+            with patch.object(fetch_samples, "LIBRARY", tempdir), \
+                 patch.object(fetch_samples, "TAGS_FILE", tags_path), \
+                 patch("fetch_samples._clap_available", return_value=False):
+                fetch_samples.rank_library_matches("BRK loop", bank_config={}, tag_db=fixture)
+
+            self.assertFalse(os.path.exists(os.path.join(tempdir, "_score_cache.json")))
 
     def test_choose_diverse_match_returns_top_result_in_deterministic_mode(self):
         matches = [

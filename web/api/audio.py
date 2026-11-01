@@ -5,6 +5,7 @@ from flask import Blueprint, send_file, current_app, request, jsonify
 from werkzeug.exceptions import HTTPException
 
 from api._helpers import json_object_body as _json_object_body
+from api._helpers import normalize_bank as _normalize_bank, normalize_pad as _normalize_pad
 
 audio_bp = Blueprint('audio', __name__)
 
@@ -15,23 +16,6 @@ def _library_root():
 
 def _ffmpeg_bin():
     return current_app.config['FFMPEG_BIN']
-
-
-def _normalize_bank(value):
-    bank = str(value or '').strip().lower()
-    if len(bank) != 1 or bank < 'a' or bank > 'j':
-        raise ValueError('bank must be a single letter from A to J')
-    return bank
-
-
-def _normalize_pad(value):
-    try:
-        pad = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError('pad must be an integer') from exc
-    if pad < 1 or pad > 12:
-        raise ValueError('pad must be between 1 and 12')
-    return pad
 
 
 @audio_bp.route('/audio/preview/<bank>/<int:pad>')

@@ -1,5 +1,6 @@
 """Shared helpers for Flask API blueprints."""
 
+import functools
 import json
 import os
 import subprocess
@@ -9,6 +10,70 @@ import time
 import uuid
 
 from flask import request
+
+
+def new_process_group_kwargs():
+    """Popen kwargs that start a child in its own process group (any OS)."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def pid_alive(pid):
+    """True if *pid* is a running (non-zombie) process."""
+    import psutil
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.Error:
+        return False
+
+
+def kill_process_tree(pid, timeout=5):
+    """Terminate *pid* and its children, killing any still alive after *timeout*.
+
+    Works the same on every OS (os.killpg doesn't exist on Windows, and
+    os.kill(pid, 0) there terminates instead of probing). True once all are gone.
+    """
+    import psutil
+    if not pid:
+        return False
+    try:
+        parent = psutil.Process(pid)
+        procs = parent.children(recursive=True) + [parent]
+    except psutil.NoSuchProcess:
+        return True
+    for proc in procs:
+        try:
+            proc.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _gone, alive = psutil.wait_procs(procs, timeout=timeout)
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
+    _gone, alive = psutil.wait_procs(alive, timeout=2)
+    return not alive
+
+
+def normalize_bank(value):
+    """Validate a bank letter from a request; returns it lowercase (A-J only)."""
+    bank = str(value or '').strip().lower()
+    if len(bank) != 1 or bank < 'a' or bank > 'j':
+        raise ValueError('bank must be a single letter from A to J')
+    return bank
+
+
+def normalize_pad(value):
+    """Validate a pad number from a request (1-12)."""
+    try:
+        pad = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('pad must be an integer') from exc
+    if pad < 1 or pad > 12:
+        raise ValueError('pad must be between 1 and 12')
+    return pad
 
 
 # ═══════════════════════════════════════════════════════════
@@ -36,20 +101,59 @@ class JobTracker:
         self._max_age = max_age
         self._max_count = max_count
 
-    def create(self, **initial_fields):
-        """Create a job with a unique ID. Returns the job_id."""
+    def _create_locked(self, initial_fields):
         job_id = str(uuid.uuid4())[:8]
-        with self._lock:
-            self.prune()
-            initial_fields["id"] = job_id
-            self._jobs[job_id] = initial_fields
+        self.prune()
+        initial_fields["id"] = job_id
+        self._jobs[job_id] = initial_fields
         return job_id
 
+    def create(self, **initial_fields):
+        """Create a job with a unique ID. Returns the job_id."""
+        with self._lock:
+            return self._create_locked(initial_fields)
+
+    def start_exclusive(self, active_statuses, **initial_fields):
+        """Create a job unless one is already in *active_statuses*.
+
+        Check and create happen under one lock, so two requests can't both
+        start. Returns the new job_id, or None when busy.
+        """
+        with self._lock:
+            if any(j.get("status") in active_statuses for j in self._jobs.values()):
+                return None
+            return self._create_locked(initial_fields)
+
     def update(self, job_id, **fields):
+        """Update a job. Reaching a terminal status stamps finished_at (for pruning)."""
         with self._lock:
             job = self._jobs.get(job_id)
             if job:
                 job.update(fields)
+                if job.get("status") in self._TERMINAL and not job.get("finished_at"):
+                    job["finished_at"] = time.time()
+
+    def finish(self, job_id, status, **fields):
+        self.update(job_id, status=status, finished_at=time.time(), **fields)
+
+    def run_job(self, job_id, fn, *args, error_field="error"):
+        """Run fn(*args); an exception it doesn't handle finishes the job as 'error'
+        instead of leaving it stuck in a running status forever."""
+        try:
+            return fn(*args)
+        except Exception as exc:
+            self.finish(job_id, "error", **{error_field: str(exc)})
+            return None
+
+    def start_thread(self, job_id, fn, *args, error_field="error"):
+        """Run fn(*args) for *job_id* on a daemon thread, guarded by run_job."""
+        thread = threading.Thread(
+            target=functools.partial(self.run_job, error_field=error_field),
+            args=(job_id, fn, *args),
+        )
+        thread.daemon = True
+        thread.start()
+        return thread
 
     def get(self, job_id):
         with self._lock:

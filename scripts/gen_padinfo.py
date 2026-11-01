@@ -3,20 +3,29 @@
 Generate PAD_INFO.BIN for the SP-404SX SD card.
 Sets per-pad metadata: loop mode, gate, volume, BPM, sample boundaries.
 
+Loop/gate come from each pad description's playability in bank_config.yaml
+(loop/chop-ready pads loop, drum hits gate, transitions play through), not
+from the pad number.
+
 Based on the binary format reverse-engineered by @uttori/audio-padinfo.
 Format: 120 pads x 32 bytes = 3,840 bytes, big-endian throughout.
 """
 import os
 import struct
+import sys
 
 import yaml
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_DIR = os.path.dirname(SCRIPT_DIR)
-SMPL_DIR = os.path.join(REPO_DIR, "sd-card-template", "ROLAND", "SP-404SX", "SMPL")
-CONFIG_PATH = os.path.join(REPO_DIR, "bank_config.yaml")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jambox_config import load_settings_for_script
+from tag_vocab import pad_type_and_playability
+
+SETTINGS = load_settings_for_script(__file__)
+SMPL_DIR = SETTINGS["SMPL_DIR"]
+CONFIG_PATH = SETTINGS["CONFIG_PATH"]
 
 BANKS = 'ABCDEFGHIJ'
+DRUM_HIT_TYPES = frozenset({"KIK", "SNR", "HAT", "PRC", "CLP", "CYM", "RIM"})
 
 
 def encode_pad(sample_end=512, volume=127, lofi=False, loop=False, gate=True,
@@ -52,28 +61,58 @@ def get_sample_path(bank, pad, smpl_dir):
     return None
 
 
-def _load_bank_bpms():
-    bpms = {bank: 120.0 for bank in BANKS}
+def pad_mode(description, pad_num):
+    """(loop, gate) for a pad, from its description's playability.
+
+    loop / chop-ready  -> loop
+    chromatic          -> gate (note length follows the pad press)
+    one-shot drum hit  -> gate
+    other one-shots, transitions, layers -> play through (neither)
+    no playability     -> legacy layout rule: pads 1-4 gate, 5-12 loop
+    """
+    type_code, playability = pad_type_and_playability(description)
+    if playability in ("loop", "chop-ready"):
+        return True, False
+    if playability == "chromatic":
+        return False, True
+    if playability == "one-shot" and type_code in DRUM_HIT_TYPES:
+        return False, True
+    if playability in ("one-shot", "transition", "layer"):
+        return False, False
+    is_loop = pad_num >= 5
+    return is_loop, not is_loop
+
+
+def _load_banks():
+    """{bank: (bpm, {pad_num: description})} from bank_config.yaml."""
+    banks = {bank: (120.0, {}) for bank in BANKS}
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
             payload = yaml.safe_load(handle) or {}
     except (FileNotFoundError, OSError, yaml.YAMLError):
-        return bpms
+        return banks
 
     if not isinstance(payload, dict):
-        return bpms
+        return banks
 
     for bank in BANKS:
         entry = payload.get(f"bank_{bank.lower()}")
         if not isinstance(entry, dict):
             continue
-        bpm = entry.get("bpm")
+        bpm = 120.0
         try:
-            if bpm is not None:
-                bpms[bank] = float(bpm)
+            if entry.get("bpm") is not None:
+                bpm = float(entry["bpm"])
         except (TypeError, ValueError):
-            continue
-    return bpms
+            pass
+        pads = {}
+        for num, desc in (entry.get("pads") or {}).items():
+            try:
+                pads[int(num)] = desc
+            except (TypeError, ValueError):
+                continue
+        banks[bank] = (bpm, pads)
+    return banks
 
 
 def generate_padinfo(smpl_dir=None):
@@ -84,10 +123,10 @@ def generate_padinfo(smpl_dir=None):
 
     pad_records = []
     occupied = 0
-    bank_bpms = _load_bank_bpms()
+    banks = _load_banks()
 
-    for bank_idx, bank in enumerate(BANKS):
-        bpm = bank_bpms.get(bank, 120.0)
+    for bank in BANKS:
+        bpm, descriptions = banks[bank]
         for pad_num in range(1, 13):
             wav_path = get_sample_path(bank, pad_num, smpl_dir)
 
@@ -97,12 +136,12 @@ def generate_padinfo(smpl_dir=None):
                 except OSError:
                     file_size = 0
                 if file_size > 0:
-                    is_loop = pad_num >= 5  # pads 5-12 are loops
+                    loop, gate = pad_mode(descriptions.get(pad_num), pad_num)
                     record = encode_pad(
                         sample_end=file_size,
                         volume=127,
-                        loop=is_loop,
-                        gate=not is_loop,  # gate for one-shots (pads 1-4)
+                        loop=loop,
+                        gate=gate,
                         channels=1,        # our pipeline outputs mono
                         tempo_mode=0,      # off (let user control)
                         bpm=bpm,
@@ -129,6 +168,5 @@ def generate_padinfo(smpl_dir=None):
 
 
 if __name__ == '__main__':
-    import sys
     smpl = sys.argv[1] if len(sys.argv) > 1 else None
     generate_padinfo(smpl)

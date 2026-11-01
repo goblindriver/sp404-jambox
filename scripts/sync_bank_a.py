@@ -20,11 +20,11 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-from jambox_config import load_settings_for_script
+from jambox_config import find_sd_card, load_settings_for_script, sd_smpl_dir
 
 SETTINGS = load_settings_for_script(__file__)
-SD_CARD = SETTINGS["SD_CARD"]
-SD_SMPL = SETTINGS["SD_SMPL_DIR"]
+SD_CARD = find_sd_card(SETTINGS) or ""
+SD_SMPL = sd_smpl_dir(SD_CARD)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
 GOLD_DIR = os.path.join(LIBRARY, "_GOLD")
 GOLD_BANK_A = os.path.join(GOLD_DIR, "Bank-A")

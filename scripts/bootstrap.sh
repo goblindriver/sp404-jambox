@@ -21,7 +21,7 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 echo "Installing Python dependencies..."
-"$VENV_DIR/bin/pip" install -r requirements.txt
+"$VENV_DIR/bin/pip" install -r requirements.txt -r requirements-dev.txt
 
 echo
 echo "Running setup validation..."

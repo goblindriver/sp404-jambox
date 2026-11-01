@@ -15,13 +15,14 @@ Usage:
     python scripts/library_health.py --type BRK         # only check breaks
 """
 import argparse
+import copy
 import json
 import os
 import subprocess
 import sys
 import time
 import numpy as np
-from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script, save_tag_db as _config_save_tag_db
+from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, diff_tag_db, load_settings_for_script, write_tag_changes
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -163,9 +164,10 @@ def load_tag_db():
     return _load(TAGS_FILE)
 
 
-def save_tag_db(db):
-    """Save tag database (delegates to jambox_config for SQLite + JSON consistency)."""
-    _config_save_tag_db(TAGS_FILE, db)
+def save_changed_rows(before, after):
+    """Write only rows/fields that changed since *before* was loaded."""
+    upserts, merges = diff_tag_db(before, after)
+    write_tag_changes(TAGS_FILE, upserts=upserts, merges=merges)
 
 
 def main():
@@ -179,6 +181,7 @@ def main():
     if not db:
         print("ERROR: No tag database found. Run: python scripts/tag_library.py")
         sys.exit(1)
+    before = copy.deepcopy(db) if args.fix_bpm else {}
 
     print(f"Scanning {len(db)} tagged files...\n")
 
@@ -285,7 +288,7 @@ def main():
 
     if args.fix_bpm and bpm_detected > 0:
         print(f"\n✅ Auto-detected BPM for {bpm_detected} files — saving to _tags.json...")
-        save_tag_db(db)
+        save_changed_rows(before, db)
 
     # Summary
     total_issues = sum(len(v) for v in issues.values())

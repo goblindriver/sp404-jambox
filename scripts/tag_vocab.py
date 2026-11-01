@@ -4,6 +4,8 @@ Single source of truth. All scripts (tag_library, smart_retag, fetch_samples,
 vibe_generate, etc.) should import from here rather than maintaining parallel lists.
 """
 
+import re
+
 # ── Type codes ──
 TYPE_CODES = {
     "KIK", "SNR", "HAT", "CLP", "CYM", "RIM", "PRC", "BRK", "DRM",
@@ -58,6 +60,7 @@ GENRE_ALIASES = {
     "riddim": "dancehall",
     "baile funk": "baile-funk", "favela funk": "baile-funk",
     "industrial techno": "industrial-techno",
+    "boom bap": "boom-bap", "boombap": "boom-bap",
     "industrial-techno": "industrial-techno",
     "drum n bass": "drum-and-bass",
     "drum and bass": "drum-and-bass",
@@ -86,6 +89,64 @@ VIBE_ALIASES = {
     # Migrate old vibe uses of texture terms to emotional equivalents
     "warm": "comforting", "raw": "unfiltered", "dusty": "nostalgic",
 }
+
+
+# ── Musical keys ──
+# Canonical spelling: uppercase root, "s" for sharp / "b" for flat, "m" for
+# minor -- "Am", "Csm", "Bb", "Ebm". Matches audio_analysis output.
+_KEY_RE = re.compile(
+    r"^([A-Ga-g])(#|s|b|sharp|flat)?\s*(?i:(minor|min|major|maj|m))?$"
+)
+
+
+def canonical_key(raw):
+    """'A min' -> 'Am', 'c#m' -> 'Csm', 'Bbmaj' -> 'Bb', 'F#' -> 'Fs'.
+
+    Returns None for anything that isn't a key (including 'XX' = any key).
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    m = _KEY_RE.match(raw.strip())
+    if not m:
+        return None
+    root, accidental, quality = m.groups()
+    accidental = {"#": "s", "s": "s", "sharp": "s", "b": "b", "flat": "b"}.get(accidental or "", "")
+    minor = bool(quality) and not quality.lower().startswith("maj")
+    return root.upper() + accidental + ("m" if minor else "")
+
+
+# Legacy / hand-written type codes that appear in presets but aren't in
+# TYPE_CODES. Without this they fall through as plain keywords and the pad
+# loses its type (fetch filter, PAD_INFO gate, pattern drum role). Each alias
+# maps to (canonical_code, extra_keyword_or_None) so the specific meaning
+# survives as a search keyword. Only all-caps words are aliases, so lowercase
+# keywords like "bass" or "ska" stay keywords.
+TYPE_CODE_ALIASES = {
+    "SMP": ("BRK", None),
+    "HHT": ("HAT", None),
+    "TOM": ("PRC", "tom"),
+    "CHR": ("VOX", "choir"),
+    "BASS": ("BAS", None),
+    "FDL": ("STR", "fiddle"),
+    "HAR": ("WND", "harmonica"),
+    "GLT": ("FX", "glitch"),
+    "TEX": ("AMB", "texture"),
+    "SKA": ("HRN", "ska"),
+}
+
+
+def pad_type_and_playability(description):
+    """(type_code, playability) from a 'TYPE keywords playability' pad description."""
+    type_code = playability = None
+    for word in str(description or "").split():
+        upper = word.upper()
+        if type_code is None and word == upper and upper in TYPE_CODE_ALIASES:
+            type_code = TYPE_CODE_ALIASES[upper][0]
+        elif type_code is None and upper in TYPE_CODES:
+            type_code = upper
+        elif word.lower() in PLAYABILITIES:
+            playability = word.lower()
+    return type_code, playability
 
 
 def normalize_genre(value):

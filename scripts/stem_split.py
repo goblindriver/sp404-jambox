@@ -79,7 +79,7 @@ def get_duration(filepath):
 
 def source_id(filepath):
     """Generate a stable ID for a source file based on its path."""
-    rel = os.path.relpath(filepath, LIBRARY) if filepath.startswith(LIBRARY) else filepath
+    rel = _rel(filepath) or filepath
     return hashlib.md5(rel.encode()).hexdigest()[:12]
 
 
@@ -164,9 +164,15 @@ def load_tag_db():
     return _load(TAGS_FILE)
 
 
-def save_tag_db(db):
-    from jambox_config import save_tag_db as _save
-    _save(TAGS_FILE, db)
+def save_stem_rows(rows):
+    """Insert the given stem rows (only these rows) into the tag DB."""
+    from jambox_config import upsert_tag_entries
+    upsert_tag_entries(TAGS_FILE, rows)
+
+
+def _rel(path):
+    from jambox_config import library_rel_path
+    return library_rel_path(path, LIBRARY)
 
 
 def copy_stem_to_library(stem_path, source_name, stem_name):
@@ -181,7 +187,7 @@ def copy_stem_to_library(stem_path, source_name, stem_name):
 
     dest = os.path.join(dest_dir, f"{stem_name}.wav")
     shutil.copy2(stem_path, dest)
-    return os.path.relpath(dest, LIBRARY)
+    return _rel(dest)
 
 
 def tag_stem(rel_path, stem_name, parent_tags, parent_src_id, duration):
@@ -281,7 +287,7 @@ def process_file(filepath, duration, src_id, model, db, tmp_dir):
     source_name = os.path.splitext(os.path.basename(filepath))[0]
 
     # Get parent tags if this file is in the tag DB
-    rel = os.path.relpath(filepath, LIBRARY) if filepath.startswith(LIBRARY) else ""
+    rel = _rel(filepath) or ""
     parent_tags = db.get(rel, {})
 
     # Run demucs
@@ -289,7 +295,7 @@ def process_file(filepath, duration, src_id, model, db, tmp_dir):
     if not stems:
         return 0
 
-    created = 0
+    rows = {}
     for stem_name, stem_path in stems:
         # Check if stem has actual content (not just silence)
         stem_dur = get_duration(stem_path)
@@ -302,12 +308,14 @@ def process_file(filepath, duration, src_id, model, db, tmp_dir):
         # Tag it
         entry = tag_stem(stem_rel, stem_name, parent_tags, src_id, stem_dur)
         db[stem_rel] = entry
-        created += 1
+        rows[stem_rel] = entry
 
         tc = STEM_TYPE_MAP.get(stem_name, "BRK")
         print(f"    ✓ {stem_name} → {tc} ({stem_dur:.1f}s) → {stem_rel}")
 
-    return created
+    if rows:
+        save_stem_rows(rows)
+    return len(rows)
 
 
 def main():
@@ -373,7 +381,6 @@ def main():
         print(f"  Output: {STEMS_DIR}")
 
         if total_stems > 0:
-            save_tag_db(db)
             print(f"  Tags saved to: {TAGS_FILE}")
 
     finally:

@@ -27,5 +27,5 @@ def walk_library_audio(library_root, skip_dirs=None, extensions=None):
         for fn in filenames:
             if os.path.splitext(fn)[1].lower() in exts:
                 abs_path = os.path.join(dirpath, fn)
-                rel_path = os.path.relpath(abs_path, library_root)
+                rel_path = os.path.relpath(abs_path, library_root).replace(os.sep, "/")
                 yield rel_path, abs_path

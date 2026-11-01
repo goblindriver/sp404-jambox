@@ -23,10 +23,11 @@ import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
-# Plex database path (macOS default)
-PLEX_DB_PATH = os.path.expanduser(
-    "~/Library/Application Support/Plex Media Server/"
-    "Plug-in Support/Databases/com.plexapp.plugins.library.db"
+from jambox_config import plex_data_dir
+
+# Plex database (SP404_PLEX_DATA_DIR, or the OS default Plex data folder)
+PLEX_DB_PATH = os.path.join(
+    plex_data_dir(), "Plug-in Support", "Databases", "com.plexapp.plugins.library.db"
 )
 
 # Music library section ID (auto-detected on first use, fallback to 3)
@@ -1535,7 +1536,7 @@ if __name__ == '__main__':
         print("Building music index from Plex...")
         result = plex.build_music_index()
         out_path = os.path.expanduser("~/Music/SP404-Sample-Library/_music_index.json")
-        with open(out_path, 'w') as f:
+        with open(out_path, 'w', encoding="utf-8") as f:
             json.dump(result, f, indent=1)
         print(f"Saved {result['total_tracks']} tracks to {out_path}")
 

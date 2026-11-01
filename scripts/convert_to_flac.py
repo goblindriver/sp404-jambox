@@ -14,6 +14,7 @@ Usage:
 import argparse
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -35,27 +36,19 @@ def load_tags():
     return load_tag_db(TAGS_FILE)
 
 
-def save_tags(tags):
-    """Write tag database via jambox_config (SQLite + JSON)."""
-    from jambox_config import save_tag_db
-    save_tag_db(TAGS_FILE, tags)
+def rekey_tag(old_rel, new_rel, entry):
+    """Move one row from the WAV key to the FLAC key (single transaction)."""
+    from jambox_config import write_tag_changes
+    write_tag_changes(TAGS_FILE, deletes=[old_rel], upserts={new_rel: entry})
 
 
 def convert_wav_to_flac(wav_path):
     """Convert a single WAV to FLAC. Returns FLAC path or None on failure."""
     flac_path = os.path.splitext(wav_path)[0] + '.flac'
-
-    result = subprocess.run(
-        [FFMPEG, '-y', '-i', wav_path, '-c:a', 'flac', '-compression_level', '5', flac_path],
-        capture_output=True, text=True, timeout=60
-    )
-
-    if result.returncode != 0:
-        # Clean up failed output
-        if os.path.exists(flac_path):
-            os.remove(flac_path)
+    from jambox_config import ffmpeg_atomic
+    if not ffmpeg_atomic(FFMPEG, wav_path, flac_path,
+                         ['-c:a', 'flac', '-compression_level', '5'], fmt='flac', timeout=60):
         return None
-
     return flac_path
 
 
@@ -111,7 +104,7 @@ def batch_convert(subpath=None, dry_run=False, verify_only=False):
     start_time = time.time()
 
     for i, wav_path in enumerate(wavs):
-        rel_path = os.path.relpath(wav_path, LIBRARY)
+        rel_path = os.path.relpath(wav_path, LIBRARY).replace(os.sep, "/")
         flac_path = os.path.splitext(wav_path)[0] + '.flac'
         flac_rel = os.path.splitext(rel_path)[0] + '.flac'
 
@@ -171,8 +164,8 @@ def batch_convert(subpath=None, dry_run=False, verify_only=False):
         if rel_path in tags:
             tags[flac_rel] = tags.pop(rel_path)
             try:
-                save_tags(tags)
-            except OSError:
+                rekey_tag(rel_path, flac_rel, tags[flac_rel])
+            except (OSError, sqlite3.Error):
                 print(f"  TAG UPDATE FAILED: {rel_path}")
                 tags[rel_path] = tags.pop(flac_rel)
                 if os.path.exists(result_path):

@@ -136,7 +136,7 @@ class EmbeddingStore:
 
     def _load_index(self):
         if os.path.exists(self.index_path):
-            with open(self.index_path, "r") as f:
+            with open(self.index_path, "r", encoding="utf-8") as f:
                 self._index = json.load(f)
         else:
             self._index = {}
@@ -144,7 +144,7 @@ class EmbeddingStore:
 
     def _save_index(self):
         tmp = self.index_path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self.index, f)
         os.replace(tmp, self.index_path)
 

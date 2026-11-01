@@ -28,7 +28,18 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from jambox_config import LIBRARY_SKIP_DIRS, LONG_HOLD_DIRNAME, load_settings_for_script
+from tag_vocab import canonical_key
+from jambox_config import (
+    LIBRARY_SKIP_DIRS,
+    merge_tag_fields,
+    LONG_HOLD_DIRNAME,
+    delete_tag_paths,
+    export_tags_json,
+    is_excluded_rel_path,
+    library_rel_path,
+    load_settings_for_script,
+    write_tag_changes,
+)
 
 try:
     from audio_analysis import analyze_audio, is_available as librosa_available
@@ -225,13 +236,12 @@ BPM_PATTERNS = [
     re.compile(r"\((\d{2,3})\)"),
 ]
 
+# A key token sits between delimiters: "_Am_", " C#min.", "-Bb-". The quality
+# (m/min/minor/maj/major) is part of the match -- dropping it stored every
+# minor key as major. Only a lowercase bare "m" means minor: "_AM_" (ambient),
+# "FM" (synthesis) and "CM" are not keys.
 KEY_PATTERN = re.compile(
-    r"[\s_\-]([A-G][#bs]?)\s*(?:m(?:in(?:or)?)?|maj(?:or)?)?[\s_\-\.]",
-    re.IGNORECASE,
-)
-KEY_PATTERN_SUFFIX = re.compile(
-    r"[\s_\-]([A-G][#bs]?(?:m|min|maj)?)\s*\.",
-    re.IGNORECASE,
+    r"(?<=[\s_\-\(])([A-Ga-g])(#|b|sharp|flat)?\s?((?i:minor|min|major|maj)|m)?(?=[\s_\-\.\)]|$)"
 )
 
 
@@ -263,16 +273,19 @@ def extract_bpm(filename, dirpath):
 
 
 def extract_key(filename):
-    """Try to extract musical key from filename. Normalizes # to s per spec."""
-    for pat in [KEY_PATTERN, KEY_PATTERN_SUFFIX]:
-        m = pat.search(filename)
-        if m:
-            raw = m.group(1).strip()
-            if len(raw) >= 1:
-                root = raw[0].upper()
-                rest = raw[1:].replace("#", "s")
-                return root + rest
-    return None
+    """Musical key from a filename, canonical ("Am", "Csm", "Bb") or None.
+
+    Tokens with an accidental or quality ("Am", "c#", "Ebmin") win over a bare
+    letter. A bare letter only counts when uppercase, so "kick_e_01" isn't E.
+    """
+    bare = None
+    for m in KEY_PATTERN.finditer(filename):
+        root, accidental, quality = m.groups()
+        if accidental or quality:
+            return canonical_key(root + (accidental or "") + (quality or ""))
+        if bare is None and root.isupper():
+            bare = root
+    return canonical_key(bare) if bare else None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -686,6 +699,16 @@ def tag_file(rel_path, full_path, get_dur=True, use_librosa=True):
 # Library walker
 # ═══════════════════════════════════════════════════════════
 
+# Characters macOS filenames may contain but Windows paths can't. Over an SMB
+# share such a file looks missing from Windows even though it exists.
+_WINDOWS_ILLEGAL_NAME_CHARS = re.compile(r'[<>:"|?*]')
+
+
+def _unrepresentable_here(rel_path):
+    """True when this OS can't address *rel_path*, so "missing" proves nothing."""
+    return os.name == "nt" and bool(_WINDOWS_ILLEGAL_NAME_CHARS.search(rel_path))
+
+
 def walk_library(path_filter=None, skip_dirs=None):
     """Walk library and return (rel_path, full_path) for all audio files.
 
@@ -695,7 +718,13 @@ def walk_library(path_filter=None, skip_dirs=None):
     root_dir = path_filter or LIBRARY
     excluded = skip_dirs if skip_dirs is not None else SKIP_DIRS
     files = []
-    for root, dirs, filenames in os.walk(root_dir):
+
+    def unlisted(err):
+        # os.walk skips folders it can't list without a word; say so, because
+        # a partial walk means new files in that folder go untagged.
+        print(f"WARNING: could not list {err.filename}: {err.strerror or err}", file=sys.stderr)
+
+    for root, dirs, filenames in os.walk(root_dir, onerror=unlisted):
         dirs[:] = [d for d in dirs if d not in excluded and not d.startswith(".")]
         for f in filenames:
             if f.startswith("."):
@@ -703,8 +732,9 @@ def walk_library(path_filter=None, skip_dirs=None):
             ext = os.path.splitext(f)[1].lower()
             if ext in AUDIO_EXTS:
                 full = os.path.join(root, f)
-                rel = os.path.relpath(full, LIBRARY)
-                files.append((rel, full))
+                rel = library_rel_path(full, LIBRARY)
+                if rel:
+                    files.append((rel, full))
     return files
 
 
@@ -714,15 +744,39 @@ def load_existing_tags():
     return load_tag_db(TAGS_FILE)
 
 
-def save_tags(db):
-    """Save tag database via jambox_config (SQLite + JSON).
+# Fields a rescan must not overwrite once smart retag has classified the row.
+_CLASSIFICATION_FIELDS = ("type_code", "vibe", "texture", "genre", "energy", "playability", "tags")
+_EMPTY = (None, "", [])
 
-    Uses allow_shrink=True because a full tag_library scan is the authoritative
-    source — stale entries from deleted/moved files should be cleaned up.
+
+def rescan_fields(old, new, *, rebuild=False):
+    """Fields to merge into an existing row when a file is re-tagged.
+
+    Enrichment fields (smart retag, Discogs, Plex, CLAP identity, ...) are
+    never in ``new`` and so always survive the merge.
+
+    - Audio changed (default): refresh every base field, drop stale features
+      and queue the row for smart retag.
+    - ``rebuild`` (audio unchanged, tagging rules changed): refresh base fields
+      but keep smart-retag classifications, analysis-derived BPM/key, and any
+      value the filename rules can't reproduce.
     """
-    from jambox_config import save_tag_db
-    save_tag_db(TAGS_FILE, db, allow_shrink=True)
-    print(f"Saved {len(db)} entries to tag DB")
+    fields = dict(new)
+    if not rebuild:
+        fields["features"] = None
+        fields["smart_retag_pending"] = True
+        return fields
+    if str(old.get("tag_source") or "").startswith("smart_retag"):
+        for name in _CLASSIFICATION_FIELDS:
+            fields.pop(name, None)
+    for name in ("bpm", "key"):
+        if old.get(f"{name}_source") not in (None, "filename"):
+            fields.pop(name, None)
+            fields.pop(f"{name}_source", None)
+    for name, value in list(fields.items()):
+        if value in _EMPTY and old.get(name) not in _EMPTY:
+            fields.pop(name)
+    return fields
 
 
 def print_summary(db):
@@ -789,10 +843,41 @@ def print_summary(db):
         print(f"  {p:<15s} {count:>5d}")
 
 
+def refresh_filename_keys():
+    """Re-run extract_key on rows whose key came from the filename.
+
+    librosa is only the fallback for filenames without a key, so a librosa row
+    whose filename now parses (e.g. "Bmin" the old pattern missed) takes the
+    filename key; one whose filename still has none keeps librosa's.
+    """
+    changes = {}
+    for rel, entry in load_existing_tags().items():
+        if not isinstance(entry, dict):
+            continue
+        source = entry.get("key_source")
+        if source not in ("filename", "librosa", None):
+            continue
+        key = extract_key(os.path.basename(rel))
+        if source == "librosa" and not key:
+            continue
+        if key != entry.get("key") or (key and source != "filename"):
+            changes[rel] = {"key": key, "key_source": "filename" if key else None}
+    for rel, fields in list(changes.items())[:20]:
+        print(f"  {rel}: -> {fields['key']}")
+    if changes:
+        merge_tag_fields(TAGS_FILE, changes)
+        export_tags_json(TAGS_FILE)
+    print(f"Updated {len(changes)} filename-derived keys")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Auto-tag the SP-404 sample library")
     parser.add_argument("--update", action="store_true",
-                        help="Only tag new or changed files")
+                        help="Only tag new or changed files (the default; kept for compatibility)")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Re-derive base tags for every file, keeping smart-retag and enrichment fields")
+    parser.add_argument("--refresh-keys", action="store_true",
+                        help="Re-read filename-derived keys (fixes minor keys stored as major) and exit")
     parser.add_argument("--no-duration", action="store_true",
                         help="Skip ffprobe duration detection (faster)")
     parser.add_argument("--path", type=str,
@@ -800,6 +885,10 @@ def main():
     parser.add_argument("--include-long-hold", action="store_true",
                         help="Include _LONG-HOLD/ in the scan (normally skipped)")
     args = parser.parse_args()
+
+    if args.refresh_keys:
+        refresh_filename_keys()
+        return
 
     path_filter = None
     if args.path:
@@ -820,29 +909,43 @@ def main():
     files = walk_library(path_filter=path_filter, skip_dirs=effective_skip)
     print(f"Found {len(files)} audio files")
 
-    db = load_existing_tags() if (args.update or args.path) else {}
+    existing = load_existing_tags()
+    upserts, merges = {}, {}
     skipped = 0
     tagged = 0
 
+    def flush():
+        if upserts or merges:
+            write_tag_changes(TAGS_FILE, upserts=upserts, merges=merges)
+            upserts.clear()
+            merges.clear()
+
     t0 = time.time()
     for i, (rel, full) in enumerate(files):
-        if args.update and rel in db:
+        old = existing.get(rel)
+        if old is not None and not args.rebuild:
             try:
                 mtime = os.path.getmtime(full)
-                if db[rel].get("mtime") and mtime <= db[rel]["mtime"]:
+                if old.get("mtime") and mtime <= old["mtime"]:
                     skipped += 1
                     continue
             except OSError:
                 pass
 
         entry = tag_file(rel, full, get_dur=not args.no_duration)
-        db[rel] = entry
+        if old is None:
+            upserts[rel] = entry
+        else:
+            merges[rel] = rescan_fields(old, entry, rebuild=args.rebuild)
         tagged += 1
+        if len(upserts) + len(merges) >= 500:
+            flush()
 
         if (i + 1) % 500 == 0:
             elapsed = time.time() - t0
             rate = (i + 1) / elapsed if elapsed > 0 else 0
             print(f"  [{i+1}/{len(files)}] {rate:.0f} files/sec — {rel[:60]}")
+    flush()
 
     elapsed = time.time() - t0
     print(f"\nTagged {tagged} files in {elapsed:.1f}s", end="")
@@ -851,22 +954,23 @@ def main():
     else:
         print()
 
-    # Remove stale entries — only for the scope we scanned.
-    # A --path run should not delete entries outside its target directory.
-    # Preserve entries under SKIP_DIRS (quarantine, dupes, etc.) since those
-    # directories are intentionally excluded from scanning.
-    if not args.path:
-        existing_rels = {rel for rel, _ in files}
-        skip_prefixes = tuple(d + "/" for d in SKIP_DIRS)
-        removed = [k for k in db
-                    if k not in existing_rels and not k.startswith(skip_prefixes)]
-        for k in removed:
-            del db[k]
-        if removed:
-            print(f"Removed {len(removed)} stale entries")
+    # Remove rows whose file is gone -- only inside the scanned scope, and
+    # never under SKIP_DIRS (quarantine, dupes, stems, ...), which this scan
+    # doesn't walk.
+    scope = (library_rel_path(path_filter, LIBRARY) or "") + "/" if path_filter else ""
+    stale = [
+        k for k in existing
+        if k.startswith(scope)
+        and not is_excluded_rel_path(k)
+        and not os.path.exists(os.path.join(LIBRARY, k))
+        and not _unrepresentable_here(k)
+    ]
+    if stale:
+        delete_tag_paths(TAGS_FILE, stale)
+        print(f"Removed {len(stale)} entries whose files are gone")
 
-    save_tags(db)
-    print_summary(db)
+    export_tags_json(TAGS_FILE)
+    print_summary(load_existing_tags())
 
 
 if __name__ == "__main__":

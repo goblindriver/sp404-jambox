@@ -346,7 +346,7 @@ def generate_scale_patterns(preset_data, bank, bars=2, pattern_name=None, ptn_di
 
 def generate_from_preset_file(preset_path, bank, bars=2, pattern_name=None, ptn_dir=None):
     """Load a preset YAML and generate its patterns."""
-    with open(preset_path) as f:
+    with open(preset_path, encoding='utf-8') as f:
         preset_data = yaml.safe_load(f)
     if not isinstance(preset_data, dict):
         raise ValueError(f"Invalid preset file: {preset_path}")

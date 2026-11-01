@@ -19,7 +19,8 @@ import vibe_training_store as vts
 
 vibe_bp = Blueprint("vibe", __name__)
 
-_vibe_tracker = JobTracker(use_rlock=True, max_age=None, max_count=50)
+_vibe_tracker = JobTracker(use_rlock=True, max_age=600, max_count=50)
+_VIBE_ACTIVE = ("starting", "generating", "reviewed", "saving", "loading", "fetching")
 
 
 def _update_vibe_job(job_id, **fields):
@@ -246,8 +247,10 @@ def _run_populate_bank(job_id, repo_dir, prompt_data, settings, preset_override=
             vts.fail_apply(session_id, str(e))
 
 
-def _create_vibe_job(bank, prompt):
-    return _vibe_tracker.create(
+def _start_vibe_job(bank, prompt):
+    """New vibe job, or None if one is already running (atomic check)."""
+    return _vibe_tracker.start_exclusive(
+        _VIBE_ACTIVE,
         status="starting",
         progress="",
         prompt=prompt,
@@ -299,13 +302,10 @@ def populate_bank():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    if _vibe_tracker.has_active("starting", "generating", "saving", "loading", "fetching"):
-        return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
-    job_id = _create_vibe_job(bank, payload["prompt"])
-
     prompt = str(payload["prompt"]).strip()
-    if not prompt:
-        return jsonify({"ok": False, "error": "prompt is required"}), 400
+    job_id = _start_vibe_job(bank, prompt)
+    if not job_id:
+        return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
 
     prompt_data = {
         "prompt": prompt,
@@ -326,9 +326,8 @@ def populate_bank():
     repo_dir = current_app.config["REPO_DIR"]
     settings = dict(current_app.config)
     _update_vibe_job(job_id, session_id=session_id)
-    t = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, settings, None, session_id))
-    t.daemon = True
-    t.start()
+    _vibe_tracker.start_thread(job_id, _run_populate_bank, job_id, repo_dir, prompt_data, settings, None, session_id,
+                               error_field="progress")
 
     response = {"ok": True, "job_id": job_id, "session_id": session_id}
     if session_error:
@@ -345,32 +344,37 @@ def generate_fetch_bank():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    if _vibe_tracker.has_active("starting", "generating", "reviewed", "saving", "loading", "fetching"):
-        return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
     prompt_for_job = str(payload.get("prompt") or "").strip() or f"Bank {bank.upper()} metadata"
-    job_id = _create_vibe_job(bank, prompt_for_job)
+    job_id = _start_vibe_job(bank, prompt_for_job)
+    if not job_id:
+        return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
 
     repo_dir = current_app.config["REPO_DIR"]
-    prompt = str(payload.get("prompt") or "").strip()
-    if not prompt:
-        prompt = _build_metadata_prompt(bank, repo_dir)
-    if not prompt:
-        return jsonify({"ok": False, "error": "Unable to derive bank metadata prompt"}), 400
+    try:
+        prompt = str(payload.get("prompt") or "").strip()
+        if not prompt:
+            prompt = _build_metadata_prompt(bank, repo_dir)
 
-    # Merge bpm/key from bank_config when client omits them
-    bpm = payload.get("bpm")
-    key = payload.get("key")
-    if bpm is None or key is None:
-        scripts_dir = os.path.join(repo_dir, "scripts")
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
-        import preset_utils as pu
-        config = pu._load_config()
-        bank_data = (config.get(f"bank_{bank}") or {}) if isinstance(config, dict) else {}
-        if bpm is None:
-            bpm = bank_data.get("bpm")
-        if key is None:
-            key = bank_data.get("key")
+        # Merge bpm/key from bank_config when client omits them
+        bpm = payload.get("bpm")
+        key = payload.get("key")
+        if prompt and (bpm is None or key is None):
+            scripts_dir = os.path.join(repo_dir, "scripts")
+            if scripts_dir not in sys.path:
+                sys.path.insert(0, scripts_dir)
+            import preset_utils as pu
+            config = pu._load_config()
+            bank_data = (config.get(f"bank_{bank}") or {}) if isinstance(config, dict) else {}
+            if bpm is None:
+                bpm = bank_data.get("bpm")
+            if key is None:
+                key = bank_data.get("key")
+    except Exception as exc:
+        _vibe_tracker.finish(job_id, "error", progress=str(exc))
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    if not prompt:
+        _vibe_tracker.finish(job_id, "error", progress="Unable to derive bank metadata prompt")
+        return jsonify({"ok": False, "error": "Unable to derive bank metadata prompt"}), 400
 
     prompt_data = {
         "prompt": prompt,
@@ -390,9 +394,8 @@ def generate_fetch_bank():
 
     settings = dict(current_app.config)
     _update_vibe_job(job_id, session_id=session_id)
-    worker = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, settings, None, session_id))
-    worker.daemon = True
-    worker.start()
+    _vibe_tracker.start_thread(job_id, _run_populate_bank, job_id, repo_dir, prompt_data, settings, None, session_id,
+                               error_field="progress")
 
     response = {"ok": True, "job_id": job_id, "session_id": session_id}
     if session_error:
@@ -410,9 +413,9 @@ def apply_bank():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    if _vibe_tracker.has_active("starting", "generating", "reviewed", "saving", "loading", "fetching"):
+    job_id = _start_vibe_job(bank, preset.get("vibe", ""))
+    if not job_id:
         return jsonify({"ok": False, "error": "A vibe populate is already running"}), 409
-    job_id = _create_vibe_job(bank, preset.get("vibe", ""))
 
     repo_dir = current_app.config["REPO_DIR"]
     prompt_data = {
@@ -424,12 +427,15 @@ def apply_bank():
     }
     session_id = payload.get("session_id")
     if session_id:
-        vts.update_review(session_id, preset, reviewed_parsed, payload.get("fetch", True), bank)
+        try:
+            vts.update_review(session_id, preset, reviewed_parsed, payload.get("fetch", True), bank)
+        except Exception as exc:  # session logging must never block applying a bank
+            current_app.logger.warning("Failed to record review for session %s: %s", session_id, exc)
+            session_id = None
     settings = dict(current_app.config)
     _update_vibe_job(job_id, session_id=session_id)
-    thread = threading.Thread(target=_run_populate_bank, args=(job_id, repo_dir, prompt_data, settings, preset, session_id))
-    thread.daemon = True
-    thread.start()
+    _vibe_tracker.start_thread(job_id, _run_populate_bank, job_id, repo_dir, prompt_data, settings, preset, session_id,
+                               error_field="progress")
 
     return jsonify({"ok": True, "job_id": job_id})
 

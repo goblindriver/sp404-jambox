@@ -2,13 +2,13 @@
 import json
 import os
 import re
-import signal
 import subprocess
 import sys
 import threading
 
 from flask import Blueprint, jsonify, request, current_app
 
+from jambox_cache import tags_freshness_marker
 from jambox_config import build_subprocess_env, load_tag_db as _config_load_tag_db
 
 library_bp = Blueprint('library', __name__)
@@ -16,7 +16,7 @@ AUDIO_EXTS = {'.wav', '.aif', '.aiff', '.mp3', '.flac'}
 
 # Cache the tag database in memory (loaded on first request)
 _tag_db_cache = None
-_tag_db_mtime = 0
+_tag_db_marker = None
 _tag_db_lock = threading.Lock()
 
 
@@ -40,23 +40,17 @@ def _parse_limit_arg(name, default, maximum):
 
 
 def _load_tag_db():
-    """Load and cache the tag database (SQLite primary, JSON fallback)."""
-    global _tag_db_cache, _tag_db_mtime
+    """Load and cache the tag database; reloads after any tag DB write."""
+    global _tag_db_cache, _tag_db_marker
     tags_file = _tags_file()
-    sqlite_file = os.path.splitext(tags_file)[0] + ".sqlite"
-    try:
-        mtime_json = os.path.getmtime(tags_file) if os.path.exists(tags_file) else 0
-        mtime_sqlite = os.path.getmtime(sqlite_file) if os.path.exists(sqlite_file) else 0
-        mtime = max(mtime_json, mtime_sqlite)
-    except OSError:
-        return {}
+    marker = (tags_file, tags_freshness_marker(tags_file))
     with _tag_db_lock:
-        if _tag_db_cache is not None and mtime <= _tag_db_mtime:
+        if _tag_db_cache is not None and marker == _tag_db_marker:
             return _tag_db_cache
         try:
             payload = _config_load_tag_db(tags_file)
             _tag_db_cache = payload if isinstance(payload, dict) else {}
-            _tag_db_mtime = mtime
+            _tag_db_marker = marker
             return _tag_db_cache
         except Exception:
             return {}
@@ -64,10 +58,10 @@ def _load_tag_db():
 
 def _invalidate_tag_db_cache():
     """Thread-safe cache invalidation (called after smart-retag completes)."""
-    global _tag_db_cache, _tag_db_mtime
+    global _tag_db_cache, _tag_db_marker
     with _tag_db_lock:
         _tag_db_cache = None
-        _tag_db_mtime = 0
+        _tag_db_marker = None
 
 
 @library_bp.route('/library/browse')
@@ -126,7 +120,10 @@ def search():
         limit: max results (default 30, max 100)
     """
     q = request.args.get('q', '').strip()
-    limit = _parse_limit_arg('limit', 30, 100)
+    try:
+        limit = _parse_limit_arg('limit', 30, 100)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
     type_code = request.args.get('type_code', '').strip().upper() or None
     genre_filter = request.args.get('genre', '').strip() or None
     danceable_flag = request.args.get('danceable', '').strip()
@@ -461,8 +458,11 @@ def by_tag():
 # Smart Retag (LLM-powered tag enrichment)
 # ═══════════════════════════════════════════════════════════
 
-from api._helpers import JobTracker
+from api._helpers import JobTracker, kill_process_tree, new_process_group_kwargs
 _retag_tracker = JobTracker(max_age=600)
+# Held while starting the subprocess so Stop can't slip between the status
+# check and Popen (which would leave an untracked retag running).
+_retag_start_lock = threading.Lock()
 
 
 def _update_retag_job(job_id, **fields):
@@ -474,45 +474,8 @@ def _get_retag_job(job_id):
 
 
 def _terminate_retag_pid(pid, *, graceful_timeout=5):
-    """Terminate a smart-retag process group and ensure it exits."""
-    if not pid:
-        return False
-    try:
-        os.killpg(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return True
-    except OSError:
-        return False
-
-    # Wait briefly for graceful shutdown.
-    for _ in range(max(1, int(graceful_timeout * 10))):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return True
-        import time as _time
-        _time.sleep(0.1)
-
-    # Force kill if still alive.
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return True
-    except OSError:
-        return False
-
-    for _ in range(20):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return True
-        import time as _time
-        _time.sleep(0.1)
-    return False
+    """Terminate a smart-retag process and its children; True once gone."""
+    return kill_process_tree(pid, timeout=graceful_timeout)
 
 
 def _run_smart_retag(job_id, repo_dir, settings, args_list):
@@ -523,42 +486,38 @@ def _run_smart_retag(job_id, repo_dir, settings, args_list):
         script = os.path.join(repo_dir, "scripts", "smart_retag.py")
         cmd = [sys.executable, script] + args_list
 
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=repo_dir,
-            env=build_subprocess_env(settings),
-            start_new_session=True,
-        )
-        _update_retag_job(job_id, pid=proc.pid)
+        with _retag_start_lock:
+            if (_get_retag_job(job_id) or {}).get("status") != "running":
+                return  # stopped before the process started
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=repo_dir,
+                env=build_subprocess_env(settings),
+                **new_process_group_kwargs(),
+            )
+            _update_retag_job(job_id, pid=proc.pid)
 
-        stdout, stderr = proc.communicate(timeout=600)
+        # No timeout: a full retag runs for hours; the Stop route ends it.
+        stdout, stderr = proc.communicate()
         return_code = proc.returncode
         import time as _time
-        _update_retag_job(
-            job_id,
-            stdout=stdout,
-            stderr=stderr,
-            status="done" if return_code == 0 else "error",
-            pid=None,
-            finished_at=_time.time(),
-        )
+        if (_get_retag_job(job_id) or {}).get("status") == "running":
+            _update_retag_job(
+                job_id,
+                stdout=stdout,
+                stderr=stderr,
+                status="done" if return_code == 0 else "error",
+                pid=None,
+                finished_at=_time.time(),
+            )
 
         _invalidate_tag_db_cache()
 
-    except subprocess.TimeoutExpired:
-        if proc is not None and proc.pid:
-            _terminate_retag_pid(proc.pid)
-        import time as _time
-        _update_retag_job(
-            job_id,
-            status="error",
-            stderr="Smart retag timed out after 10 minutes",
-            pid=None,
-            finished_at=_time.time(),
-        )
     except Exception as e:
         if proc is not None and proc.pid:
             _terminate_retag_pid(proc.pid)
@@ -611,15 +570,15 @@ def smart_retag():
         except (TypeError, ValueError):
             args_list += ["--workers", str(max(1, min(3, cap)))]
 
-    if _retag_tracker.has_active("starting", "running"):
+    job_id = _retag_tracker.start_exclusive(
+        ("starting", "running"), status="starting", stdout="", stderr="", pid=None)
+    if not job_id:
         return jsonify({"ok": False, "error": "A smart retag is already running"}), 409
-    job_id = _retag_tracker.create(status="starting", stdout="", stderr="", pid=None)
 
     repo_dir = current_app.config["REPO_DIR"]
     settings = dict(current_app.config)
-    t = threading.Thread(target=_run_smart_retag, args=(job_id, repo_dir, settings, args_list))
-    t.daemon = True
-    t.start()
+    _retag_tracker.start_thread(job_id, _run_smart_retag, job_id, repo_dir, settings, args_list,
+                                error_field="stderr")
 
     return jsonify({"ok": True, "job_id": job_id})
 
@@ -640,17 +599,19 @@ def smart_retag_stop(job_id):
     if not job:
         return jsonify({"ok": False, "error": "Job not found"}), 404
     status = job.get("status")
-    pid = job.get("pid")
     if status not in ("starting", "running"):
         return jsonify({"ok": True, "already_stopped": True, "status": status})
 
-    stopped = _terminate_retag_pid(pid)
     import time as _time
-    _update_retag_job(
-        job_id,
-        status="error",
-        stderr="Stopped by user request",
-        pid=None,
-        finished_at=_time.time(),
-    )
+    with _retag_start_lock:
+        # Marking it stopped first makes the worker skip Popen if it hasn't run yet.
+        pid = (_retag_tracker.get(job_id) or {}).get("pid")
+        _update_retag_job(
+            job_id,
+            status="error",
+            stderr="Stopped by user request",
+            pid=None,
+            finished_at=_time.time(),
+        )
+    stopped = _terminate_retag_pid(pid) if pid else True
     return jsonify({"ok": True, "stopped": stopped, "job_id": job_id})

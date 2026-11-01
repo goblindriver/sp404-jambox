@@ -3,6 +3,7 @@ import os
 import shutil
 
 from . import _state
+from .archive import is_ingested
 
 
 def cleanup_downloads(dry_run=False):
@@ -33,7 +34,8 @@ def cleanup_downloads(dry_run=False):
             if ext in _state.ARCHIVE_EXTENSIONS:
                 name_no_ext = os.path.splitext(item)[0]
                 archive_dest = os.path.join(_state.RAW_ARCHIVE, name_no_ext)
-                if os.path.exists(archive_dest):
+                # Only once ingest finished: a folder alone may be a failed extraction.
+                if is_ingested(archive_dest):
                     size = os.path.getsize(full_path)
                     print(f"  {'Would remove' if dry_run else 'Removing'}: {item} ({_state._human_size(size)})")
                     if not dry_run:
@@ -73,7 +75,8 @@ def purge_raw_archive(dry_run=False):
 def disk_usage_report():
     """Report disk usage for Downloads and library."""
     import shutil as sh
-    total, used, free = sh.disk_usage('/')
+    usage_root = _state.LIBRARY if os.path.isdir(_state.LIBRARY) else os.path.expanduser('~')
+    total, used, free = sh.disk_usage(usage_root)
 
     downloads_size = _state._dir_size(_state.DOWNLOADS) if os.path.isdir(_state.DOWNLOADS) else 0
     archive_size = _state._dir_size(_state.RAW_ARCHIVE) if os.path.isdir(_state.RAW_ARCHIVE) else 0
@@ -90,7 +93,7 @@ def disk_usage_report():
             ext = os.path.splitext(item)[1].lower()
             if ext in _state.ARCHIVE_EXTENSIONS:
                 name_no_ext = os.path.splitext(item)[0]
-                if os.path.exists(os.path.join(_state.RAW_ARCHIVE, name_no_ext)):
+                if is_ingested(os.path.join(_state.RAW_ARCHIVE, name_no_ext)):
                     cleanable += os.path.getsize(full)
                     cleanable_count += 1
 

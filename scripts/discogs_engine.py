@@ -141,6 +141,11 @@ def _download_if_needed(url, dest):
         return dest
 
 
+def model_path():
+    """Where the Discogs-EffNet ONNX model lives once downloaded."""
+    return os.path.join(_models_dir(), "discogs-effnet-bsdynamic-1.onnx")
+
+
 def _get_model():
     """Load the ONNX model and class labels. Lazy singleton."""
     global _onnx_session, _class_labels
@@ -150,10 +155,10 @@ def _get_model():
     import onnxruntime as ort
 
     models = _models_dir()
-    onnx_path = _download_if_needed(MODEL_URL, os.path.join(models, "discogs-effnet-bsdynamic-1.onnx"))
+    onnx_path = _download_if_needed(MODEL_URL, model_path())
     meta_path = _download_if_needed(META_URL, os.path.join(models, "discogs-effnet.json"))
 
-    with open(meta_path) as f:
+    with open(meta_path, encoding="utf-8") as f:
         meta = json.load(f)
     _class_labels = meta["classes"]
 
@@ -270,10 +275,10 @@ def batch_classify(library_root, tag_db, tags_file, skip_dirs=None,
                    checkpoint_every=200, limit=None, resume=True):
     """Classify all audio files and store results in the tag DB.
 
-    Checkpoints use upsert_tag_entries (only changed rows) to avoid OOM from
-    re-serializing the entire tag DB every N files.
+    Checkpoints merge only the three Discogs fields into each row, so they
+    never revert fields other writers changed during a long run.
     """
-    from jambox_config import upsert_tag_entries
+    from jambox_config import merge_tag_fields
     if skip_dirs is None:
         skip_dirs = {"_RAW-DOWNLOADS", "_GOLD", "_DUPES", "_QUARANTINE",
                      "Stems", "_LONG-HOLD"}
@@ -296,24 +301,25 @@ def batch_classify(library_root, tag_db, tags_file, skip_dirs=None,
     print(f"[Discogs] Classifying {total} files ({already_done} already done)...")
     t0 = time.time()
     errors = 0
-    pending_save = []
+    pending_save = {}
 
     for i, (rel_path, abs_path) in enumerate(pending):
         try:
             result = classify_styles(abs_path)
-            entry = tag_db.get(rel_path, {})
-            entry["discogs_styles"] = result["styles"]
-            entry["parent_genre"] = result["parent_genre"]
-            entry["danceability"] = result["danceability"]
-            tag_db[rel_path] = entry
-            pending_save.append(rel_path)
+            fields = {
+                "discogs_styles": result["styles"],
+                "parent_genre": result["parent_genre"],
+                "danceability": result["danceability"],
+            }
+            tag_db.setdefault(rel_path, {}).update(fields)
+            pending_save[rel_path] = fields
         except Exception as e:
             errors += 1
             print(f"  ERROR [{rel_path}]: {e}", file=sys.stderr)
             continue
 
         if (i + 1) % checkpoint_every == 0 and pending_save:
-            upsert_tag_entries(tags_file, {r: tag_db[r] for r in pending_save})
+            merge_tag_fields(tags_file, pending_save)
             pending_save.clear()
             gc.collect()
             elapsed = time.time() - t0
@@ -323,7 +329,7 @@ def batch_classify(library_root, tag_db, tags_file, skip_dirs=None,
                   f"ETA {eta/60:.0f}m, errors={errors}")
 
     if pending_save:
-        upsert_tag_entries(tags_file, {r: tag_db[r] for r in pending_save})
+        merge_tag_fields(tags_file, pending_save)
     elapsed = time.time() - t0
     rate = (total - errors) / max(elapsed, 1)
     print(f"[Discogs] Done. {total - errors} classified, {errors} errors, "
@@ -337,7 +343,7 @@ def batch_classify(library_root, tag_db, tags_file, skip_dirs=None,
 
 def main():
     sys.path.insert(0, os.path.dirname(__file__))
-    from jambox_config import load_settings, load_tag_db, save_tag_db, LIBRARY_SKIP_DIRS
+    from jambox_config import export_tags_json, load_settings, load_tag_db, LIBRARY_SKIP_DIRS
 
     parser = argparse.ArgumentParser(description="Discogs Genre Classification Engine")
     group = parser.add_mutually_exclusive_group(required=True)
@@ -401,7 +407,7 @@ def main():
             limit=args.limit,
             resume=not args.no_resume,
         )
-        save_tag_db(tags_file, db, allow_shrink=False)
+        export_tags_json(tags_file)
         return 0
 
 

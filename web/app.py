@@ -47,6 +47,10 @@ app.register_blueprint(media_bp, url_prefix='/api')
 app.register_blueprint(blackout_bp, url_prefix='/api')
 app.register_blueprint(karaoke_bp, url_prefix='/api')
 
+# Host allowlist + CSRF header/Origin checks + request size cap
+from api._security import install_guards
+install_guards(app)
+
 
 @app.errorhandler(HTTPException)
 def handle_http_error(exc):
@@ -69,5 +73,6 @@ def index():
 
 
 if __name__ == '__main__':
-    print("SP-404 Jambox UI: http://localhost:5404")
-    app.run(host='127.0.0.1', port=5404, debug=app.config['WEB_DEBUG'])
+    port = app.config['WEB_PORT']
+    print(f"SP-404 Jambox UI: http://localhost:{port}")
+    app.run(host='127.0.0.1', port=port, debug=app.config['WEB_DEBUG'])

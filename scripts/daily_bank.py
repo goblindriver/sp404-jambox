@@ -37,7 +37,7 @@ def _load_trending_terms():
     path = SETTINGS.get("TRENDING_FILE", "")
     if path and os.path.exists(path):
         try:
-            with open(path) as handle:
+            with open(path, encoding="utf-8") as handle:
                 payload = json.load(handle)
         except (OSError, json.JSONDecodeError):
             return list(DEFAULT_TRENDING_TERMS)

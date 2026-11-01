@@ -12,6 +12,7 @@ Usage:
     python scripts/muscle_tags.py --round 1 --apply
 """
 import argparse
+import copy
 import os
 import re
 import sys
@@ -19,7 +20,7 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-from jambox_config import load_settings_for_script, load_tag_db, save_tag_db
+from jambox_config import diff_tag_db, load_settings_for_script, load_tag_db, write_tag_changes
 from tag_hygiene import _expected_playability, _normalize_tags
 
 SETTINGS = load_settings_for_script(__file__)
@@ -301,6 +302,7 @@ def main():
     print(f"\n=== Muscle Tags ({mode}, {rounds_label}) ===")
     print(f"  Library: {len(tag_db)} files\n")
 
+    before = copy.deepcopy(tag_db) if args.apply else {}
     changes = apply_rules(tag_db, rounds=args.rounds, apply=args.apply)
 
     print(f"\n  Total changes: {len(changes)}")
@@ -308,7 +310,8 @@ def main():
         print("  (dry run — use --apply to write)")
 
     if args.apply and changes:
-        save_tag_db(TAGS_FILE, tag_db)
+        upserts, merges = diff_tag_db(before, tag_db)
+        write_tag_changes(TAGS_FILE, upserts=upserts, merges=merges)
         print("  Saved to tag database.")
 
 

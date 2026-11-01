@@ -12,6 +12,7 @@ import uuid
 from flask import Blueprint, jsonify, request, send_file, Response, current_app
 
 from api._helpers import json_object_body as _json_object_body
+from jambox_config import plex_data_dir
 
 music_bp = Blueprint('music', __name__)
 
@@ -96,7 +97,7 @@ def music_status():
 
     # Fallback to old index
     try:
-        with open(_index_file()) as f:
+        with open(_index_file(), encoding='utf-8') as f:
             index = json.load(f)
         count = len(index.get('tracks', index))
         return jsonify({
@@ -281,9 +282,9 @@ def album_art():
 
     try:
         import sqlite3
-        blobs_db = os.path.expanduser(
-            "~/Library/Application Support/Plex Media Server/"
-            "Plug-in Support/Databases/com.plexapp.plugins.library.blobs.db"
+        blobs_db = os.path.join(
+            current_app.config.get('PLEX_DATA_DIR') or plex_data_dir(),
+            "Plug-in Support", "Databases", "com.plexapp.plugins.library.blobs.db",
         )
         if not os.path.exists(blobs_db):
             return jsonify({'error': 'Plex blobs database not found'}), 404
@@ -322,8 +323,8 @@ def album_art():
 
     # Fallback: try Plex metadata filesystem
     try:
-        meta_base = os.path.realpath(os.path.expanduser(
-            "~/Library/Application Support/Plex Media Server/Metadata"
+        meta_base = os.path.realpath(os.path.join(
+            current_app.config.get('PLEX_DATA_DIR') or plex_data_dir(), "Metadata"
         ))
         # The hash is in the URL — sanitize to alphanumeric only
         if 'posters/' in thumb:
@@ -404,6 +405,8 @@ def _get_split_job(job_id):
 
 def _run_split(job_id, track_data):
     """Background thread: run demucs and tag stems with Plex metadata."""
+    import shutil
+    tmp_dir = None
     try:
         _update_split_job(job_id, status='splitting')
 
@@ -414,7 +417,7 @@ def _run_split(job_id, track_data):
             sys.path.insert(0, scripts_dir)
 
         from stem_split import (run_demucs, copy_stem_to_library, tag_stem,
-                                source_id, get_duration, load_tag_db, save_tag_db,
+                                source_id, get_duration, save_stem_rows,
                                 STEM_TYPE_MAP)
         from plex_client import MOOD_TO_VIBE, STYLE_TO_GENRE
 
@@ -478,7 +481,7 @@ def _run_split(job_id, track_data):
             'source': 'personal',
         }
 
-        db = load_tag_db()
+        stem_rows = {}
         created_stems = []
 
         for stem_name, stem_path in stems:
@@ -502,7 +505,7 @@ def _run_split(job_id, track_data):
                 stem_entry.setdefault('tags', []).append('personal')
                 stem_entry['tags'] = sorted(stem_entry['tags'])
 
-            db[stem_rel] = stem_entry
+            stem_rows[stem_rel] = stem_entry
             tc = STEM_TYPE_MAP.get(stem_name, 'BRK')
             created_stems.append({
                 'stem': stem_name,
@@ -511,10 +514,7 @@ def _run_split(job_id, track_data):
                 'duration': dur,
             })
 
-        save_tag_db(db)
-
-        import shutil
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        save_stem_rows(stem_rows)
 
         import time as _time
         _update_split_job(
@@ -531,6 +531,9 @@ def _run_split(job_id, track_data):
     except Exception as e:
         import time as _time
         _update_split_job(job_id, status='error', finished_at=_time.time(), result=str(e))
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @music_bp.route('/music/split', methods=['POST'])
@@ -559,18 +562,17 @@ def split_track():
     if not track_data.get('file_path') or not os.path.isfile(track_data['file_path']):
         return jsonify({'ok': False, 'error': 'Track file not accessible'}), 404
 
-    if _split_tracker.has_active('starting', 'splitting'):
-        return jsonify({'ok': False, 'error': 'Already splitting'}), 409
-    job_id = _split_tracker.create(
+    job_id = _split_tracker.start_exclusive(
+        ('starting', 'splitting'),
         status='starting',
         track_id=track_id,
         track=f"{track_data.get('artist', '?')} — {track_data.get('title', '?')}",
         result=None,
     )
+    if not job_id:
+        return jsonify({'ok': False, 'error': 'Already splitting'}), 409
 
-    t = threading.Thread(target=_run_split, args=(job_id, track_data))
-    t.daemon = True
-    t.start()
+    _split_tracker.start_thread(job_id, _run_split, job_id, track_data, error_field='result')
 
     job = _get_split_job(job_id) or {}
     return jsonify({'ok': True, 'job_id': job_id, 'track': job.get('track')})

@@ -8,7 +8,7 @@ Usage:
     python scripts/fetch_samples.py --bank b     # single bank
     python scripts/fetch_samples.py --bank b --pad 1  # single pad
 """
-import os, sys, re, json, argparse, hashlib, random, time
+import os, sys, re, json, argparse, hashlib, random, shutil, time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(SCRIPT_DIR)
@@ -20,7 +20,8 @@ from jambox_config import (
     load_bank_config,
     load_scoring_config,
     load_settings_for_script,
-    upsert_tag_entries,
+    library_rel_path,
+    merge_tag_fields,
 )
 from jambox_cache import load_score_cache, save_score_cache, score_cache_key, tags_freshness_marker
 from wav_utils import convert_and_tag, wav_identity
@@ -28,6 +29,11 @@ from tag_vocab import (
     TYPE_CODES as _VOCAB_TYPE_CODES,
     PLAYABILITIES as _VOCAB_PLAYABILITIES,
     GENRE_ALIASES, TEXTURE_ALIASES, VIBE_ALIASES,
+    TEXTURES as _VOCAB_TEXTURES,
+    VIBES as _VOCAB_VIBES,
+    GENRES as _VOCAB_GENRES,
+    TYPE_CODE_ALIASES,
+    canonical_key,
 )
 from clap_engine import EmbeddingStore, embed_text, cosine_similarity
 from discogs_fetch_bridge import discogs_keyword_tokens
@@ -96,7 +102,10 @@ def _ensure_settings():
     if FETCH_COOLDOWN_SECONDS is None:
         FETCH_COOLDOWN_SECONDS = int(SETTINGS.get("FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 * 3600) or 21600)
     if _WEIGHTS_HASH is None:
-        _WEIGHTS_HASH = hashlib.md5(json.dumps(SCORING_WEIGHTS, sort_keys=True).encode()).hexdigest()[:8]
+        # Hash the whole scoring config: clap/performance edits change results too.
+        _WEIGHTS_HASH = hashlib.md5(
+            json.dumps(SCORING_CONFIG, sort_keys=True, default=str).encode()
+        ).hexdigest()[:8]
 
 # SD Card Intelligence — performance data for scoring boosts
 _PERFORMANCE_PROFILE = None
@@ -237,13 +246,7 @@ def _load_performance_profile():
 
 def _library_rel_path(full_path):
     """Tag DB keys are relative to the sample library root."""
-    full_path = os.path.normpath(os.path.abspath(full_path))
-    lib = os.path.normpath(os.path.abspath(LIBRARY))
-    prefix = lib + os.sep
-    if not full_path.startswith(prefix):
-        return None
-    rel = full_path[len(prefix) :]
-    return rel.replace("\\", "/")
+    return library_rel_path(full_path, LIBRARY)
 
 
 def _persist_sp404_wav_identity(tag_db, rel_path, staged_path):
@@ -263,7 +266,7 @@ def _persist_sp404_wav_identity(tag_db, rel_path, staged_path):
     updated["sp404_wav_identity"] = ident
     tag_db[rel_path] = updated
     try:
-        upsert_tag_entries(TAGS_FILE, {rel_path: updated})
+        merge_tag_fields(TAGS_FILE, {rel_path: {"sp404_wav_identity": ident}})
     except Exception:
         return False
     return True
@@ -277,7 +280,31 @@ PLAYABILITY_KEYWORDS = _VOCAB_PLAYABILITIES
 
 STOP_WORDS = {"a", "an", "the", "or", "and", "in", "for", "not", "but", "with", "style", "of"}
 
-_ALL_ALIASES = {**GENRE_ALIASES, **TEXTURE_ALIASES, **VIBE_ALIASES}
+# Words already canonical in some dimension are never aliased: "warm",
+# "dusty" and "raw" are textures, so the vibe aliases (warm -> comforting,
+# ...) must not rewrite them in pad descriptions.
+_CANONICAL_WORDS = _VOCAB_TEXTURES | _VOCAB_VIBES | _VOCAB_GENRES
+_ALIAS_TABLES = (GENRE_ALIASES, TEXTURE_ALIASES, VIBE_ALIASES)
+_MULTIWORD_ALIASES = sorted(
+    {k: v for table in _ALIAS_TABLES for k, v in table.items() if " " in k}.items(),
+    key=lambda kv: -len(kv[0]),
+)
+
+
+def _canonical_keyword(word):
+    if word in _CANONICAL_WORDS:
+        return word
+    for table in _ALIAS_TABLES:
+        if word in table:
+            return table[word]
+    return word
+
+
+def _join_multiword_aliases(query):
+    """'boom bap' -> 'boom-bap', 'hip hop' -> 'hiphop' before tokenizing."""
+    for phrase, canonical in _MULTIWORD_ALIASES:
+        query = re.sub(r"(?i)(?<!\S)" + re.escape(phrase) + r"(?!\S)", canonical, query)
+    return query
 
 # Populated by _ensure_settings() on first use.
 _WEIGHTS_HASH = None
@@ -300,24 +327,6 @@ for tc, relatives in _RELATED_TYPE_CODES_RAW.items():
         _RELATED_TYPE_CODES.setdefault(rel, set()).add(tc)
 
 
-# Legacy / hand-written type codes that appear in presets but aren't in the
-# canonical vocab (scripts/tag_vocab.py). Without this they fall through as
-# plain keywords and the pad loses its type filter entirely. Each alias maps
-# to (canonical_code, extra_keyword_or_None) so the specific meaning survives.
-TYPE_CODE_ALIASES = {
-    "SMP": ("BRK", None),
-    "HHT": ("HAT", None),
-    "TOM": ("PRC", "tom"),
-    "CHR": ("VOX", "choir"),
-    "BASS": ("BAS", None),
-    "FDL": ("STR", "fiddle"),
-    "HAR": ("WND", "harmonica"),
-    "GLT": ("FX", "glitch"),
-    "TEX": ("AMB", "texture"),
-    "SKA": ("HRN", "ska"),
-}
-
-
 def parse_pad_query(query):
     """Parse a pad description into structured search terms.
 
@@ -330,7 +339,7 @@ def parse_pad_query(query):
     """
     _ensure_settings()
     query = "" if query is None else str(query)
-    words = query.strip().split()
+    words = _join_multiword_aliases(query).strip().split()
     result = {
         "type_code": None,
         "playability": None,
@@ -370,16 +379,16 @@ def parse_pad_query(query):
                 continue
 
         # Musical key (e.g., "Am", "Dm", "F", "Fs")
-        key_match = re.match(r"^([A-G][bs]?m?)$", word)
-        if key_match and lower not in STOP_WORDS:
-            result["key"] = word
+        key = canonical_key(word) if word[:1] in "ABCDEFG" and lower not in STOP_WORDS else None
+        if key:
+            result["key"] = key
             continue
 
         # Regular keyword
         if lower not in STOP_WORDS and len(lower) >= 2:
             result["keywords"].add(lower)
 
-    result["keywords"] = {_ALL_ALIASES.get(kw, kw) for kw in result["keywords"]}
+    result["keywords"] = {_canonical_keyword(kw) for kw in result["keywords"]}
 
     result["energy"] = None
     for kw in result["keywords"]:
@@ -566,8 +575,8 @@ def search_local(query, bank_config, tag_db, used_files, min_score=8, cache_entr
         )
     if matches:
         picked = choose_diverse_match(matches, deterministic=FETCH_DETERMINISTIC)
-        return picked["path"], picked["score"]
-    return None, 0
+        return picked["path"], picked["score"], [picked] + [m for m in matches if m is not picked]
+    return None, 0, []
 
 
 def rank_library_matches(query, bank_config=None, tag_db=None, used_files=None, limit=12, min_score=0, cache_entries=None):
@@ -591,13 +600,17 @@ def rank_library_matches_legacy(query, bank_config=None, tag_db=None, used_files
     _ensure_settings()
     parsed = parse_pad_query(query)
     bank_config = bank_config or {}
+    # The persistent score cache is keyed to the library's tag DB, so only
+    # results ranked against that DB may be saved; a caller-supplied dict
+    # (eval fixtures, retrieval subsets) gets a throwaway in-memory cache.
+    uses_library_db = tag_db is None
     tag_db = tag_db if tag_db is not None else load_tag_db()
     tag_db = tag_db if isinstance(tag_db, dict) else {}
     used_files = used_files or set()
 
     owns_cache = cache_entries is None
     if owns_cache:
-        cache_entries = load_score_cache(LIBRARY)
+        cache_entries = load_score_cache(LIBRARY) if uses_library_db else {}
 
     cache_key = score_cache_key(
         parsed,
@@ -632,7 +645,7 @@ def rank_library_matches_legacy(query, bank_config=None, tag_db=None, used_files
         cached_results.sort(key=lambda item: item["score"], reverse=True)
         cached_results = cached_results[:200]
         cache_entries[cache_key] = cached_results
-        if owns_cache:
+        if owns_cache and uses_library_db:
             save_score_cache(LIBRARY, cache_entries)
 
     filtered = [
@@ -712,31 +725,56 @@ def load_config():
     return load_bank_config(CONFIG_PATH, strict=True)
 
 
-def clear_staging_wavs(bank=None, pad=None):
-    """Remove staged WAV outputs for the targeted scope.
+_PAD_WAV_RE = re.compile(r"([A-J])(\d{7})\.WAV")
 
-    bank=None, pad=None → wipe all WAVs (full fetch).
-    bank='b', pad=None → wipe only Bank B WAVs.
-    bank='b', pad=3    → wipe only B0000003.WAV.
+
+def _pad_wav_in_scope(name, bank=None, pad=None):
+    """True for a pad WAV name ('B0000003.WAV') inside the bank/pad scope."""
+    m = _PAD_WAV_RE.fullmatch(name.upper())
+    if not m:
+        return False
+    if bank and m.group(1) != str(bank).upper():
+        return False
+    return pad is None or int(m.group(2)) == int(pad)
+
+
+def clear_staging_wavs(bank=None, pad=None):
+    """Remove staged pad WAVs for the targeted scope.
+
+    bank=None, pad=None → every pad WAV (full fetch).
+    bank='b'            → Bank B's pad WAVs.
+    bank='b', pad=3     → B0000003.WAV.
     """
     _ensure_settings()
     if not os.path.isdir(STAGING):
         return
-
-    if bank and pad:
-        target = f"{bank.upper()}{int(pad):07d}.WAV"
-        path = os.path.join(STAGING, target)
-        if os.path.isfile(path):
-            os.remove(path)
-        return
-
-    prefix = bank.upper() if bank else None
     for name in os.listdir(STAGING):
-        if not name.upper().endswith('.WAV'):
-            continue
-        if prefix and not name.upper().startswith(prefix):
-            continue
-        os.remove(os.path.join(STAGING, name))
+        if _pad_wav_in_scope(name, bank, pad):
+            os.remove(os.path.join(STAGING, name))
+
+
+def publish_staging(bank=None, pad=None):
+    """Make the card template's SMPL folder match staging for the fetched scope.
+
+    Template WAVs for every pad in scope are removed first, so a pad that
+    found no match this run ends up empty instead of keeping an old sample.
+    Returns the number of WAVs published.
+    """
+    _ensure_settings()
+    os.makedirs(SMPL_DIR, exist_ok=True)
+    for name in os.listdir(SMPL_DIR):
+        if _pad_wav_in_scope(name, bank, pad):
+            os.remove(os.path.join(SMPL_DIR, name))
+    published = 0
+    if os.path.isdir(STAGING):
+        for name in os.listdir(STAGING):
+            if _pad_wav_in_scope(name, bank, pad):
+                shutil.copy2(os.path.join(STAGING, name), os.path.join(SMPL_DIR, name))
+                published += 1
+    return published
+
+
+FETCH_CONVERT_ATTEMPTS = 3
 
 
 def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_files, cache_entries=None):
@@ -745,8 +783,11 @@ def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_file
     sp404_name = f"{bank_letter.upper()}{pad_number:07d}.WAV"
     staged_path = os.path.join(STAGING, sp404_name)
 
-    local_path, score = search_local(pad_query, bank_config, tag_db, used_files, cache_entries=cache_entries)
-    if local_path:
+    _path, _score, candidates = search_local(pad_query, bank_config, tag_db, used_files, cache_entries=cache_entries)
+    # A file that won't convert (moved, corrupt, ffmpeg hiccup) falls through
+    # to the next-ranked candidate instead of leaving the pad empty.
+    for candidate in candidates[:FETCH_CONVERT_ATTEMPTS]:
+        local_path, score = candidate["path"], candidate["score"]
         print(f"    LOCAL (score={score}): {os.path.relpath(local_path, LIBRARY)}")
         if convert_and_tag(local_path, staged_path, bank_letter.upper(), pad_number):
             used_files.add(local_path)  # mark as used
@@ -757,7 +798,8 @@ def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_file
             return staged_path
         print(f"    Conversion failed")
 
-    print(f"    NO MATCH found in local library")
+    if not candidates:
+        print(f"    NO MATCH found in local library")
     return None
 
 
@@ -841,12 +883,8 @@ def main():
     print(f"Total: {total_fetched}/{total_pads} pads filled")
     print(f"Staged in: {STAGING}")
 
-    if total_fetched > 0:
-        os.makedirs(SMPL_DIR, exist_ok=True)
-        import shutil
-        for f in generated_files:
-            shutil.copy2(f, SMPL_DIR)
-        print(f"Copied to: {SMPL_DIR}")
+    published = publish_staging(bank=args.bank, pad=args.pad)
+    print(f"Published {published} pads to: {SMPL_DIR}")
 
 
 if __name__ == '__main__':

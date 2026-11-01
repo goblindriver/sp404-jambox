@@ -1,31 +1,16 @@
 """Core ingest functions: single files, packs, archives, and one-shot pass."""
 import os
 import shutil
-import time
 
 from . import _state
 from .archive import (
     categorize_wav, make_prefix, read_source_context,
     extract_rar, has_rar_files, extract_archive, _copy_as_flac,
     is_sample_pack, should_ignore, archive_has_audio,
+    is_ingested, mark_ingested,
 )
 from .enrichment import _route_and_process
-
-
-def _store_source_context(wav_path, context):
-    """Store Cowork source context in tag DB for a file."""
-    from jambox_config import load_tag_db, save_tag_db
-    tags_path = os.path.join(_state.LIBRARY, '_tags.json')
-    try:
-        tags = load_tag_db(tags_path)
-        rel = os.path.relpath(wav_path, _state.LIBRARY)
-        if rel in tags:
-            tags[rel]['cowork_source'] = context
-        else:
-            tags[rel] = {'cowork_source': context}
-        save_tag_db(tags_path, tags)
-    except Exception:
-        pass
+from jambox_config import library_rel_path
 
 
 def ingest_single_file(filepath, dry_run=False):
@@ -55,11 +40,8 @@ def ingest_single_file(filepath, dry_run=False):
     actual_dest = _copy_as_flac(filepath, dest_path)
     print(f"  \u2192 {category}/{os.path.basename(actual_dest)}")
 
-    if source_context:
-        _store_source_context(actual_dest, source_context)
-
-    rel_path = os.path.relpath(actual_dest, _state.LIBRARY)
-    route_result = _route_and_process(actual_dest, rel_path)
+    rel_path = library_rel_path(actual_dest, _state.LIBRARY)
+    route_result = _route_and_process(actual_dest, rel_path, source_context)
     if route_result == 'duplicate':
         print(f"  Duplicate \u2014 moved to _DUPES")
         return 0
@@ -94,7 +76,8 @@ def ingest_pack(pack_dir, dry_run=False):
     if has_rar_files(pack_dir):
         extract_dir = os.path.join(_state.RAW_ARCHIVE, pack_name)
         if not os.path.exists(extract_dir) or not any(
-            f.endswith('.wav') for _, _, files in os.walk(extract_dir) for f in files
+            os.path.splitext(f)[1].lower() in _state.AUDIO_EXTENSIONS
+            for _, _, files in os.walk(extract_dir) for f in files
         ):
             if dry_run:
                 print(f"  Would extract RAR to: {extract_dir}")
@@ -137,11 +120,8 @@ def ingest_pack(pack_dir, dry_run=False):
             actual = _copy_as_flac(wav, dest_path)
             counts[category] = counts.get(category, 0) + 1
 
-            if source_context:
-                _store_source_context(actual, source_context)
-
-            rel = os.path.relpath(actual, _state.LIBRARY)
-            route_result = _route_and_process(actual, rel)
+            rel = library_rel_path(actual, _state.LIBRARY)
+            route_result = _route_and_process(actual, rel, source_context)
             if route_result == 'duplicate':
                 counts[category] = counts.get(category, 0) - 1
 
@@ -151,12 +131,8 @@ def ingest_pack(pack_dir, dry_run=False):
     print(f"  Total: {total} files {'would be ' if dry_run else ''}organized")
 
     if not dry_run and total > 0:
-        try:
-            if os.path.isdir(pack_dir):
-                with open(marker_path, 'w') as f:
-                    f.write(f"Ingested {total} files at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        except OSError as e:
-            print(f"  Could not write marker: {e}")
+        if os.path.isdir(pack_dir):
+            mark_ingested(pack_dir, total)
 
         archive_dest = os.path.join(_state.RAW_ARCHIVE, pack_name)
         if os.path.isdir(pack_dir) and pack_dir.startswith(_state.DOWNLOADS) and not os.path.exists(archive_dest):
@@ -177,9 +153,11 @@ def ingest_archive_file(filepath, dry_run=False):
     name_no_ext = os.path.splitext(fname)[0]
 
     extract_dest = os.path.join(_state.RAW_ARCHIVE, name_no_ext)
-    if os.path.exists(extract_dest):
-        print(f"  Already extracted: {name_no_ext}")
+    if is_ingested(extract_dest):
+        print(f"  Already ingested: {name_no_ext}")
         return 0
+    if os.path.exists(extract_dest):
+        print(f"  Re-extracting (previous run did not finish): {name_no_ext}")
 
     print(f"\n{'='*60}")
     print(f"Processing archive: {fname}")
@@ -224,11 +202,8 @@ def ingest_archive_file(filepath, dry_run=False):
             os.makedirs(dest_dir, exist_ok=True)
             actual = _copy_as_flac(wav, dest_path)
             counts[category] = counts.get(category, 0) + 1
-            if source_context:
-                _store_source_context(actual, source_context)
-
-            rel = os.path.relpath(actual, _state.LIBRARY)
-            route_result = _route_and_process(actual, rel)
+            rel = library_rel_path(actual, _state.LIBRARY)
+            route_result = _route_and_process(actual, rel, source_context)
             if route_result == 'duplicate':
                 counts[category] = counts.get(category, 0) - 1
 
@@ -236,6 +211,9 @@ def ingest_archive_file(filepath, dry_run=False):
         print(f"  \u2192 {cat}: {counts[cat]} files")
     total = sum(counts.values())
     print(f"  Total: {total} files {'would be ' if dry_run else ''}organized")
+
+    if not dry_run:
+        mark_ingested(extract_dest, total)
 
     if not dry_run and filepath.startswith(_state.DOWNLOADS):
         try:

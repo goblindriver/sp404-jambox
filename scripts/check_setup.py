@@ -10,6 +10,7 @@ import sys
 from jambox_config import (
     ConfigError,
     build_subprocess_env,
+    find_sd_card,
     load_settings_for_script,
     load_tag_db,
     resolve_command,
@@ -137,7 +138,7 @@ def run_checks():
         ("Vibe eval dir", settings.get("VIBE_EVAL_DIR", os.path.join(repo_dir, "data", "evals")), False),
         ("Sample library", settings["SAMPLE_LIBRARY"], False),
         ("Downloads path", settings["DOWNLOADS_PATH"], False),
-        ("SD card mount", settings["SD_CARD"], False),
+        ("SD card mount", find_sd_card(settings) or "(not detected; set SP404_SD_CARD)", False),
         ("sd-card-template SMPL", settings["SMPL_DIR"], True),
     ):
         exists = os.path.exists(value)
@@ -190,8 +191,12 @@ def run_checks():
 
     messages.append("")
     messages.append("Hints:")
-    messages.append("  - Install Python deps with: .venv/bin/pip install -r requirements.txt")
-    messages.append("  - On macOS/Homebrew: brew install ffmpeg unar chromaprint")
+    if os.name == "nt":
+        messages.append("  - Install Python deps with: .venv\\Scripts\\pip install -r requirements.txt -r requirements-dev.txt")
+        messages.append("  - Tools: winget install Gyan.FFmpeg (plus 7-Zip for .rar/.7z; fpcalc from acoustid.org/chromaprint)")
+    else:
+        messages.append("  - Install Python deps with: .venv/bin/pip install -r requirements.txt -r requirements-dev.txt")
+        messages.append("  - On macOS/Homebrew: brew install ffmpeg unar chromaprint")
     messages.append("  - Set SP404_LLM_ENDPOINT to enable natural-language prompts.")
     messages.append("  - Set SP404_VIBE_PARSER_MODE=rag or fine_tuned to evaluate grounded/tuned parsing.")
     messages.append("  - Set SP404_MAGENTA_COMMAND and SP404_MUSICVAE_CHECKPOINT_DIR to enable Magenta patterns.")

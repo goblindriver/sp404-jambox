@@ -565,6 +565,7 @@ class DedupeTests(unittest.TestCase):
             for name in db:
                 with open(os.path.join(tempdir, name), "wb") as handle:
                     handle.write(b"data")
+            jambox_config.upsert_tag_entries(tags_path, db)
 
             with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch.object(deduplicate_samples, "TAGS_FILE", tags_path), patch.object(deduplicate_samples, "DUPES_DIR", os.path.join(tempdir, "_DUPES")):
                 updated = deduplicate_samples.apply_clean(
@@ -576,8 +577,8 @@ class DedupeTests(unittest.TestCase):
             self.assertNotIn("dupe.wav", updated)
             self.assertFalse(os.path.exists(os.path.join(tempdir, "dupe.wav")))
             self.assertTrue(os.path.exists(os.path.join(tempdir, "_DUPES", "dupe.wav")))
-            with open(tags_path, encoding="utf-8") as handle:
-                persisted = json.load(handle)
+            persisted = jambox_config.load_tag_db(tags_path)
+            self.assertIn("keep.wav", persisted)
             self.assertNotIn("dupe.wav", persisted)
 
     def test_llm_tag_filename_returns_tags_from_chat_response(self):

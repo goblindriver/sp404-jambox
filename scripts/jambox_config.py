@@ -1,8 +1,12 @@
 """Shared runtime settings for the SP-404 Jambox app and scripts."""
 
+import contextlib
 import json
 import os
 import shutil
+import subprocess
+import sys
+import time
 
 import yaml
 
@@ -16,7 +20,7 @@ def _load_dotenv():
     if not os.path.isfile(env_file):
         return
     try:
-        with open(env_file) as f:
+        with open(env_file, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -40,14 +44,74 @@ _load_dotenv()
 
 DEFAULT_SAMPLE_LIBRARY = "~/Music/SP404-Sample-Library"
 DEFAULT_DOWNLOADS = "~/Downloads"
-DEFAULT_SD_CARD = "/Volumes/SP-404SX"
+IS_MACOS = sys.platform == "darwin"
+# macOS mounts the card at a fixed path; elsewhere it is auto-detected
+# (find_sd_card) unless SP404_SD_CARD is set.
+DEFAULT_SD_CARD = "/Volumes/SP-404SX" if IS_MACOS else ""
 DEFAULT_QNAP_ROOT = "/Volumes/Temp QNAP"
 DEFAULT_DROBO_ROOT = "/Volumes/Jansen's FL Drobo"
-DEFAULT_TOOL_PATH_PREFIX = "/opt/homebrew/bin"
+# Homebrew's bin isn't always on PATH for GUI-launched apps on macOS; other
+# platforms find tools on PATH.
+DEFAULT_TOOL_PATH_PREFIX = "/opt/homebrew/bin" if IS_MACOS else ""
+SD_SMPL_PARTS = ("ROLAND", "SP-404SX", "SMPL")
+
+
+def default_plex_data_dir():
+    """Plex Media Server's data folder for this OS (holds the library DB and art)."""
+    if IS_MACOS:
+        return "~/Library/Application Support/Plex Media Server"
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
+        return os.path.join(local, "Plex Media Server")
+    return "/var/lib/plexmediaserver/Library/Application Support/Plex Media Server"
+
+
+def plex_data_dir():
+    """SP404_PLEX_DATA_DIR, or the OS default Plex data folder."""
+    return os.path.abspath(os.path.expanduser(
+        os.environ.get("SP404_PLEX_DATA_DIR") or default_plex_data_dir()
+    ))
+
+
+def find_sd_card(settings):
+    """Root of the mounted SP-404 card, or None.
+
+    An explicit SP404_SD_CARD (or the macOS default) wins. Otherwise look for
+    a mounted volume holding ROLAND/SP-404SX (drive letters on Windows,
+    /media and /run/media mounts on Linux).
+    """
+    configured = (settings or {}).get("SD_CARD")
+    if configured:
+        return configured
+    try:
+        import psutil
+        mounts = [p.mountpoint for p in psutil.disk_partitions(all=False)]
+    except Exception:
+        mounts = []
+    for mount in mounts:
+        if os.path.isdir(os.path.join(mount, "ROLAND", "SP-404SX")):
+            return mount
+    return None
+
+
+def sd_smpl_dir(card_root):
+    """SMPL folder on a card root ('' when no card)."""
+    return os.path.join(card_root, *SD_SMPL_PARTS) if card_root else ""
+
+
+def _tool_default(name, prefix):
+    """Tool path under the configured prefix when it exists there, else the bare name (PATH lookup)."""
+    if prefix:
+        for candidate in (os.path.join(prefix, name), os.path.join(prefix, name + ".exe")):
+            if os.path.isfile(candidate):
+                return candidate
+    return name
 DEFAULT_LLM_TIMEOUT = 30
 
 # Raw/long material lives here until chopped; excluded from pad fetch and bulk library walks.
 LONG_HOLD_DIRNAME = "_LONG-HOLD"
+# library_trim moves cut files here (one folder per run) instead of deleting them.
+TRASH_DIRNAME = "_TRASH"
 
 # Canonical set of directories to skip in library walks.
 # Every script that walks the sample library should import this instead of
@@ -60,6 +124,7 @@ LIBRARY_SKIP_DIRS = frozenset({
     "_QUARANTINE",
     "Stems",
     LONG_HOLD_DIRNAME,
+    TRASH_DIRNAME,
 })
 
 _EXCLUDED_PREFIXES = LIBRARY_SKIP_DIRS
@@ -93,7 +158,7 @@ def atomic_write_json(path, data, indent=2, sort_keys=True):
     os.makedirs(target_dir, exist_ok=True)
     fd, tmp = tempfile.mkstemp(suffix=".json", dir=target_dir)
     try:
-        with os.fdopen(fd, "w") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=indent, sort_keys=sort_keys)
         os.replace(tmp, path)
     except BaseException:
@@ -115,7 +180,7 @@ def atomic_write_yaml(path, data, **kwargs):
     kwargs.setdefault("sort_keys", False)
     fd, tmp = tempfile.mkstemp(suffix=".yaml", dir=target_dir)
     try:
-        with os.fdopen(fd, "w") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
             yaml.safe_dump(data, fh, **kwargs)
         os.replace(tmp, path)
     except BaseException:
@@ -124,6 +189,66 @@ def atomic_write_yaml(path, data, **kwargs):
         except OSError:
             pass
         raise
+
+
+@contextlib.contextmanager
+def file_lock(path, timeout=60):
+    """Hold an exclusive inter-process lock on ``path + ".lock"``.
+
+    Uses fcntl on POSIX and msvcrt on Windows so read-modify-write cycles on
+    shared JSON files (ingest log, caches) don't interleave across processes.
+    """
+    lock_path = path + ".lock"
+    os.makedirs(os.path.dirname(lock_path) or ".", exist_ok=True)
+    with open(lock_path, "a+b") as fh:
+        if os.name == "nt":
+            import msvcrt
+            deadline = time.monotonic() + timeout
+            fh.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for lock: {lock_path}")
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def ffmpeg_atomic(ffmpeg, src, dest, out_args, *, fmt, timeout):
+    """Run ffmpeg into ``dest + ".part"`` and rename it into place on success.
+
+    A failed, killed or timed-out run never leaves a file at *dest*, so
+    "the output exists" stays a reliable "already done" check for ingest and
+    conversion. Returns True on success.
+    """
+    part = dest + ".part"
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-y", "-i", src, *out_args, "-f", fmt, part],
+            capture_output=True, timeout=timeout,
+        )
+        if result.returncode == 0 and os.path.getsize(part) > 0:
+            os.replace(part, dest)
+            return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
+    return False
 
 
 class ConfigError(ValueError):
@@ -235,7 +360,7 @@ def load_settings(repo_dir):
     repo_dir = _normalize_path(repo_dir)
     sample_library = _read_required_path("SP404_SAMPLE_LIBRARY", DEFAULT_SAMPLE_LIBRARY)
     downloads_path = _read_required_path("SP404_DOWNLOADS", DEFAULT_DOWNLOADS)
-    sd_card = _read_required_path("SP404_SD_CARD", DEFAULT_SD_CARD)
+    sd_card = _read_optional_path("SP404_SD_CARD", DEFAULT_SD_CARD)
     qnap_root = _read_required_path("SP404_QNAP_ROOT", DEFAULT_QNAP_ROOT)
     drobo_root = _read_required_path("SP404_DROBO_ROOT", DEFAULT_DROBO_ROOT)
     tool_path_prefix = _read_optional_path("SP404_TOOL_PATH_PREFIX", DEFAULT_TOOL_PATH_PREFIX)
@@ -253,7 +378,11 @@ def load_settings(repo_dir):
         "SD_CARD": sd_card,
         "QNAP_ROOT": qnap_root,
         "DROBO_ROOT": drobo_root,
-        "SD_SMPL_DIR": os.path.join(sd_card, "ROLAND", "SP-404SX", "SMPL"),
+        "SD_SMPL_DIR": sd_smpl_dir(sd_card),
+        "PLEX_DATA_DIR": plex_data_dir(),
+        "WEB_PORT": _read_int("SP404_WEB_PORT", 5404, minimum=1),
+        # Extra Host values the web UI accepts besides localhost (comma-separated)
+        "WEB_ALLOWED_HOSTS": os.environ.get("SP404_WEB_ALLOWED_HOSTS", ""),
         "GOLD_BANK_A_DIR": os.path.join(sample_library, "_GOLD", "Bank-A"),
         "INGEST_LOG": os.path.join(sample_library, "_ingest_log.json"),
         "RAW_ARCHIVE": os.path.join(sample_library, "_RAW-DOWNLOADS"),
@@ -272,9 +401,9 @@ def load_settings(repo_dir):
         "CONFIG_PATH": os.path.join(repo_dir, "bank_config.yaml"),
         "VIBE_MAPPINGS_PATH": os.path.join(repo_dir, "config", "vibe_mappings.yaml"),
         "SCORING_CONFIG_PATH": os.path.join(repo_dir, "config", "scoring.yaml"),
-        "FFMPEG_BIN": _read_command("SP404_FFMPEG", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "ffmpeg")),
-        "FFPROBE_BIN": _read_command("SP404_FFPROBE", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "ffprobe")),
-        "UNAR_BIN": _read_command("SP404_UNAR", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "unar")),
+        "FFMPEG_BIN": _read_command("SP404_FFMPEG", _tool_default("ffmpeg", tool_path_prefix)),
+        "FFPROBE_BIN": _read_command("SP404_FFPROBE", _tool_default("ffprobe", tool_path_prefix)),
+        "UNAR_BIN": _read_command("SP404_UNAR", _tool_default("unar", tool_path_prefix)),
         "TOOL_PATH_PREFIX": tool_path_prefix,
         "WEB_DEBUG": _read_bool("SP404_WEB_DEBUG", default=False),
         "LLM_ENDPOINT": _read_command("SP404_LLM_ENDPOINT", ""),
@@ -306,7 +435,7 @@ def load_settings(repo_dir):
             "SP404_MUSICVAE_CHECKPOINT_DIR", os.path.join(repo_dir, "models", "musicvae")
         ),
         "MAGENTA_COMMAND": _read_command("SP404_MAGENTA_COMMAND", "music_vae_generate"),
-        "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", os.path.join(DEFAULT_TOOL_PATH_PREFIX, "fpcalc")),
+        "FINGERPRINT_TOOL": _read_command("SP404_FINGERPRINT_TOOL", _tool_default("fpcalc", tool_path_prefix)),
         "DAILY_BANK_SOURCE": _read_choice("SP404_DAILY_BANK_SOURCE", "recent", {"recent", "trending"}),
         "TRENDING_FILE": _read_optional_path("SP404_TRENDING_FILE", os.path.join(repo_dir, "trending.json")),
         "VIBE_DATA_DIR": os.path.join(repo_dir, "data"),
@@ -316,6 +445,14 @@ def load_settings(repo_dir):
         "FINE_TUNED_LLM_ENDPOINT": _read_command("SP404_FINE_TUNED_LLM_ENDPOINT", ""),
         "FINE_TUNED_LLM_MODEL": _read_command("SP404_FINE_TUNED_LLM_MODEL", ""),
         "VIBE_RETRIEVAL_LIMIT": _read_int("SP404_VIBE_RETRIEVAL_LIMIT", 4, minimum=0),
+        "FETCH_HISTORY_FILE": _read_optional_path(
+            "SP404_FETCH_HISTORY_FILE", os.path.join(repo_dir, "data", "fetch_history.json")
+        ),
+        "FETCH_DIVERSITY_TOP_N": _read_int("SP404_FETCH_DIVERSITY_TOP_N", 8, minimum=1),
+        "FETCH_DETERMINISTIC": _read_bool("SP404_FETCH_DETERMINISTIC", default=False),
+        "FETCH_DIVERSITY_COOLDOWN_SECONDS": _read_int(
+            "SP404_FETCH_DIVERSITY_COOLDOWN_SECONDS", 6 * 3600, minimum=0
+        ),
         # "Live crunch" — optional path to a second jambox clone used as a dedicated
         # retag worker. The blackout dashboard (web/api/blackout.py) polls that
         # clone's data/retag_checkpoint.json + data/crunch_retag.log so the main
@@ -349,7 +486,7 @@ def load_bank_config(config_path, *, strict=False):
     import yaml
 
     try:
-        with open(config_path, "r") as fh:
+        with open(config_path, "r", encoding="utf-8") as fh:
             payload = yaml.safe_load(fh)
     except FileNotFoundError as exc:
         if strict:
@@ -374,64 +511,70 @@ def _tags_sqlite_path(tags_file):
     return os.path.splitext(tags_file)[0] + ".sqlite"
 
 
-def _ensure_tags_sqlite(db_path):
-    """Create the tags SQLite database if it doesn't exist."""
+# The tag DB is row-oriented: every writer changes only the rows it names.
+# There is deliberately no "save the whole dict" call -- loading a snapshot,
+# mutating it and writing it back deletes or reverts rows that other
+# processes (ingest, smart retag, the web UI) wrote in the meantime.
+_TAGS_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS tags (rel_path TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+"""
+_TAGS_BUSY_TIMEOUT_S = 30
+
+
+def _connect_tags(db_path):
+    """Open the tag DB for writing (autocommit; callers BEGIN explicitly)."""
     import sqlite3
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS tags (
-            rel_path TEXT PRIMARY KEY,
-            data TEXT NOT NULL
-        )
-    """)
-    conn.commit()
+    conn = sqlite3.connect(db_path, timeout=_TAGS_BUSY_TIMEOUT_S, isolation_level=None)
+    conn.execute(f"PRAGMA busy_timeout = {_TAGS_BUSY_TIMEOUT_S * 1000}")
+    conn.executescript(_TAGS_SCHEMA)
     return conn
 
 
 def _migrate_json_to_sqlite(json_path, db_path):
     """One-time migration: import existing JSON tags into SQLite."""
-    import sqlite3
     try:
-        with open(json_path, "r") as fh:
+        with open(json_path, "r", encoding="utf-8") as fh:
             payload = json.load(fh)
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return
     if not isinstance(payload, dict) or not payload:
         return
 
-    conn = sqlite3.connect(db_path)
+    conn = _connect_tags(db_path)
     try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS tags (
-                rel_path TEXT PRIMARY KEY,
-                data TEXT NOT NULL
-            )
-        """)
+        conn.execute("BEGIN IMMEDIATE")
         conn.executemany(
             "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
             [(k, json.dumps(v)) for k, v in payload.items()]
         )
-        conn.commit()
+        conn.execute("COMMIT")
     finally:
         conn.close()
     print(f"[TAG_DB] Migrated {len(payload)} entries from JSON to SQLite")
+
+
+def _ensure_migrated(tags_file):
+    """Import a legacy _tags.json before anything creates the SQLite file."""
+    db_path = _tags_sqlite_path(tags_file)
+    if not os.path.exists(db_path) and os.path.exists(tags_file):
+        _migrate_json_to_sqlite(tags_file, db_path)
+    return db_path
 
 
 def load_tag_db(tags_file):
     """Load the tag database. Uses SQLite backend, falls back to JSON.
 
     Auto-migrates from JSON on first use. Returns a dict (rel_path -> tag entry).
+    The dict is a read-only snapshot: write changes back with
+    write_tag_changes / upsert_tag_entries / merge_tag_fields / delete_tag_paths.
     """
     import sqlite3
-    db_path = _tags_sqlite_path(tags_file)
-
-    # Auto-migrate from JSON if SQLite doesn't exist yet
-    if not os.path.exists(db_path) and os.path.exists(tags_file):
-        _migrate_json_to_sqlite(tags_file, db_path)
+    db_path = _ensure_migrated(tags_file)
 
     if os.path.exists(db_path):
         try:
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(db_path, timeout=_TAGS_BUSY_TIMEOUT_S)
             try:
                 rows = conn.execute("SELECT rel_path, data FROM tags").fetchall()
             finally:
@@ -448,106 +591,160 @@ def load_tag_db(tags_file):
 
     # Fallback to JSON
     try:
-        with open(tags_file, "r") as fh:
+        with open(tags_file, "r", encoding="utf-8") as fh:
             payload = json.load(fh)
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
 
 
-_TAG_DB_UPSERT_CHUNK = 400
+def write_tag_changes(tags_file, *, upserts=None, merges=None, deletes=None):
+    """Apply row-level changes to the tag DB in one transaction.
+
+    upserts: {rel_path: entry}  -- replace whole rows (new rows, re-keys).
+    merges:  {rel_path: fields} -- update only these fields of existing rows;
+             rows that no longer exist are skipped, never resurrected.
+    deletes: iterable of rel_paths -- the only way rows are ever removed.
+
+    Rows not named here are never touched. Deletes apply first, so a re-key is
+    ``deletes=[old], upserts={new: entry}``. Returns counts per operation.
+    """
+    upserts = upserts or {}
+    merges = merges or {}
+    deletes = [p for p in (deletes or ()) if p]
+    stats = {"deleted": len(deletes), "upserted": len(upserts), "merged": 0, "missing": 0}
+    if not (upserts or merges or deletes):
+        return stats
+
+    conn = _connect_tags(_ensure_migrated(tags_file))
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            if deletes:
+                conn.executemany("DELETE FROM tags WHERE rel_path=?", [(p,) for p in deletes])
+            if upserts:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
+                    [(k, json.dumps(v)) for k, v in upserts.items()],
+                )
+            for rel_path, fields in merges.items():
+                row = conn.execute("SELECT data FROM tags WHERE rel_path=?", (rel_path,)).fetchone()
+                if row is None:
+                    stats["missing"] += 1
+                    continue
+                try:
+                    entry = json.loads(row[0])
+                except (json.JSONDecodeError, ValueError):
+                    entry = {}
+                if not isinstance(entry, dict):
+                    entry = {}
+                entry.update(fields)
+                conn.execute(
+                    "UPDATE tags SET data=? WHERE rel_path=?", (json.dumps(entry), rel_path)
+                )
+                stats["merged"] += 1
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('version', 1) "
+                "ON CONFLICT(key) DO UPDATE SET value = value + 1"
+            )
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+    return stats
 
 
 def upsert_tag_entries(tags_file, entries):
-    """Insert or replace only the given paths (no stale cleanup, no full JSON write).
+    """Insert or replace whole rows for the given paths only."""
+    return write_tag_changes(tags_file, upserts=entries)
 
-    Use for batch workers that checkpoint progress without re-serializing the whole DB.
-    """
-    import sqlite3
-    if not entries:
-        return
-    db_path = _tags_sqlite_path(tags_file)
-    conn = _ensure_tags_sqlite(db_path)
-    try:
-        items = list(entries.items())
-        for i in range(0, len(items), _TAG_DB_UPSERT_CHUNK):
-            chunk = items[i : i + _TAG_DB_UPSERT_CHUNK]
-            conn.executemany(
-                "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
-                [(k, json.dumps(v)) for k, v in chunk],
-            )
-        conn.commit()
-    finally:
-        conn.close()
+
+def merge_tag_fields(tags_file, changes):
+    """Update only the given fields on existing rows: {rel_path: {field: value}}."""
+    return write_tag_changes(tags_file, merges=changes)
 
 
 def delete_tag_paths(tags_file, rel_paths):
-    """Remove rows from the tags SQLite DB (e.g. path moved to _QUARANTINE)."""
-    import sqlite3
+    """Remove rows from the tag DB (explicit deletes are the only deletes)."""
     paths = [p for p in rel_paths if p]
-    if not paths:
-        return
+    if not paths or not os.path.exists(_ensure_migrated(tags_file)):
+        return {"deleted": 0, "upserted": 0, "merged": 0, "missing": 0}
+    return write_tag_changes(tags_file, deletes=paths)
+
+
+def diff_tag_db(before, after):
+    """Row-level changes between two snapshots, for write_tag_changes.
+
+    Returns (upserts, merges): rows new in *after* become upserts; rows whose
+    fields changed become merges of just those fields. Rows missing from
+    *after* and removed fields are ignored -- deletes must stay explicit.
+    """
+    upserts, merges = {}, {}
+    for rel_path, entry in after.items():
+        old = before.get(rel_path)
+        if old is None:
+            upserts[rel_path] = entry
+            continue
+        if not isinstance(entry, dict) or not isinstance(old, dict):
+            continue
+        fields = {k: v for k, v in entry.items() if old.get(k, _MISSING) != v}
+        if fields:
+            merges[rel_path] = fields
+    return upserts, merges
+
+
+_MISSING = object()
+
+
+def tags_version(tags_file):
+    """Write counter bumped by every write_tag_changes call (0 if unknown)."""
+    import sqlite3
     db_path = _tags_sqlite_path(tags_file)
     if not os.path.exists(db_path):
-        return
-    conn = sqlite3.connect(db_path)
+        return 0
     try:
-        conn.executemany("DELETE FROM tags WHERE rel_path=?", [(p,) for p in paths])
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def save_tag_db(tags_file, db, *, allow_shrink=False):
-    """Save the tag database to SQLite. Also writes JSON for compatibility.
-
-    Stale-row deletion is blocked when the incoming dict is dramatically
-    smaller than the existing DB — this prevents partial-save corruption
-    from background processes that loaded an incomplete snapshot.
-
-    Pass allow_shrink=True for intentional bulk deletes (e.g. library trim).
-    """
-    import sqlite3
-    db_path = _tags_sqlite_path(tags_file)
-
-    conn = _ensure_tags_sqlite(db_path)
-    try:
-        existing_count = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
-
-        items = list(db.items())
-        for i in range(0, len(items), _TAG_DB_UPSERT_CHUNK):
-            chunk = items[i : i + _TAG_DB_UPSERT_CHUNK]
-            conn.executemany(
-                "INSERT OR REPLACE INTO tags (rel_path, data) VALUES (?, ?)",
-                [(k, json.dumps(v)) for k, v in chunk],
-            )
-
-        existing = {r[0] for r in conn.execute("SELECT rel_path FROM tags").fetchall()}
-        stale = existing - set(db.keys())
-        if stale:
-            safe_to_delete = allow_shrink
-            if not allow_shrink:
-                stale_ratio = len(stale) / max(existing_count, 1)
-                if stale_ratio > 0.10 and existing_count > 100:
-                    print(f"[TAG_DB] BLOCKED: refusing to delete {len(stale):,} of {existing_count:,} rows "
-                          f"({stale_ratio:.0%}). Pass allow_shrink=True for intentional trim.")
-                elif len(stale) > len(db):
-                    print(f"[TAG_DB] BLOCKED: stale count ({len(stale):,}) exceeds incoming "
-                          f"({len(db):,}). Likely partial save — skipping stale cleanup.")
-                else:
-                    safe_to_delete = True
-            if safe_to_delete:
-                conn.executemany("DELETE FROM tags WHERE rel_path=?", [(k,) for k in stale])
-        conn.commit()
-    finally:
-        conn.close()
-
-    estimated_size = len(db) * 1100
-    if estimated_size < 50 * 1024 * 1024:
+        conn = sqlite3.connect(db_path, timeout=_TAGS_BUSY_TIMEOUT_S)
         try:
-            atomic_write_json(tags_file, db, indent=1)
-        except OSError:
-            pass
+            row = conn.execute("SELECT value FROM meta WHERE key='version'").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return 0
+    return int(row[0]) if row else 0
+
+
+_TAG_JSON_EXPORT_LIMIT = 50 * 1024 * 1024
+
+
+def export_tags_json(tags_file):
+    """Write _tags.json from the current SQLite state (compatibility copy).
+
+    Call at the end of a batch run, never from an old in-memory snapshot.
+    Returns True if the file was written.
+    """
+    db = load_tag_db(tags_file)
+    if len(db) * 1100 >= _TAG_JSON_EXPORT_LIMIT:
+        return False
+    try:
+        atomic_write_json(tags_file, db, indent=1)
+    except OSError:
+        return False
+    return True
+
+
+def library_rel_path(full_path, library_root):
+    """Tag DB key for *full_path*: relative to the library, always with '/'.
+
+    Returns None when the path is outside the library.
+    """
+    full_path = os.path.normpath(os.path.abspath(full_path))
+    root = os.path.normpath(os.path.abspath(library_root))
+    prefix = root + os.sep
+    if not full_path.startswith(prefix):
+        return None
+    return full_path[len(prefix):].replace("\\", "/")
 
 
 def load_settings_for_script(script_file):
@@ -565,7 +762,7 @@ def build_subprocess_env(settings, base_env=None):
         return env
 
     current_path = env.get("PATH", "")
-    env["PATH"] = f"{path_prefix}:{current_path}" if current_path else path_prefix
+    env["PATH"] = f"{path_prefix}{os.pathsep}{current_path}" if current_path else path_prefix
     return env
 
 

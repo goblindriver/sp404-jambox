@@ -2,9 +2,9 @@
 import os, sys, socket, time as _time, threading, subprocess, json
 from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, jsonify, request, current_app
-from jambox_config import build_subprocess_env, load_tag_db
+from jambox_config import build_subprocess_env, find_sd_card, load_tag_db
 
-from api._helpers import JobTracker
+from api._helpers import JobTracker, normalize_bank, normalize_pad
 
 # Session 8 AI creative stack — services the dashboard probes.
 # Host defaults to 127.0.0.1; ports are the Pinokio / Open WebUI defaults.
@@ -41,23 +41,23 @@ def _probe_ai_stack(host='127.0.0.1', timeout=0.5):
 pipeline_bp = Blueprint('pipeline', __name__)
 
 _tracker = JobTracker(max_age=600)
+# execute_fetch_scope is shared by /pipeline/fetch and the vibe populate jobs;
+# two runs at once would race on _CARD_STAGING and the score cache.
+_FETCH_LOCK = threading.Lock()
+
+
+class FetchBusy(RuntimeError):
+    pass
+
+
+def fetch_running():
+    return _FETCH_LOCK.locked()
 PADINFO_TIMEOUT = 120
 PATTERN_BUILD_TIMEOUT = 180
-DEPLOY_TIMEOUT = 180
 
 
 def _settings():
     return current_app.config
-
-
-def _clear_staging_wavs(staging_dir):
-    """Remove only generated pad WAVs so a run starts cleanly."""
-    if not os.path.isdir(staging_dir):
-        return
-
-    for name in os.listdir(staging_dir):
-        if name.upper().endswith('.WAV'):
-            os.remove(os.path.join(staging_dir, name))
 
 
 def _command_error_payload(result):
@@ -75,13 +75,13 @@ def _command_error_payload(result):
 def _normalize_pad_value(value):
     if value in (None, ''):
         return None
-    try:
-        pad = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError('pad must be an integer') from exc
-    if pad < 1 or pad > 12:
-        raise ValueError('pad must be between 1 and 12')
-    return pad
+    return normalize_pad(value)
+
+
+def _normalize_bank_value(value):
+    if value in (None, ''):
+        return None
+    return normalize_bank(value)
 
 
 def _run_script(script_name, timeout=None):
@@ -106,7 +106,19 @@ def _run_script(script_name, timeout=None):
 
 
 def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
-    """Execute fetch_samples for a bank/pad scope and return run summary."""
+    """Execute fetch_samples for a bank/pad scope and return run summary.
+
+    Raises FetchBusy if another fetch is running.
+    """
+    if not _FETCH_LOCK.acquire(blocking=False):
+        raise FetchBusy("A fetch is already running")
+    try:
+        return _execute_fetch_scope(settings, bank, pad, progress_callback)
+    finally:
+        _FETCH_LOCK.release()
+
+
+def _execute_fetch_scope(settings, bank, pad, progress_callback):
     repo_dir = settings['REPO_DIR']
     scripts_dir = os.path.join(repo_dir, 'scripts')
     if scripts_dir not in sys.path:
@@ -117,10 +129,7 @@ def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
 
     config = fs.load_config()
     os.makedirs(fs.STAGING, exist_ok=True)
-    if bank is None and pad is None:
-        _clear_staging_wavs(fs.STAGING)
-    else:
-        fs.clear_staging_wavs(bank=bank, pad=pad)
+    fs.clear_staging_wavs(bank=bank, pad=pad)
 
     tag_db = fs.load_tag_db()
     used_files = set()
@@ -183,12 +192,7 @@ def execute_fetch_scope(settings, bank=None, pad=None, progress_callback=None):
 
     save_score_cache(fs.LIBRARY, score_cache)
 
-    smpl_dir = settings['SMPL_DIR']
-    if total_fetched > 0:
-        os.makedirs(smpl_dir, exist_ok=True)
-        import shutil
-        for path in generated_files:
-            shutil.copy2(path, smpl_dir)
+    fs.publish_staging(bank=bank, pad=pad)
 
     return {
         'total_fetched': total_fetched,
@@ -222,21 +226,20 @@ def _run_fetch(job_id, repo_dir, settings, bank=None, pad=None):
 @pipeline_bp.route('/pipeline/fetch', methods=['POST'])
 def fetch():
     data = request.get_json(silent=True) or {}
-    bank = data.get('bank')
     try:
+        bank = _normalize_bank_value(data.get('bank'))
         pad = _normalize_pad_value(data.get('pad'))
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
 
-    if _tracker.has_active('starting', 'running'):
+    job_id = None if fetch_running() else _tracker.start_exclusive(
+        ('starting', 'running'), type='fetch', status='starting', progress='', result='')
+    if not job_id:
         return jsonify({'ok': False, 'error': 'Fetch already running'}), 409
-    job_id = _tracker.create(type='fetch', status='starting', progress='', result='')
 
     repo_dir = current_app.config['REPO_DIR']
     settings = dict(current_app.config)
-    t = threading.Thread(target=_run_fetch, args=(job_id, repo_dir, settings, bank, pad))
-    t.daemon = True
-    t.start()
+    _tracker.start_thread(job_id, _run_fetch, job_id, repo_dir, settings, bank, pad, error_field='result')
 
     return jsonify({'ok': True, 'job_id': job_id})
 
@@ -334,8 +337,9 @@ def watcher_stop():
             sys.path.insert(0, scripts_dir)
         import ingest
 
-        ingest.stop_watcher()
-        return jsonify({'ok': True, 'message': 'Watcher stopped'})
+        if ingest.stop_watcher():
+            return jsonify({'ok': True, 'message': 'Watcher stopped'})
+        return jsonify({'ok': True, 'message': 'Watcher stopping after the current file'})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
@@ -356,7 +360,7 @@ def watcher_status():
         log = []
         if os.path.exists(log_path):
             try:
-                with open(log_path) as f:
+                with open(log_path, encoding='utf-8') as f:
                     log = json.load(f)
                 # Return last 20 entries
                 log = log[-20:]
@@ -503,8 +507,11 @@ def server_status():
 
         discogs_info = {'available': False, 'classified': 0, 'coverage': 0, 'danceable': 0}
         try:
-            from discogs_engine import _get_model
-            _get_model()
+            # Status only: never download or load the ONNX model inside a request.
+            import importlib.util
+            from discogs_engine import model_path as _discogs_model_path
+            if importlib.util.find_spec('onnxruntime') is None or not os.path.isfile(_discogs_model_path()):
+                raise FileNotFoundError(_discogs_model_path())
             discogs_info['available'] = True
             features['discogs'] = True
             if tag_db:
@@ -534,29 +541,58 @@ def server_status():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+# Waits for the old server to exit (so the port is free), then starts web/app.py.
+# Waits for the server pid to exit, then relaunches app.py. Polls status rather
+# than Process.wait(): the server isn't the helper's child, and on POSIX an
+# exited-but-unreaped server stays a zombie, which wait() treats as alive.
+_RESTART_HELPER = (
+    "import subprocess, sys, time\n"
+    "import psutil\n"
+    "deadline = time.time() + 30\n"
+    "while time.time() < deadline:\n"
+    "    try:\n"
+    "        if psutil.Process(int(sys.argv[1])).status() == psutil.STATUS_ZOMBIE:\n"
+    "            break\n"
+    "    except psutil.NoSuchProcess:\n"
+    "        break\n"
+    "    except Exception:\n"
+    "        pass\n"
+    "    time.sleep(0.1)\n"
+    "subprocess.Popen([sys.executable, sys.argv[2]], cwd=sys.argv[3])\n"
+)
+
+
+def restart_helper_argv(python_bin, pid, app_py, web_dir):
+    return [python_bin, "-c", _RESTART_HELPER, str(pid), app_py, web_dir]
+
+
 @pipeline_bp.route('/pipeline/server/restart', methods=['POST'])
 def server_restart():
-    """Gracefully restart Flask by launching replacement then terminating self."""
+    """Restart Flask: a detached helper relaunches app.py once this process exits."""
     import signal
     settings = dict(current_app.config)
     repo_dir = settings.get('REPO_DIR', current_app.config['REPO_DIR'])
     web_dir = os.path.join(repo_dir, 'web')
     app_py = os.path.join(web_dir, 'app.py')
-    python_bin = os.path.abspath(sys.executable or "python3")
+    python_bin = os.path.abspath(sys.executable)
     env = build_subprocess_env(settings)
 
     def _restart():
-        """Launch replacement server process, then terminate this process."""
+        """Launch the relaunch helper, then terminate this process."""
         import time
-        launch = f"sleep 0.35; exec \"{python_bin}\" \"{app_py}\""
+        if os.name == 'nt':
+            detach = {'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        else:
+            detach = {'start_new_session': True}
         try:
             subprocess.Popen(
-                ["/bin/sh", "-c", launch],
+                restart_helper_argv(python_bin, os.getpid(), app_py, web_dir),
                 cwd=web_dir,
                 env=env,
-                start_new_session=True,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                **detach,
             )
         except Exception:
             pass
@@ -571,20 +607,14 @@ def server_restart():
 
 @pipeline_bp.route('/pipeline/deploy', methods=['POST'])
 def deploy():
-    repo_dir = _settings()['REPO_DIR']
-    script = os.path.join(repo_dir, 'scripts', 'copy_to_sd.sh')
-    if not os.path.isdir(_settings()['SD_CARD']):
+    card = find_sd_card(_settings())
+    if not card or not os.path.isdir(card):
         return jsonify({'ok': False, 'error': 'SD card not mounted'}), 400
     try:
-        result = subprocess.run(
-            ['bash', script], capture_output=True, text=True, cwd=repo_dir,
-            env=build_subprocess_env(_settings()),
-            timeout=DEPLOY_TIMEOUT,
-        )
-        if result.returncode != 0:
-            return jsonify(_command_error_payload(result)), 500
-        return jsonify({'ok': True, 'output': result.stdout})
-    except subprocess.TimeoutExpired:
-        return jsonify({'ok': False, 'error': 'Deploy timed out'}), 500
+        import deploy_sd
+        report = deploy_sd.deploy(card)
+        return jsonify({'ok': True, 'output': deploy_sd.format_report(report), 'report': report})
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500

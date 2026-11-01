@@ -27,9 +27,9 @@ class LoadSettingsTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             settings = load_settings("/tmp/jambox-repo")
 
-        self.assertEqual(settings["REPO_DIR"], "/tmp/jambox-repo")
+        self.assertEqual(settings["REPO_DIR"], os.path.abspath("/tmp/jambox-repo"))
         self.assertTrue(settings["SAMPLE_LIBRARY"].endswith("SP404-Sample-Library"))
-        self.assertTrue(settings["SMPL_DIR"].endswith("sd-card-template/ROLAND/SP-404SX/SMPL"))
+        self.assertTrue(settings["SMPL_DIR"].endswith(os.path.join("sd-card-template", "ROLAND", "SP-404SX", "SMPL")))
         self.assertFalse(settings["WEB_DEBUG"])
         self.assertEqual(settings["DAILY_BANK_SOURCE"], "recent")
         self.assertEqual(settings["LLM_TIMEOUT"], 30)
@@ -94,10 +94,11 @@ class LoadSettingsTests(unittest.TestCase):
         self.assertIn("SP404_VIBE_PARSER_MODE", str(ctx.exception))
 
     def test_resolve_command_accepts_executable_absolute_path(self):
+        tool = os.path.abspath("/tmp/tool")
         with patch("jambox_config.os.path.isfile", return_value=True), patch("jambox_config.os.access", return_value=True):
-            resolved = resolve_command("/tmp/tool")
+            resolved = resolve_command(tool)
 
-        self.assertEqual(resolved, "/tmp/tool")
+        self.assertEqual(resolved, tool)
 
     def test_resolve_command_uses_path_lookup_for_relative_command(self):
         with patch("jambox_config.shutil.which", return_value="/usr/bin/ffmpeg") as which:

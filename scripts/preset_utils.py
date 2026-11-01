@@ -122,7 +122,7 @@ def load_preset(ref, *, require_full_pads=True):
     if not os.path.exists(path):
         return None
     try:
-        with open(path) as f:
+        with open(path, encoding='utf-8') as f:
             data = yaml.safe_load(f)
     except (OSError, yaml.YAMLError):
         return None
