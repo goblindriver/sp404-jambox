@@ -188,7 +188,7 @@ class LibraryTrimTests(unittest.TestCase):
                                "silent.wav": loose, "silent_copy.wav": dict(loose)})
 
         dedup_section = out.split("--- Pass 2")[1].split("--- Pass")[0]
-        self.assertIn("Found 1 groups of confirmed copies", dedup_section)
+        self.assertIn("Found 0 groups of exact copies and 1 of confirmed copies", dedup_section)
         self.assertIn("Would trash: 1 files", dedup_section)
         self.assertIn("Drums/good_copy.wav  (copy of Drums/good.wav)", dedup_section)
         self.assertIn("Possible duplicates (not confirmed copies, not moved): 1 files in 1 groups", dedup_section)
@@ -211,6 +211,23 @@ class LibraryTrimTests(unittest.TestCase):
 
         dedup = self._report()["passes"]["dedup"]
         self.assertEqual(dedup["duplicates"], [{"keep": "Drums/twin.flac", "duplicates": ["Drums/twin.aiff"]}])
+
+    def test_identical_audio_is_trashed_even_on_fallback_fingerprints(self):
+        # One-shots too short for chromaprint only match on the fallback vector,
+        # which the trim never acts on; identical decoded audio settles it.
+        import soundfile
+
+        tone = (9000 * np.sin(np.arange(22050) * 0.05)).astype(np.int16)
+        for name, type_code in (("hit.flac", "PRC"), ("hit_again.flac", "SFX")):
+            soundfile.write(os.path.join(self.lib, "Drums", name), tone, 44100, subtype="PCM_16")
+            upsert_tag_entries(self.tags, {"Drums/" + name: {"duration": 0.5, "type_code": type_code}})
+        loose = {"kind": "python", "value": [0.0, 1.0, 0.0]}
+
+        self._run_dedup({"hit.flac": loose, "hit_again.flac": {"kind": "python", "value": [1.0, 0.0, 0.0]}})
+
+        dedup = self._report()["passes"]["dedup"]
+        self.assertEqual(dedup["duplicates"], [{"keep": "Drums/hit.flac", "duplicates": ["Drums/hit_again.flac"]}])
+        self.assertEqual(dedup["type_conflicts"], [{"Drums/hit.flac": "PRC", "Drums/hit_again.flac": "SFX"}])
 
     def test_chromaprint_match_with_other_timbre_or_length_is_review_only(self):
         # A held organ note and a synth pad on a related note score ~0.93 on chromaprint.

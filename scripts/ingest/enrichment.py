@@ -1,60 +1,82 @@
 """Post-ingest enrichment: tagging, fingerprinting, dedup, and stem splitting."""
 import os
 import posixpath
-import shutil
 import subprocess
 import sys
+from datetime import datetime
 
 from . import _state
 from .archive import _copy_as_flac
 
 
-def _is_recent_duplicate(library_path, rel_path):
-    """Fingerprint the file and compare it against recently ingested ones.
+def _known_pcm_hashes():
+    """{pcm_hash: rel_path} for library files, from the trim's fingerprint cache (call under the lock)."""
+    if _state._known_pcm is None:
+        from jambox_cache import load_fingerprint_cache
+        known = {}
+        for rel_path, cached in load_fingerprint_cache(_state.LIBRARY).items():
+            value = (((cached or {}).get("backends") or {}).get("pcm") or {}).get("value")
+            if value:
+                known.setdefault(value, rel_path)
+        _state._known_pcm = known
+    return _state._known_pcm
 
-    Only a chromaprint (fpcalc) match counts. The Python fallback fingerprint
-    calls most short one-shots alike, so a match on it is logged and the file
-    is kept.
+
+def _duplicate_of(library_path, rel_path):
+    """The library file this one is a bit-identical copy of, or None.
+
+    Only identical decoded audio counts. A chromaprint near-match is logged
+    and the file kept: held notes from different synths score >= 0.99 on
+    chromaprint, and a chromaprint-only dedup once shelved 26 distinct loops.
     """
     try:
-        from deduplicate_samples import compute_fingerprint, similarity
-        fp = compute_fingerprint(library_path)
+        from deduplicate_samples import compute_fingerprint, pcm_hash, similarity
     except Exception as e:
-        print(f"  [ROUTE] Fingerprint skipped: {e}")
-        return False
+        print(f"  [ROUTE] Duplicate check skipped: {e}")
+        return None
+    digest = pcm_hash(library_path)
+    if digest:
+        with _state._fingerprint_lock:
+            known = _known_pcm_hashes()
+            original = known.get(digest)
+            if original and original != rel_path and os.path.exists(os.path.join(_state.LIBRARY, original)):
+                print(f"  [ROUTE] Exact copy of {original}: {rel_path}")
+                return original
+            known[digest] = rel_path
+
+    try:
+        fp = compute_fingerprint(library_path)
+    except Exception:
+        fp = None
     if not fp:
-        return False
+        return None
     possible = None
     with _state._fingerprint_lock:
         for other_path, other_fp in list(_state._recent_fingerprints.items()):
-            if other_path == rel_path:
-                continue
-            sim = similarity(fp, other_fp)
-            if sim is None or sim < 0.95:
-                continue
-            if fp.get("kind") == other_fp.get("kind") == "fpcalc":
-                print(f"  [ROUTE] Duplicate detected ({sim:.2f}): {rel_path}")
-                print(f"          Matches: {other_path}")
-                return True
-            possible = possible or (other_path, sim)
+            sim = similarity(fp, other_fp) if other_path != rel_path else None
+            if sim is not None and sim >= 0.95:
+                possible = possible or (other_path, sim)
         if len(_state._recent_fingerprints) >= _state._RECENT_FP_CAP:
             oldest = next(iter(_state._recent_fingerprints))
             del _state._recent_fingerprints[oldest]
         _state._recent_fingerprints[rel_path] = fp
     if possible:
         print(f"  [ROUTE] Possible duplicate, kept ({possible[1]:.2f}): {rel_path} ~ {possible[0]}")
-    return False
+    return None
 
 
-def _unique_path(path):
-    """``path`` if free, else ``stem-2.ext``, ``stem-3.ext``, ..."""
-    if not os.path.exists(path):
-        return path
-    stem, ext = os.path.splitext(path)
-    n = 2
-    while os.path.exists(f"{stem}-{n}{ext}"):
-        n += 1
-    return f"{stem}-{n}{ext}"
+def _trash_duplicate(rel_path, original):
+    """Move an exact copy into this process's trash run; `library_trim.py restore <run>` undoes it."""
+    from library_trim import TrashRun
+    with _state._fingerprint_lock:
+        trash = _state._ingest_trash
+        if trash is None or os.path.exists(os.path.join(trash.root, rel_path)):
+            run_id = "ingest-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            trash = _state._ingest_trash = TrashRun(run_id, library=_state.LIBRARY, tags_file=_state.TAGS_FILE)
+        trash.move(rel_path, None, "exact copy of " + original)
+        trash.flush()
+    _state._log_ingest(rel_path, 0, {}, source_type='duplicate', duplicate_of=original, trash_run=trash.run_id)
+    return trash.run_id
 
 
 def _route_and_process(library_path, rel_path, source_context=None):
@@ -67,14 +89,13 @@ def _route_and_process(library_path, rel_path, source_context=None):
 
     Returns 'keep', 'duplicate', or 'stem-queued'.
     """
-    if _is_recent_duplicate(library_path, rel_path):
-        dupes_dir = os.path.join(_state.LIBRARY, "_DUPES")
-        os.makedirs(dupes_dir, exist_ok=True)
+    original = _duplicate_of(library_path, rel_path)
+    if original:
         try:
-            shutil.move(library_path, _unique_path(os.path.join(dupes_dir, os.path.basename(library_path))))
+            _trash_duplicate(rel_path, original)
             return 'duplicate'
         except Exception as exc:
-            print(f"  [ROUTE] Failed to move duplicate to _DUPES: {exc}")
+            print(f"  [ROUTE] Failed to move duplicate to the trash: {exc}")
 
     # Step 1: Tag the file (with librosa enrichment)
     try:
