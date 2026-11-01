@@ -30,6 +30,21 @@ def is_available():
     return LIBROSA_AVAILABLE
 
 
+def numpy_elision_safe(n=100_000):
+    """False when numpy reuses a named array's buffer as if it were a temporary.
+
+    numpy < 2.3 on Python 3.14+ does this for arrays over 256 KB: it corrupted
+    every stored chroma vector and librosa key on the iMac from April to
+    November 2026 without raising anything. Use a Python numpy supports.
+    """
+    if not LIBROSA_AVAILABLE:
+        return True
+    a = np.arange(n, dtype=np.uint32)
+    b = a + np.uint32(1)
+    _c = b + (b >> 1)
+    return bool((b == a + 1).all())
+
+
 def analyze_audio(filepath, sr=22050):
     """Analyze an audio file for BPM, key, loudness, and duration.
 
@@ -128,9 +143,17 @@ def detect_key(y, sr):
             return None
 
         chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
-        chroma_mean = np.mean(chroma, axis=1)
+        return key_from_chroma(np.mean(chroma, axis=1))
+    except Exception:
+        pass
 
-        # Normalize
+    return None
+
+
+def key_from_chroma(chroma_mean):
+    """Krumhansl-Schmuckler key for a 12-bin mean chroma vector, or None."""
+    try:
+        chroma_mean = np.asarray(chroma_mean, dtype=float)
         norm = np.linalg.norm(chroma_mean)
         if norm < 1e-6:
             return None
@@ -182,6 +205,44 @@ def detect_loudness(y):
     return None
 
 
+def _mean_chroma(y, sr):
+    """Mean chroma_cqt per pitch class (what both the key and the stored chroma use), or None."""
+    try:
+        return np.mean(librosa.feature.chroma_cqt(y=y, sr=sr), axis=1)
+    except Exception:
+        return None
+
+
+def _key_for(chroma_mean, duration):
+    """detect_key() from an already computed mean chroma (keys need 0.5 s of audio)."""
+    if chroma_mean is None or duration < 0.5:
+        return None
+    return key_from_chroma(chroma_mean)
+
+
+def _rounded_chroma(chroma_mean):
+    return [round(float(c), 3) for c in chroma_mean]
+
+
+def chroma_and_key(filepath, sr=22050):
+    """(stored chroma vector, key) exactly as extract_features() computes them, or None.
+
+    Lets a features-only refresh redo just the chroma-derived values.
+    """
+    if not LIBROSA_AVAILABLE or not os.path.exists(filepath):
+        return None
+    try:
+        y, actual_sr = librosa.load(filepath, sr=sr, mono=True)
+    except Exception:
+        return None
+    if len(y) == 0:
+        return None
+    chroma_mean = _mean_chroma(y, actual_sr)
+    if chroma_mean is None:
+        return None
+    return _rounded_chroma(chroma_mean), _key_for(chroma_mean, len(y) / actual_sr)
+
+
 def extract_features(filepath, sr=22050):
     """Extract full spectral features for smart retagging.
 
@@ -203,11 +264,12 @@ def extract_features(filepath, sr=22050):
         return None
 
     duration = len(y) / actual_sr
+    chroma_mean = _mean_chroma(y, actual_sr)
 
     result = {
         'duration': round(duration, 3),
         'bpm': detect_bpm(y, actual_sr),
-        'key': detect_key(y, actual_sr),
+        'key': _key_for(chroma_mean, duration),
         'loudness_db': detect_loudness(y),
     }
 
@@ -246,8 +308,8 @@ def extract_features(filepath, sr=22050):
         result['mfcc'] = [round(float(c), 2) for c in np.mean(mfcc, axis=1)]
 
         # Chroma — harmonic content (12 pitch classes)
-        chroma = librosa.feature.chroma_cqt(y=y, sr=actual_sr)
-        result['chroma'] = [round(float(c), 3) for c in np.mean(chroma, axis=1)]
+        if chroma_mean is not None:
+            result['chroma'] = _rounded_chroma(chroma_mean)
 
     except Exception:
         # Partial features are fine — return what we have

@@ -43,10 +43,11 @@ from jambox_config import (
 from library_walker import AUDIO_EXTENSIONS, is_appledouble
 
 try:
-    from audio_analysis import analyze_audio, is_available as librosa_available
+    from audio_analysis import analyze_audio, is_available as librosa_available, numpy_elision_safe
 except ImportError:
     analyze_audio = None
     librosa_available = lambda: False
+    numpy_elision_safe = lambda: True
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -846,7 +847,7 @@ def print_summary(db):
         print(f"  {p:<15s} {count:>5d}")
 
 
-def refresh_filename_keys():
+def refresh_filename_keys(dry_run=False):
     """Re-run extract_key on rows whose key came from the filename.
 
     librosa is only the fallback for filenames without a key, so a librosa row
@@ -867,10 +868,38 @@ def refresh_filename_keys():
             changes[rel] = {"key": key, "key_source": "filename" if key else None}
     for rel, fields in list(changes.items())[:20]:
         print(f"  {rel}: -> {fields['key']}")
-    if changes:
+    if changes and not dry_run:
         merge_tag_fields(TAGS_FILE, changes)
         export_tags_json(TAGS_FILE)
-    print(f"Updated {len(changes)} filename-derived keys")
+    print(f"{'Would update' if dry_run else 'Updated'} {len(changes)} filename-derived keys")
+
+
+_BPM_TAG = re.compile(r"^\d+bpm$")
+
+
+def refresh_filename_bpms(dry_run=False):
+    """Put filename BPMs back where librosa's tempo estimate replaced them.
+
+    A pack's "140BPM" is its own label; smart_retag used to overwrite it with
+    librosa's beat tracker, which is often half or double time.
+    """
+    changes = {}
+    for rel, entry in load_existing_tags().items():
+        if not isinstance(entry, dict) or entry.get("bpm_source") not in ("filename", "librosa", None):
+            continue
+        bpm = extract_bpm(os.path.basename(rel), os.path.dirname(rel))
+        if not bpm or (bpm == entry.get("bpm") and entry.get("bpm_source") == "filename"):
+            continue
+        fields = {"bpm": bpm, "bpm_source": "filename"}
+        if isinstance(entry.get("tags"), list):
+            fields["tags"] = sorted({t for t in entry["tags"] if not _BPM_TAG.match(str(t))} | {f"{bpm}bpm"})
+        changes[rel] = fields
+    for rel, fields in list(changes.items())[:20]:
+        print(f"  {rel}: -> {fields['bpm']}")
+    if changes and not dry_run:
+        merge_tag_fields(TAGS_FILE, changes)
+        export_tags_json(TAGS_FILE)
+    print(f"{'Would update' if dry_run else 'Updated'} {len(changes)} filename-derived BPMs")
 
 
 def main():
@@ -881,6 +910,10 @@ def main():
                         help="Re-derive base tags for every file, keeping smart-retag and enrichment fields")
     parser.add_argument("--refresh-keys", action="store_true",
                         help="Re-read filename-derived keys (fixes minor keys stored as major) and exit")
+    parser.add_argument("--refresh-bpm", action="store_true",
+                        help="Restore BPMs read from filenames where librosa's estimate replaced them, and exit")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="With --refresh-keys/--refresh-bpm: report the changes without writing")
     parser.add_argument("--no-duration", action="store_true",
                         help="Skip ffprobe duration detection (faster)")
     parser.add_argument("--path", type=str,
@@ -889,9 +922,18 @@ def main():
                         help="Include _LONG-HOLD/ in the scan (normally skipped)")
     args = parser.parse_args()
 
-    if args.refresh_keys:
-        refresh_filename_keys()
+    if args.refresh_keys or args.refresh_bpm:
+        if args.refresh_keys:
+            refresh_filename_keys(dry_run=args.dry_run)
+        if args.refresh_bpm:
+            refresh_filename_bpms(dry_run=args.dry_run)
         return
+
+    if librosa_available() and not numpy_elision_safe():
+        print("ERROR: this Python/numpy pair silently corrupts large arrays (numpy < 2.3 "
+              "on Python 3.14+), so librosa keys and BPMs would be stored wrong. Use "
+              "Python 3.12, or numpy >= 2.3.", file=sys.stderr)
+        sys.exit(1)
 
     path_filter = None
     if args.path:

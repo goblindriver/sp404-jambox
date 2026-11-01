@@ -47,7 +47,9 @@ from jambox_config import (
     upsert_tag_entries,
     write_tag_changes,
 )
-from audio_analysis import extract_features, is_available as librosa_available
+from audio_analysis import (
+    chroma_and_key, extract_features, is_available as librosa_available, numpy_elision_safe,
+)
 from library_walker import AUDIO_EXTENSIONS, is_appledouble
 from llm_client import LLMError, call_llm_chat
 
@@ -456,12 +458,13 @@ def _merge_tags(existing_entry, llm_tags, features, rel_path, mark_smart_retag_c
         if key in llm_tags:
             entry[key] = llm_tags[key]
 
-    # Audio features
+    # Audio features. A BPM or key read from the filename ("140BPM C Maj") is the
+    # pack's own label and beats librosa's estimate, which is often half/double time.
     if features:
-        if features.get('bpm'):
+        if features.get('bpm') and entry.get('bpm_source') != 'filename':
             entry['bpm'] = features['bpm']
             entry['bpm_source'] = 'librosa'
-        if features.get('key'):
+        if features.get('key') and entry.get('key_source') != 'filename':
             entry['key'] = features['key']
             entry['key_source'] = 'librosa'
         if features.get('loudness_db') is not None:
@@ -1613,6 +1616,113 @@ def run_recheck_quarantine(args):
         raise KeyboardInterrupt
 
 
+CHROMA_REFRESH_MARKER = 'chroma_refreshed'
+
+
+def _refresh_candidates(tag_db, type_code=None, force=False):
+    """(rel, full_path, entry) for rows with a stored chroma vector whose file is on disk."""
+    for rel, entry in tag_db.items():
+        if not isinstance(entry, dict):
+            continue
+        features = entry.get('features')
+        if not isinstance(features, dict) or features.get('chroma') is None:
+            continue
+        if entry.get(CHROMA_REFRESH_MARKER) and not force:
+            continue
+        if type_code and str(entry.get('type_code') or '').upper() != type_code.upper():
+            continue
+        full = os.path.join(LIBRARY, rel)
+        if os.path.exists(full):
+            yield rel, full, entry
+
+
+def _chroma_changes(entry, chroma, key):
+    """Fields to merge for one refreshed row; the marker lets an interrupted run resume.
+
+    Only librosa keys are recomputed: filename keys never came from chroma.
+    """
+    changes = {CHROMA_REFRESH_MARKER: datetime.now().strftime('%Y-%m-%d')}
+    features = entry.get('features') or {}
+    if features.get('chroma') != chroma:
+        changes['features'] = {**features, 'chroma': chroma}
+    if entry.get('key_source') == 'librosa' and key != entry.get('key'):
+        changes['key'] = key
+        if key is None:
+            changes['key_source'] = None
+    return changes
+
+
+def run_refresh_chroma(args):
+    """Recompute stored chroma vectors and librosa keys from the audio, without the LLM.
+
+    For rows written where numpy corrupted chroma_cqt (see
+    audio_analysis.numpy_elision_safe). A dry run unless --apply; --force also
+    redoes rows an earlier --apply already refreshed.
+    """
+    tag_db = _load_tags()
+    candidates = list(_refresh_candidates(tag_db, type_code=args.type, force=args.force))
+    print("Rows with stored chroma to refresh: %d" % len(candidates))
+    if args.limit:
+        candidates = candidates[:args.limit]
+        print("Limited to %d" % args.limit)
+    if not candidates:
+        return
+    print("%s | workers: %d\n" % (
+        "APPLY" if args.apply else "DRY RUN (add --apply to write the DB)", args.workers))
+
+    counts = {"checked": 0, "chroma_changed": 0, "key_changed": 0, "unreadable": 0}
+    key_moves = {}
+    pending = {}
+    t0 = time.time()
+    interrupted = False
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {pool.submit(chroma_and_key, full): (rel, entry) for rel, full, entry in candidates}
+        try:
+            for i, fut in enumerate(_completed(futures), 1):
+                rel, entry = futures[fut]
+                result = fut.result()
+                if result is None:
+                    counts["unreadable"] += 1
+                    continue
+                changes = _chroma_changes(entry, *result)
+                counts["checked"] += 1
+                if 'features' in changes:
+                    counts["chroma_changed"] += 1
+                if 'key' in changes:
+                    counts["key_changed"] += 1
+                    move = (entry.get('key'), changes['key'])
+                    key_moves[move] = key_moves.get(move, 0) + 1
+                    if not args.quiet and counts["key_changed"] <= 20:
+                        print("  KEY %s -> %s: %s" % (move[0], move[1], rel), flush=True)
+                if args.apply:
+                    pending[rel] = changes
+                    if len(pending) >= BATCH_SIZE:
+                        with _persist_lock:
+                            _save_changes(pending)
+                if i % 500 == 0:
+                    rate = i / max(time.time() - t0, 1e-6)
+                    print("=== Refresh %d/%d  |  %.0f/min ===" % (i, len(candidates), rate * 60), flush=True)
+        except KeyboardInterrupt:
+            _cancel_queued(pool)
+            interrupted = True
+
+    if args.apply:
+        with _persist_lock:
+            _save_changes(pending)
+        export_tags_json(TAGS_FILE)
+
+    print("\n" + "=" * 60)
+    print("Chroma refresh %s" % (
+        "interrupted" if interrupted else "complete" if args.apply else "(dry run)"))
+    print("  Checked: %d  Chroma changed: %d  Librosa keys changed: %d  Unreadable: %d" % (
+        counts["checked"], counts["chroma_changed"], counts["key_changed"], counts["unreadable"]))
+    for (old, new), n in sorted(key_moves.items(), key=lambda kv: -kv[1])[:10]:
+        print("    %s -> %s: %d" % (old, new, n))
+    print("  Time: %.1f min" % ((time.time() - t0) / 60))
+    if interrupted:
+        raise KeyboardInterrupt
+
+
 def run_validate(args):
     """Stratified validation: process up to N files per type code, report quality."""
     per_type = args.limit or 5
@@ -1675,7 +1785,8 @@ def main():
     parser.add_argument('--type', type=str, help='Only files with this type code (e.g. FX, KIK)')
     parser.add_argument('--limit', type=int, help='Max files to process')
     parser.add_argument('--dry-run', action='store_true', help='Feature extraction only')
-    parser.add_argument('--force', action='store_true', help='Retag already tagged files')
+    parser.add_argument('--force', action='store_true',
+                        help='Retag already tagged files (with --refresh-chroma: redo refreshed rows)')
     parser.add_argument('--quiet', '-q', action='store_true', help='Less output')
     parser.add_argument('--workers', type=int, default=None,
                         help='Concurrent file workers (default from RAM or SP404_SMART_RETAG_WORKERS; cap %d)' % SMART_RETAG_WORKERS_CAP)
@@ -1687,9 +1798,16 @@ def main():
                         help='Re-run LLM on files that have features but no LLM enrichment')
     parser.add_argument('--recheck-quarantine', action='store_true',
                         help='Re-score quarantined files and restore those a majority of votes rates >= 3')
+    parser.add_argument('--refresh-chroma', action='store_true',
+                        help='Recompute stored chroma and librosa keys from the audio, no LLM (dry run unless --apply)')
     parser.add_argument('--apply', action='store_true',
-                        help='With --recheck-quarantine: move files back and write the DB (default is a dry run)')
+                        help='With --recheck-quarantine or --refresh-chroma: write the changes (default is a dry run)')
     args = parser.parse_args()
+    if not numpy_elision_safe():
+        print("ERROR: this Python/numpy pair silently corrupts large arrays (numpy < 2.3 "
+              "on Python 3.14+), so features would be stored wrong. Use Python 3.12, "
+              "or numpy >= 2.3.", file=sys.stderr)
+        sys.exit(1)
     args.workers = (
         SMART_RETAG_WORKERS_DEFAULT
         if args.workers is None
@@ -1706,6 +1824,10 @@ def main():
 
     if args.recheck_quarantine:
         run_recheck_quarantine(args)
+        return
+
+    if args.refresh_chroma:
+        run_refresh_chroma(args)
         return
 
     if args.validate:
