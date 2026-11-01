@@ -167,6 +167,43 @@ class IngestSafetyTests(unittest.TestCase):
             {"Drums/kick.flac": {"type_code": "KIK", "duration": 1, "cowork_source": "from cowork"}},
         )
 
+    def _ingest_in_order(self, fingerprints):
+        """Route files through the real recent-duplicate check, in order; fingerprints keyed by name."""
+        import deduplicate_samples
+
+        results = {}
+        with patch.dict(ingest_state._recent_fingerprints, clear=True), \
+             patch.object(deduplicate_samples, "compute_fingerprint",
+                          side_effect=lambda path: fingerprints[os.path.basename(path)]), \
+             patch("tag_library.tag_file", return_value={"type_code": "KIK", "duration": 1}), \
+             patch("smart_retag.retag_single", return_value=None), \
+             patch.dict(sys.modules, {"clap_engine": None, "discogs_engine": None}), \
+             redirect_stdout(io.StringIO()) as out:
+            for name in fingerprints:
+                path = os.path.join(self.library, name)
+                open(path, "wb").close()
+                results[name] = ingest_enrichment._route_and_process(path, name)
+        return results, out.getvalue()
+
+    def test_fallback_fingerprint_match_keeps_both_files_with_rows(self):
+        same = {"kind": "python", "value": [0.9, 0.1, 0.4]}
+
+        results, out = self._ingest_in_order({"kick_a.flac": same, "kick_b.flac": dict(same)})
+
+        self.assertEqual(results, {"kick_a.flac": "keep", "kick_b.flac": "keep"})
+        self.assertEqual(set(jambox_config.load_tag_db(self.tags)), {"kick_a.flac", "kick_b.flac"})
+        self.assertFalse(os.path.exists(os.path.join(self.library, "_DUPES")))
+        self.assertIn("Possible duplicate, kept (1.00): kick_b.flac ~ kick_a.flac", out)
+
+    def test_chromaprint_match_still_goes_to_dupes(self):
+        same = {"kind": "fpcalc", "value": "1,2,3,4"}
+
+        results, _out = self._ingest_in_order({"loop_a.flac": same, "loop_b.flac": dict(same)})
+
+        self.assertEqual(results, {"loop_a.flac": "keep", "loop_b.flac": "duplicate"})
+        self.assertEqual(set(jambox_config.load_tag_db(self.tags)), {"loop_a.flac"})
+        self.assertEqual(os.listdir(os.path.join(self.library, "_DUPES")), ["loop_b.flac"])
+
 
 if __name__ == "__main__":
     unittest.main()
