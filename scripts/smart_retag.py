@@ -48,6 +48,7 @@ from jambox_config import (
     write_tag_changes,
 )
 from audio_analysis import extract_features, is_available as librosa_available
+from library_walker import AUDIO_EXTENSIONS, is_appledouble
 from llm_client import LLMError, call_llm_chat
 
 SETTINGS = load_settings_for_script(__file__)
@@ -66,7 +67,7 @@ SMART_RETAG_LLM_TIMEOUT = SETTINGS.get("SMART_RETAG_LLM_TIMEOUT")
 SMART_RETAG_LLM_RETRIES = SETTINGS.get("SMART_RETAG_LLM_RETRIES")
 REPO_DIR = os.path.dirname(SCRIPTS_DIR)
 CHECKPOINT_PATH = os.path.join(REPO_DIR, "data", "retag_checkpoint.json")
-AUDIO_EXTS = {".wav", ".aif", ".aiff", ".flac"}
+AUDIO_EXTS = AUDIO_EXTENSIONS  # same set ingest accepts, so no ingested file goes untagged
 SKIP_DIRS = LIBRARY_SKIP_DIRS
 
 BATCH_SIZE = 50
@@ -645,6 +646,8 @@ def _walk_library(path_filter=None):
                 continue
             if os.path.splitext(f)[1].lower() in AUDIO_EXTS:
                 full = os.path.join(dirpath, f)
+                if is_appledouble(full):
+                    continue
                 rel = library_rel_path(full, LIBRARY)
                 if rel:
                     files.append((rel, full))

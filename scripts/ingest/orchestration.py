@@ -7,7 +7,7 @@ from .archive import (
     categorize_wav, make_prefix, read_source_context,
     extract_rar, has_rar_files, extract_archive, _copy_as_flac,
     is_sample_pack, should_ignore, archive_has_audio,
-    is_ingested, mark_ingested,
+    is_ingested, mark_ingested, pack_audio_files,
 )
 from .enrichment import _route_and_process
 from jambox_config import library_rel_path
@@ -87,11 +87,7 @@ def ingest_pack(pack_dir, dry_run=False):
         else:
             print(f"  Already extracted to: {extract_dir}")
 
-    wav_files = []
-    for root, dirs, files in os.walk(extract_dir):
-        for f in files:
-            if os.path.splitext(f)[1].lower() in _state.AUDIO_EXTENSIONS:
-                wav_files.append(os.path.join(root, f))
+    wav_files = pack_audio_files(extract_dir)
 
     if not wav_files:
         print(f"  No audio files found")
@@ -169,11 +165,7 @@ def ingest_archive_file(filepath, dry_run=False):
     if not extract_archive(filepath, extract_dest):
         return 0
 
-    wav_files = []
-    for root, dirs, files in os.walk(extract_dest):
-        for f in files:
-            if os.path.splitext(f)[1].lower() in _state.AUDIO_EXTENSIONS:
-                wav_files.append(os.path.join(root, f))
+    wav_files = pack_audio_files(extract_dest)
 
     if not wav_files:
         print(f"  No audio files in archive \u2014 skipping (not a sample pack)")
