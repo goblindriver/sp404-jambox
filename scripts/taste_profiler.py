@@ -180,17 +180,22 @@ def profile_games():
             'total_items': len(_scan_dir(games_dir))}
 
 
+def _squash(name):
+    """Letters and digits only: "Norwest Passages†" matches the key "NorwestPassages"."""
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
 def profile_own_films():
     """Extract taste signal from personal video productions."""
     vibes = defaultdict(float)
     inventory = {}
 
-    film_dir = os.path.join(QNAP, "Video Production", "Finished Movies")
+    film_dir = SETTINGS["MULTITRACK_FILM_ROOT"]
     for f in _scan_dir(film_dir):
         name = os.path.splitext(f)[0]
         inventory[name] = f
         for key, fvibes in OWN_FILM_VIBES.items():
-            if key.lower() in name.lower():
+            if _squash(key) in _squash(name):
                 for vibe, weight in fvibes.items():
                     vibes[vibe] += weight
                 break
@@ -203,7 +208,7 @@ def profile_multitrack_sessions():
     vibes = defaultdict(float)
     inventory = {}
 
-    sessions_dir = os.path.join(QNAP, "Video Production", "Multitrack Sessions", "FUN SESSIONS")
+    sessions_dir = SETTINGS["MULTITRACK_SESSIONS_ROOT"]
     for artist in _scan_dir(sessions_dir):
         if not os.path.isdir(os.path.join(sessions_dir, artist)):
             continue

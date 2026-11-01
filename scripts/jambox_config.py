@@ -467,17 +467,19 @@ def load_settings(repo_dir):
         # or clone without interfering with its checkpoint. Leave empty to monitor
         # only the current repo's retag state.
         "CRUNCH_REPO": _read_optional_path("SP404_CRUNCH_REPO", ""),
+        # media-catalog's April 2026 reorganization renamed "Video Production" to
+        # "Media Production" and moved the finished films to "Jason Finished Work".
         "MULTITRACK_SESSIONS_ROOT": _read_required_path(
             "SP404_MULTITRACK_SESSIONS_ROOT",
-            os.path.join(qnap_root, "Video Production", "Multitrack Sessions", "FUN SESSIONS"),
+            os.path.join(qnap_root, "Media Production", "Multitrack Practice Stems", "FUN SESSIONS"),
         ),
         "MULTITRACK_H4N_ROOT": _read_required_path(
             "SP404_MULTITRACK_H4N_ROOT",
-            os.path.join(qnap_root, "Video Production", "H4N"),
+            os.path.join(qnap_root, "Media Production", "Zoom H4N Recordings"),
         ),
         "MULTITRACK_FILM_ROOT": _read_required_path(
             "SP404_MULTITRACK_FILM_ROOT",
-            os.path.join(qnap_root, "Video Production", "Finished Movies"),
+            os.path.join(qnap_root, "Jason Finished Work"),
         ),
     }
 
