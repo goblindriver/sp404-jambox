@@ -43,10 +43,11 @@ from jambox_config import (
 from library_walker import AUDIO_EXTENSIONS, is_appledouble
 
 try:
-    from audio_analysis import analyze_audio, is_available as librosa_available
+    from audio_analysis import analyze_audio, is_available as librosa_available, numpy_elision_safe
 except ImportError:
     analyze_audio = None
     librosa_available = lambda: False
+    numpy_elision_safe = lambda: True
 
 SETTINGS = load_settings_for_script(__file__)
 LIBRARY = SETTINGS["SAMPLE_LIBRARY"]
@@ -233,9 +234,17 @@ GENRE_PATTERNS = [
 BPM_PATTERNS = [
     re.compile(r"(\d{2,3})\s*bpm", re.IGNORECASE),
     re.compile(r"bpm\s*(\d{2,3})", re.IGNORECASE),
-    re.compile(r"[\-_](\d{2,3})[\-_]", re.IGNORECASE),
+]
+# A bare number ("loop_122_Fm", "(80)") is only probably a tempo: it is also a
+# synth or drum machine model ("Juno-106", "CR-78") or a one-shot's index
+# number ("Kick_156_PL"). These are tried after the explicit "bpm" patterns.
+BARE_BPM_PATTERNS = [
+    re.compile(r"[\-_](\d{2,3})(?=[\-_])"),
     re.compile(r"\((\d{2,3})\)"),
 ]
+_GEAR_MODEL_BEFORE = re.compile(
+    r"(?i)(?:^|[^a-z0-9])(?:juno|tr|tb|sh|mc|cr|dr|cz|jd|jv|jx|mks|ms|ob|sp|mpc|pss|dx|sy)[\-_ ]?$")
+BARE_BPM_MIN_SECONDS = 1.0  # shorter files are one-shots; their bare numbers are indexes
 
 # A key token sits between delimiters: "_Am_", " C#min.", "-Bb-". The quality
 # (m/min/minor/maj/major) is part of the match -- dropping it stored every
@@ -261,14 +270,26 @@ def get_duration(filepath):
     return 0.0
 
 
-def extract_bpm(filename, dirpath):
-    """Try to extract BPM from filename or directory path."""
+def extract_bpm(filename, dirpath, duration=None):
+    """Try to extract BPM from filename or directory path.
+
+    "120bpm" / "BPM 120" always count. A bare number counts only when it does
+    not follow a gear model name, and not on a file known to be under
+    BARE_BPM_MIN_SECONDS long.
+    """
     text = filename + " " + dirpath
     for pat in BPM_PATTERNS:
         m = pat.search(text)
         if m:
             bpm = int(m.group(1))
             if 50 <= bpm <= 250:
+                return bpm
+    if duration and duration < BARE_BPM_MIN_SECONDS:
+        return None
+    for pat in BARE_BPM_PATTERNS:
+        for m in pat.finditer(text):
+            bpm = int(m.group(1))
+            if 50 <= bpm <= 250 and not _GEAR_MODEL_BEFORE.search(text[:m.start(1) - 1]):
                 return bpm
     return None
 
@@ -627,7 +648,7 @@ def tag_file(rel_path, full_path, get_dur=True, use_librosa=True):
 
     # Core dimensions
     type_code = extract_type_code(rel_path, filename)
-    bpm = extract_bpm(filename, dirpath)
+    bpm = extract_bpm(filename, dirpath, duration)
     key = extract_key(filename)
 
     bpm_source = "filename" if bpm else None
@@ -846,7 +867,7 @@ def print_summary(db):
         print(f"  {p:<15s} {count:>5d}")
 
 
-def refresh_filename_keys():
+def refresh_filename_keys(dry_run=False):
     """Re-run extract_key on rows whose key came from the filename.
 
     librosa is only the fallback for filenames without a key, so a librosa row
@@ -867,10 +888,45 @@ def refresh_filename_keys():
             changes[rel] = {"key": key, "key_source": "filename" if key else None}
     for rel, fields in list(changes.items())[:20]:
         print(f"  {rel}: -> {fields['key']}")
-    if changes:
+    if changes and not dry_run:
         merge_tag_fields(TAGS_FILE, changes)
         export_tags_json(TAGS_FILE)
-    print(f"Updated {len(changes)} filename-derived keys")
+    print(f"{'Would update' if dry_run else 'Updated'} {len(changes)} filename-derived keys")
+
+
+_BPM_TAG = re.compile(r"^\d+bpm$")
+
+
+def refresh_filename_bpms(dry_run=False):
+    """Put filename BPMs back where librosa's tempo estimate replaced them.
+
+    A pack's "140BPM" is its own label; smart_retag used to overwrite it with
+    librosa's beat tracker, which is often half or double time. A filename
+    BPM the parser no longer accepts (a gear model number, a one-shot's
+    index) is cleared.
+    """
+    changes = {}
+    cleared = 0
+    for rel, entry in load_existing_tags().items():
+        if not isinstance(entry, dict) or entry.get("bpm_source") not in ("filename", "librosa", None):
+            continue
+        bpm = extract_bpm(os.path.basename(rel), os.path.dirname(rel), entry.get("duration"))
+        if not bpm and entry.get("bpm_source") == "filename":
+            bpm, cleared = None, cleared + 1
+        elif not bpm or (bpm == entry.get("bpm") and entry.get("bpm_source") == "filename"):
+            continue
+        fields = {"bpm": bpm, "bpm_source": "filename" if bpm else None}
+        if isinstance(entry.get("tags"), list):
+            tags = {t for t in entry["tags"] if not _BPM_TAG.match(str(t))}
+            fields["tags"] = sorted(tags | {f"{bpm}bpm"} if bpm else tags)
+        changes[rel] = fields
+    for rel, fields in list(changes.items())[:20]:
+        print(f"  {rel}: -> {fields['bpm']}")
+    if changes and not dry_run:
+        merge_tag_fields(TAGS_FILE, changes)
+        export_tags_json(TAGS_FILE)
+    print(f"{'Would update' if dry_run else 'Updated'} {len(changes)} filename-derived BPMs "
+          f"({cleared} cleared: no longer read as a tempo)")
 
 
 def main():
@@ -881,6 +937,10 @@ def main():
                         help="Re-derive base tags for every file, keeping smart-retag and enrichment fields")
     parser.add_argument("--refresh-keys", action="store_true",
                         help="Re-read filename-derived keys (fixes minor keys stored as major) and exit")
+    parser.add_argument("--refresh-bpm", action="store_true",
+                        help="Restore BPMs read from filenames where librosa's estimate replaced them, and exit")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="With --refresh-keys/--refresh-bpm: report the changes without writing")
     parser.add_argument("--no-duration", action="store_true",
                         help="Skip ffprobe duration detection (faster)")
     parser.add_argument("--path", type=str,
@@ -889,9 +949,18 @@ def main():
                         help="Include _LONG-HOLD/ in the scan (normally skipped)")
     args = parser.parse_args()
 
-    if args.refresh_keys:
-        refresh_filename_keys()
+    if args.refresh_keys or args.refresh_bpm:
+        if args.refresh_keys:
+            refresh_filename_keys(dry_run=args.dry_run)
+        if args.refresh_bpm:
+            refresh_filename_bpms(dry_run=args.dry_run)
         return
+
+    if librosa_available() and not numpy_elision_safe():
+        print("ERROR: this Python/numpy pair silently corrupts large arrays (numpy < 2.3 "
+              "on Python 3.14+), so librosa keys and BPMs would be stored wrong. Use "
+              "Python 3.12, or numpy >= 2.3.", file=sys.stderr)
+        sys.exit(1)
 
     path_filter = None
     if args.path:
