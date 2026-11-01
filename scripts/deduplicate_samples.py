@@ -35,6 +35,14 @@ DEFAULT_WORKERS = min(8, os.cpu_count() or 4)
 # they differ by at most max(0.5s, 10% of the longer one).
 DURATION_TOLERANCE_SECONDS = 0.5
 DURATION_TOLERANCE_RATIO = 0.10
+# A chromaprint match alone never moves a file: a held note fingerprints to a
+# near-constant hash, so different instruments on related notes score ~0.93.
+# A copy also has the same length and the same stored timbre (MFCC means,
+# leaving out the gain-dependent MFCC 0). On the iMac library every pair that
+# passed this scored 1.000 and was the same file under two pack names.
+COPY_DURATION_SECONDS = 0.1
+COPY_DURATION_RATIO = 0.02
+COPY_MFCC_DISTANCE = 0.5
 _BLOCK_ELEMENTS = 1 << 22  # rows x cols x frames scored per numpy step (~16 MB of uint32)
 _CACHE_SAVE_SECONDS = 120  # checkpoint the fingerprint cache so a killed run keeps its work
 
@@ -201,6 +209,27 @@ def _entry_duration(entry):
     except (TypeError, ValueError):
         return 0.0
     return duration if duration > 0 else 0.0
+
+
+def _stored_mfcc(entry):
+    mfcc = ((entry or {}).get("features") or {}).get("mfcc")
+    if not isinstance(mfcc, (list, tuple)) or len(mfcc) < 2:
+        return None
+    try:
+        return np.asarray(mfcc, dtype=np.float64)
+    except (TypeError, ValueError):
+        return None
+
+
+def _confirmed_copy(entry_a, entry_b):
+    """Same length and same stored timbre: what makes a chromaprint match safe to act on."""
+    da, db_ = _entry_duration(entry_a), _entry_duration(entry_b)
+    if da <= 0 or db_ <= 0 or abs(da - db_) > max(COPY_DURATION_SECONDS, COPY_DURATION_RATIO * max(da, db_)):
+        return False
+    ma, mb = _stored_mfcc(entry_a), _stored_mfcc(entry_b)
+    if ma is None or mb is None or len(ma) != len(mb):
+        return False
+    return float(np.linalg.norm(ma[1:] - mb[1:])) <= COPY_MFCC_DISTANCE
 
 
 def _comparable(d1, d2):
@@ -383,6 +412,26 @@ def _connected_groups(paths, adjacency):
     return groups
 
 
+def _direct_groups(paths, adjacency, rank):
+    """Each best-ranked file with the files that match it directly.
+
+    Never through a chain: A~B and B~C does not make C a copy of A, which is
+    how a connected component once grouped a violin with a CZ pad.
+    """
+    groups = []
+    for component in _connected_groups(paths, adjacency):
+        assigned = set()
+        for keeper in sorted(component, key=rank, reverse=True):
+            if keeper in assigned:
+                continue
+            assigned.add(keeper)
+            copies = sorted(adjacency[keeper] - assigned, key=rank, reverse=True)
+            assigned.update(copies)
+            if copies:
+                groups.append([keeper] + copies)
+    return groups
+
+
 def _llm_tag_filename(rel_path):
     endpoint = SETTINGS.get("LLM_ENDPOINT", "").strip()
     if not endpoint:
@@ -423,10 +472,12 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
     Files neither fpcalc nor the Python fallback can read are skipped and
     counted in stats["unreadable"], never reported as duplicates.
 
-    Each group's "match" says what found it. "fpcalc" groups are chromaprint
-    matches, the only ones safe to move files on. "fallback" groups come
-    from the Python fingerprint, which calls most short one-shots alike:
-    report them for review, never act on them.
+    Each group's "match" says what found it. "fpcalc" groups are the only
+    ones safe to move files on: each duplicate matches the kept file directly
+    on chromaprint and is also a confirmed copy (_confirmed_copy). Other
+    chromaprint matches are "fpcalc_review". "fallback" groups come from the
+    Python fingerprint, which calls most short one-shots alike. Report both
+    for review; never act on them.
     """
     entries = list(db.items())
     if type_code:
@@ -446,27 +497,36 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
     t0 = time.time()
     paths = list(fingerprints.keys())
     durations = np.array([_entry_duration(db.get(rel_path)) for rel_path in paths], dtype=np.float64)
-    # Separate graphs: a fallback match never joins files into a chromaprint group.
-    adjacency = {match: {rel_path: set() for rel_path in paths} for match in ("fpcalc", "fallback")}
+    # Separate graphs: a review match never joins files into a group that moves files.
+    adjacency = {match: {rel_path: set() for rel_path in paths} for match in ("fpcalc", "fpcalc_review", "fallback")}
     for rel_path, compare_path, match in _duplicate_pairs(paths, fingerprints, durations, threshold, cache_entries, workers):
+        if match == "fpcalc" and not _confirmed_copy(db.get(rel_path), db.get(compare_path)):
+            match = "fpcalc_review"
         adjacency[match][rel_path].add(compare_path)
         adjacency[match][compare_path].add(rel_path)
     stats["compare_seconds"] = round(time.time() - t0, 1)
 
-    groups = [(match, group) for match in ("fpcalc", "fallback")
-              for group in _connected_groups(paths, adjacency[match])]
+    sizes = {}
+
+    def member(rel_path):
+        if rel_path not in sizes:
+            full_path = os.path.join(LIBRARY, rel_path)
+            sizes[rel_path] = os.path.getsize(full_path) if os.path.exists(full_path) else 0
+        entry = db.get(rel_path, {})
+        return {"path": rel_path, "size": sizes[rel_path], "tag_count": len(entry.get("tags", [])),
+                "type_code": entry.get("type_code")}
+
+    def rank(rel_path):
+        item = member(rel_path)
+        return item["tag_count"], item["size"]
+
+    groups = [("fpcalc", group) for group in _direct_groups(paths, adjacency["fpcalc"], rank)]
+    groups += [(match, group) for match in ("fpcalc_review", "fallback")
+               for group in _connected_groups(paths, adjacency[match])]
     reports = []
     for match, group in groups:
-        members = []
-        for rel_path in group:
-            full_path = os.path.join(LIBRARY, rel_path)
-            entry = db.get(rel_path, {})
-            members.append({
-                "path": rel_path,
-                "size": os.path.getsize(full_path) if os.path.exists(full_path) else 0,
-                "tag_count": len(entry.get("tags", [])),
-                "type_code": entry.get("type_code"),
-            })
+        members = [member(rel_path) for rel_path in group]
+        # Stable: a direct group's keeper stays first among equally ranked files.
         members.sort(key=lambda item: (item["tag_count"], item["size"]), reverse=True)
         reports.append({
             "keep": members[0]["path"],

@@ -28,6 +28,10 @@ def _args(**overrides):
     return argparse.Namespace(**values)
 
 
+HAT_MFCC = [-300.0, 80.0, -12.0, 9.5, 4.0, -3.0, 2.0, 1.0, -1.5, 0.5, 0.2, -0.4, 0.1]
+COPY_ROW = {"duration": 1, "type_code": "HAT", "features": {"mfcc": list(HAT_MFCC)}}
+
+
 class LibraryTrimTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -38,7 +42,7 @@ class LibraryTrimTests(unittest.TestCase):
             "Drums/long.wav": {"duration": 90, "type_code": "BRK"},
             "Drums/silent.wav": {"duration": 1, "type_code": "KIK"},
             "Drums/unreadable.wav": {"duration": 1, "type_code": "SNR"},
-            "Drums/good.wav": {"duration": 1, "type_code": "HAT", "quality_score": 4},
+            "Drums/good.wav": {"duration": 1, "type_code": "HAT", "quality_score": 4, "features": {"mfcc": HAT_MFCC}},
         }
         for rel in self.rows:
             with open(os.path.join(self.lib, rel), "wb") as fh:
@@ -139,7 +143,7 @@ class LibraryTrimTests(unittest.TestCase):
             return json.load(fh)
 
     def test_chromaprint_duplicate_is_trashed_and_restore_brings_it_back(self):
-        copy_row = {"duration": 1, "type_code": "HAT"}
+        copy_row = dict(COPY_ROW)
         self._add_copy("Drums/good_copy.wav", copy_row)
         same = {"kind": "fpcalc", "value": "1,2,3,4"}
 
@@ -172,10 +176,10 @@ class LibraryTrimTests(unittest.TestCase):
         self.assertEqual(dedup["trashed"], 0)
         self.assertEqual(dedup["review_only"], 1)
         self.assertEqual(dedup["possible_duplicates"], [{"keep": "Drums/good.wav", "duplicates": ["Drums/good_copy.wav"]}])
-        self.assertIn("Possible duplicates (fallback fingerprint, not moved): 1 files in 1 groups", out)
+        self.assertIn("Possible duplicates (not confirmed copies, not moved): 1 files in 1 groups", out)
 
     def test_dry_run_shows_chromaprint_cuts_and_fallback_review_apart(self):
-        self._add_copy("Drums/good_copy.wav", {"duration": 1, "type_code": "HAT"})
+        self._add_copy("Drums/good_copy.wav", dict(COPY_ROW))
         self._add_copy("Drums/silent_copy.wav", {"duration": 1, "type_code": "KIK"})
         chroma = {"kind": "fpcalc", "value": "1,2,3,4"}
         loose = {"kind": "python", "value": [0.0, 1.0, 0.0]}
@@ -184,10 +188,10 @@ class LibraryTrimTests(unittest.TestCase):
                                "silent.wav": loose, "silent_copy.wav": dict(loose)})
 
         dedup_section = out.split("--- Pass 2")[1].split("--- Pass")[0]
-        self.assertIn("Found 1 duplicate groups on chromaprint", dedup_section)
+        self.assertIn("Found 1 groups of confirmed copies", dedup_section)
         self.assertIn("Would trash: 1 files", dedup_section)
         self.assertIn("Drums/good_copy.wav  (copy of Drums/good.wav)", dedup_section)
-        self.assertIn("Possible duplicates (fallback fingerprint, not moved): 1 files in 1 groups", dedup_section)
+        self.assertIn("Possible duplicates (not confirmed copies, not moved): 1 files in 1 groups", dedup_section)
         self.assertIn("1 flagged for review only (not moved)", out)
         self.assertEqual(len(load_tag_db(self.tags)), len(self.rows) + 2)  # dry run: nothing moved
         # the dry-run report names each copy it would trash and the file it duplicates
@@ -195,6 +199,20 @@ class LibraryTrimTests(unittest.TestCase):
         self.assertEqual(dedup["duplicates"], [{"keep": "Drums/good.wav", "duplicates": ["Drums/good_copy.wav"]}])
         self.assertEqual(dedup["possible_duplicates"],
                          [{"keep": "Drums/silent.wav", "duplicates": ["Drums/silent_copy.wav"]}])
+
+    def test_chromaprint_match_with_other_timbre_or_length_is_review_only(self):
+        # A held organ note and a synth pad on a related note score ~0.93 on chromaprint.
+        other_timbre = {**COPY_ROW, "features": {"mfcc": [v + 3.0 for v in HAT_MFCC]}}
+        self._add_copy("Drums/organ.wav", other_timbre)
+        self._add_copy("Drums/longer.wav", {**COPY_ROW, "duration": 1.5})
+        same = {"kind": "fpcalc", "value": "1,2,3,4"}
+
+        self._run_dedup({"good.wav": same, "organ.wav": dict(same), "longer.wav": dict(same)}, apply=True)
+
+        remaining = set(load_tag_db(self.tags))
+        self.assertTrue({"Drums/organ.wav", "Drums/longer.wav"} <= remaining)
+        dedup = self._report()["passes"]["dedup"]
+        self.assertEqual((dedup["trashed"], dedup["review_only"]), (0, 2))
 
     def test_refuses_to_run_without_ffmpeg(self):
         with patch.object(library_trim, "resolve_command", return_value=None), \
