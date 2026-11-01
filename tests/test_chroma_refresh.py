@@ -148,6 +148,31 @@ class FilenamePrecedenceTests(unittest.TestCase):
         self.assertEqual(db["Loops/beat.wav"]["bpm"], 120.0)
         self.assertEqual(db["Loops/kept 128 BPM.wav"]["bpm"], 128)
 
+    def test_bare_numbers_are_tempos_only_off_gear_names_and_one_shots(self):
+        cases = [
+            ("Legowelt-Juno-106_106 Pad Moody SF.flac", None, None),
+            ("Legowelt-Juno-106_loop_120_Am.flac", None, 120),
+            ("Pack_CR-78_Rim.wav", 2.0, None),
+            ("Prime-Drum_Kick_156_PL.flac", 0.3, None),
+            ("Prime-Drum_Spring_Play_Break_076_PL.flac", 12.6, 76),
+            ("Kick 140BPM.wav", 0.3, 140),
+            ("lofi_Snippy(80).flac", 3.0, 80),
+        ]
+        for name, duration, expected in cases:
+            with self.subTest(name=name):
+                self.assertEqual(tag_library.extract_bpm(name, "Loops", duration), expected)
+
+    def test_refresh_bpm_clears_filename_bpms_no_longer_read_as_tempo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tags = os.path.join(tmp, "_tags.json")
+            upsert_tag_entries(tags, {"Drums/Prime-Drum_Kick_156_PL.flac": {
+                "bpm": 156, "bpm_source": "filename", "duration": 0.3, "tags": ["156bpm", "KIK"]}})
+            with patch.object(tag_library, "TAGS_FILE", tags), patch("builtins.print"):
+                tag_library.refresh_filename_bpms()
+            row = load_tag_db(tags)["Drums/Prime-Drum_Kick_156_PL.flac"]
+
+        self.assertEqual((row["bpm"], row["bpm_source"], row["tags"]), (None, None, ["KIK"]))
+
     def test_refresh_bpm_dry_run_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             tags = os.path.join(tmp, "_tags.json")

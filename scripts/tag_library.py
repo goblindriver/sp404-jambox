@@ -234,9 +234,17 @@ GENRE_PATTERNS = [
 BPM_PATTERNS = [
     re.compile(r"(\d{2,3})\s*bpm", re.IGNORECASE),
     re.compile(r"bpm\s*(\d{2,3})", re.IGNORECASE),
-    re.compile(r"[\-_](\d{2,3})[\-_]", re.IGNORECASE),
+]
+# A bare number ("loop_122_Fm", "(80)") is only probably a tempo: it is also a
+# synth or drum machine model ("Juno-106", "CR-78") or a one-shot's index
+# number ("Kick_156_PL"). These are tried after the explicit "bpm" patterns.
+BARE_BPM_PATTERNS = [
+    re.compile(r"[\-_](\d{2,3})(?=[\-_])"),
     re.compile(r"\((\d{2,3})\)"),
 ]
+_GEAR_MODEL_BEFORE = re.compile(
+    r"(?i)(?:^|[^a-z0-9])(?:juno|tr|tb|sh|mc|cr|dr|cz|jd|jv|jx|mks|ms|ob|sp|mpc|pss|dx|sy)[\-_ ]?$")
+BARE_BPM_MIN_SECONDS = 1.0  # shorter files are one-shots; their bare numbers are indexes
 
 # A key token sits between delimiters: "_Am_", " C#min.", "-Bb-". The quality
 # (m/min/minor/maj/major) is part of the match -- dropping it stored every
@@ -262,14 +270,26 @@ def get_duration(filepath):
     return 0.0
 
 
-def extract_bpm(filename, dirpath):
-    """Try to extract BPM from filename or directory path."""
+def extract_bpm(filename, dirpath, duration=None):
+    """Try to extract BPM from filename or directory path.
+
+    "120bpm" / "BPM 120" always count. A bare number counts only when it does
+    not follow a gear model name, and not on a file known to be under
+    BARE_BPM_MIN_SECONDS long.
+    """
     text = filename + " " + dirpath
     for pat in BPM_PATTERNS:
         m = pat.search(text)
         if m:
             bpm = int(m.group(1))
             if 50 <= bpm <= 250:
+                return bpm
+    if duration and duration < BARE_BPM_MIN_SECONDS:
+        return None
+    for pat in BARE_BPM_PATTERNS:
+        for m in pat.finditer(text):
+            bpm = int(m.group(1))
+            if 50 <= bpm <= 250 and not _GEAR_MODEL_BEFORE.search(text[:m.start(1) - 1]):
                 return bpm
     return None
 
@@ -628,7 +648,7 @@ def tag_file(rel_path, full_path, get_dur=True, use_librosa=True):
 
     # Core dimensions
     type_code = extract_type_code(rel_path, filename)
-    bpm = extract_bpm(filename, dirpath)
+    bpm = extract_bpm(filename, dirpath, duration)
     key = extract_key(filename)
 
     bpm_source = "filename" if bpm else None
@@ -881,25 +901,32 @@ def refresh_filename_bpms(dry_run=False):
     """Put filename BPMs back where librosa's tempo estimate replaced them.
 
     A pack's "140BPM" is its own label; smart_retag used to overwrite it with
-    librosa's beat tracker, which is often half or double time.
+    librosa's beat tracker, which is often half or double time. A filename
+    BPM the parser no longer accepts (a gear model number, a one-shot's
+    index) is cleared.
     """
     changes = {}
+    cleared = 0
     for rel, entry in load_existing_tags().items():
         if not isinstance(entry, dict) or entry.get("bpm_source") not in ("filename", "librosa", None):
             continue
-        bpm = extract_bpm(os.path.basename(rel), os.path.dirname(rel))
-        if not bpm or (bpm == entry.get("bpm") and entry.get("bpm_source") == "filename"):
+        bpm = extract_bpm(os.path.basename(rel), os.path.dirname(rel), entry.get("duration"))
+        if not bpm and entry.get("bpm_source") == "filename":
+            bpm, cleared = None, cleared + 1
+        elif not bpm or (bpm == entry.get("bpm") and entry.get("bpm_source") == "filename"):
             continue
-        fields = {"bpm": bpm, "bpm_source": "filename"}
+        fields = {"bpm": bpm, "bpm_source": "filename" if bpm else None}
         if isinstance(entry.get("tags"), list):
-            fields["tags"] = sorted({t for t in entry["tags"] if not _BPM_TAG.match(str(t))} | {f"{bpm}bpm"})
+            tags = {t for t in entry["tags"] if not _BPM_TAG.match(str(t))}
+            fields["tags"] = sorted(tags | {f"{bpm}bpm"} if bpm else tags)
         changes[rel] = fields
     for rel, fields in list(changes.items())[:20]:
         print(f"  {rel}: -> {fields['bpm']}")
     if changes and not dry_run:
         merge_tag_fields(TAGS_FILE, changes)
         export_tags_json(TAGS_FILE)
-    print(f"{'Would update' if dry_run else 'Updated'} {len(changes)} filename-derived BPMs")
+    print(f"{'Would update' if dry_run else 'Updated'} {len(changes)} filename-derived BPMs "
+          f"({cleared} cleared: no longer read as a tempo)")
 
 
 def main():
