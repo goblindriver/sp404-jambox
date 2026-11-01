@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -279,6 +280,54 @@ class DeckTests(unittest.TestCase):
         self.assertIn("volume=-18dB", self.deck.guide_graph(-18, False))
         self.assertIn("[vid1]null[vo]", self.deck.guide_graph(-9, True))
         self.assertAlmostEqual(self.deck.pitch_scale(12), 2.0)
+
+    def test_ipc_reader_joins_split_events_and_stops_at_end_file(self):
+        mpv = object.__new__(self.deck.Mpv)
+        mpv.state = {"time-pos": None, "pause": False, "speed": 1.0}
+        mpv.state_at = 0.0
+        mpv.closed = threading.Event()
+        chunks = iter([b'{"event":"property-change","name":"time-pos","data":1.5}\n{"ev',
+                       b'ent":"property-change","name":"pause","data":true}\n',
+                       b'{"event":"end-file"}\n', b'{"event":"property-change","name":"time-pos","data":9}\n'])
+        mpv._recv_raw = lambda: next(chunks, b"")
+        mpv._reader()
+        self.assertTrue(mpv.closed.is_set())
+        self.assertEqual((mpv.state["time-pos"], mpv.state["pause"]), (1.5, True))
+
+    @unittest.skipUnless(os.name == "nt", "Windows named pipes")
+    def test_commands_reach_a_silent_mpv_on_windows(self):
+        # A blocking read on a synchronous pipe handle used to hold up every
+        # write until mpv sent something: while paused, never.
+        import _winapi
+        name = r"\\.\pipe\jambox-deck-test-%d" % os.getpid()
+        pipe = _winapi.CreateNamedPipe(          # byte mode is 0, so PIPE_WAIT alone
+            name, _winapi.PIPE_ACCESS_DUPLEX, _winapi.PIPE_WAIT, 1, 65536, 65536, 0, _winapi.NULL)
+        received = []
+
+        def silent_server():
+            _winapi.ConnectNamedPipe(pipe, False)
+            data = b""
+            while data.count(b"\n") < 4:          # 3 observe_property + the pause command
+                data += _winapi.ReadFile(pipe, 4096)[0]
+            received.append(data)
+            _winapi.WriteFile(pipe, b'{"event":"end-file"}\n')
+
+        result = {}
+
+        def client():
+            mpv = self.deck.Mpv(name, timeout=5)
+            mpv.command("set_property", "pause", False)
+            result["closed"] = mpv.closed.wait(5)
+
+        threading.Thread(target=silent_server, daemon=True).start()
+        worker = threading.Thread(target=client, daemon=True)
+        worker.start()
+        worker.join(10)
+        # Left open on failure: closing a handle with a blocked read would hang too.
+        self.assertFalse(worker.is_alive(), "a command blocked behind the pending pipe read")
+        _winapi.CloseHandle(pipe)
+        self.assertTrue(result.get("closed"))
+        self.assertIn(b'"pause", false', received[0])
 
 
 class TypeCodeAliasTests(unittest.TestCase):
