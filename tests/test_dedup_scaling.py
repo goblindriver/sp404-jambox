@@ -52,7 +52,7 @@ class SyntheticLibrary:
             self.files[name] = (seconds + seconds_delta, frames, vector)
 
         copy("loop00.wav", "loop00_copy.wav")
-        copy("loop01.wav", "loop01_perturbed.wav", seconds_delta=0.25, flip=0.03, shift=2)
+        copy("loop01.wav", "loop01_perturbed.wav", seconds_delta=0.05, flip=0.03, shift=2)
         copy("loop02.wav", "loop02_reencode.wav", seconds_delta=-0.05, flip=0.01)
         copy("loop03.wav", "loop03_a.wav", flip=0.02)
         copy("loop03.wav", "loop03_b.wav", seconds_delta=0.4, flip=0.02, shift=1)
@@ -63,7 +63,10 @@ class SyntheticLibrary:
         self.files["loop04_python_only.wav"] = (seconds, None, vector)
 
     def db(self):
-        return {name: {"duration": seconds, "tags": []} for name, (seconds, _f, _v) in self.files.items()}
+        # Copies share their source's stored MFCCs (taken from the python vector), so
+        # a chromaprint match of the same length counts as a confirmed copy.
+        return {name: {"duration": seconds, "tags": [], "features": {"mfcc": (vector[:13] * 10).tolist()}}
+                for name, (seconds, _f, vector) in self.files.items()}
 
     def fpcalc(self, path):
         frames = self.files[os.path.basename(path)][1]
@@ -130,18 +133,39 @@ class BucketedDedupTests(unittest.TestCase):
     def _groups(self, db, **kwargs):
         return set(self._matches(db, **kwargs))
 
+    @staticmethod
+    def _merged(groups):
+        """Reported groups joined wherever they share a file: comparable with brute force's components."""
+        merged = []
+        for group in groups:
+            touching = [m for m in merged if m & group]
+            for m in touching:
+                merged.remove(m)
+            merged.append(frozenset(group.union(*touching)))
+        return set(merged)
+
     def test_finds_the_same_groups_as_brute_force(self):
         self._write(self.lib.files)
         expected = self.lib.brute_force_groups()
 
         matches = self._matches(self.lib.db())
-        self.assertEqual(set(matches), expected)
+        self.assertEqual(self._merged(matches), expected)
         self.assertEqual(len(expected), 6)
-        self.assertEqual(matches[frozenset({"loop03.wav", "loop03_a.wav", "loop03_b.wav"})], "fpcalc")
+        # loop03_b is 0.4 s longer: a chromaprint match, but not a confirmed copy to trash
+        self.assertEqual(matches[frozenset({"loop03.wav", "loop03_a.wav"})], "fpcalc")
+        self.assertEqual(matches[frozenset({"loop03.wav", "loop03_a.wav", "loop03_b.wav"})], "fpcalc_review")
         # Python-fingerprint groups, including fpcalc-vs-python: review only, never acted on
         self.assertEqual(matches[frozenset({"shot00.wav", "shot00_copy.wav"})], "fallback")
         self.assertEqual(matches[frozenset({"loop04.wav", "loop04_python_only.wav"})], "fallback")
         self.assertEqual(sorted(matches.values()).count("fpcalc"), 4)
+
+    def test_a_match_with_other_timbre_is_review_only(self):
+        self.lib.files["loop00_copy.wav"] = (*self.lib.files["loop00_copy.wav"][:2], self.lib.files["loop06.wav"][2])
+        names = ["loop00.wav", "loop00_copy.wav"]
+        self._write(names)
+        db = {name: row for name, row in self.lib.db().items() if name in names}
+
+        self.assertEqual(self._matches(db), {frozenset(names): "fpcalc_review"})
 
     def test_a_fallback_match_never_joins_a_chromaprint_group(self):
         seconds, _frames_unused, vector = self.lib.files["loop00.wav"]

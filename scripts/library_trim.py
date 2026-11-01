@@ -409,9 +409,11 @@ def _pass_duration(db, active_keys, min_duration, trash):
 def _pass_dedup(db, active_keys, threshold, trash):
     """Pass 2: fingerprint-based dedup, keep best quality. Unreadable files are skipped.
 
-    Only chromaprint (fpcalc) matches are trashed. Matches on the Python
-    fallback fingerprint, which calls most short one-shots alike, are listed
-    in the report for review and nothing is moved.
+    Only confirmed copies are trashed: a chromaprint (fpcalc) match on the
+    kept file itself, with the same length and stored timbre. Other
+    chromaprint matches, and matches on the Python fallback fingerprint
+    (which calls most short one-shots alike), are listed in the report for
+    review and nothing is moved.
     """
     print("\n--- Pass 2: Dedup (threshold=%.2f) ---" % threshold, flush=True)
     stats = _new_stats()
@@ -432,7 +434,7 @@ def _pass_dedup(db, active_keys, threshold, trash):
         stats["unreadable"], dedup_stats.get("compare_seconds", 0)))
     matched = [group for group in groups if group.get("match") == "fpcalc"]
     review = [group for group in groups if group.get("match") != "fpcalc"]
-    print("  Found %d duplicate groups on chromaprint" % len(matched))
+    print("  Found %d groups of confirmed copies (chromaprint + same length and timbre)" % len(matched))
 
     # What this pass trashes, and the copy each one duplicates: the report lists
     # it on a dry run too, so the cut can be spot-checked before --apply.
@@ -454,7 +456,7 @@ def _pass_dedup(db, active_keys, threshold, trash):
     if len(pairs) > 10:
         print("    ... %d more, listed in the report (passes.dedup.duplicates)" % (len(pairs) - 10))
     if review:
-        print("  Possible duplicates (fallback fingerprint, not moved): %d files in %d groups, "
+        print("  Possible duplicates (not confirmed copies, not moved): %d files in %d groups, "
               "listed in the report for review" % (stats["review_only"], len(review)))
     return stats
 

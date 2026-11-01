@@ -472,13 +472,17 @@ def _by_name(results):
     return lambda path: results[os.path.basename(path)]
 
 
+# Same length and stored timbre: what makes a chromaprint match a confirmed copy.
+_COPY = {"duration": 2.0, "features": {"mfcc": [-250.0, 60.0, -8.0, 4.0, 2.0, -1.0, 0.5, 0.3, -0.2, 0.1, 0.0, 0.1, -0.1]}}
+
+
 class DedupeTests(unittest.TestCase):
     def test_find_duplicate_groups_with_mocked_fingerprints(self):
         with tempfile.TemporaryDirectory() as tempdir:
             db = {
-                "a.wav": {"tags": ["one"]},
-                "b.wav": {"tags": []},
-                "c.wav": {"tags": ["other"]},
+                "a.wav": {"tags": ["one"], **_COPY},
+                "b.wav": {"tags": [], **_COPY},
+                "c.wav": {"tags": ["other"], **_COPY},
             }
             for name in db:
                 with open(os.path.join(tempdir, name), "wb") as handle:
@@ -496,19 +500,19 @@ class DedupeTests(unittest.TestCase):
         self.assertEqual(groups[0]["duplicates"], ["b.wav"])
         self.assertEqual(groups[0]["match"], "fpcalc")
 
-    def test_find_duplicate_groups_merges_transitive_matches(self):
+    def test_find_duplicate_groups_never_trashes_through_a_chain(self):
         with tempfile.TemporaryDirectory() as tempdir:
             db = {
-                "a.wav": {"tags": ["one"]},
-                "b.wav": {"tags": []},
-                "c.wav": {"tags": ["other"]},
+                "a.wav": {"tags": ["one"], **_COPY},
+                "b.wav": {"tags": [], **_COPY},
+                "c.wav": {"tags": ["other"], **_COPY},
             }
             for name in db:
                 with open(os.path.join(tempdir, name), "wb") as handle:
                     handle.write(b"data")
 
             # b differs from a in 4% of the bits, c from b in another 4%: a-b and
-            # b-c score 0.96, a-c only 0.92, so c joins through b.
+            # b-c score 0.96, a-c only 0.92. c is no copy of a, so nothing joins it.
             rng = np.random.default_rng(3)
             a = rng.integers(0, 2**32, size=100, dtype=np.uint64).astype(np.uint32)
             b = a.copy()
@@ -522,9 +526,7 @@ class DedupeTests(unittest.TestCase):
             with patch.object(deduplicate_samples, "LIBRARY", tempdir), patch("deduplicate_samples._fingerprint_with_fpcalc", side_effect=_by_name(fps)):
                 groups = deduplicate_samples.find_duplicate_groups(db, threshold=0.95)
 
-        self.assertEqual(len(groups), 1)
-        self.assertEqual(groups[0]["keep"], "a.wav")
-        self.assertEqual(groups[0]["duplicates"], ["c.wav", "b.wav"])
+        self.assertEqual([(g["keep"], g["duplicates"], g["match"]) for g in groups], [("a.wav", ["b.wav"], "fpcalc")])
 
     def test_find_duplicate_groups_reuses_fingerprint_cache(self):
         with tempfile.TemporaryDirectory() as tempdir:
