@@ -134,7 +134,7 @@ class Mpv:
                 if os.name == "nt":
                     self._fh = open(path, "r+b", buffering=0)
                     self._send_raw = self._fh.write
-                    self._recv_raw = self._fh.readline
+                    self._recv_raw = self._pipe_read
                 else:
                     sock = socket.socket(socket.AF_UNIX)
                     sock.connect(path)
@@ -163,25 +163,50 @@ class Mpv:
         except OSError:
             self.closed.set()
 
+    def _pipe_read(self):
+        """Whatever bytes mpv has sent, without blocking in ReadFile.
+
+        The pipe handle is synchronous, and Windows runs I/O on such a handle one
+        request at a time: a pending read holds up every write until mpv next
+        sends something, which while paused is never (resume, key shift and quit
+        all hung). So wait for data with PeekNamedPipe and read only what's there.
+        """
+        import _winapi
+        import msvcrt
+        handle = msvcrt.get_osfhandle(self._fh.fileno())
+        while not self.closed.is_set():
+            available = _winapi.PeekNamedPipe(handle, 0)[0]   # OSError once mpv exits
+            if available:
+                return self._fh.read(available)
+            time.sleep(0.005)
+        return b""
+
     def _reader(self):
+        buf = b""
         while not self.closed.is_set():
             try:
-                line = self._recv_raw()
+                chunk = self._recv_raw()
             except OSError:
                 break
-            if not line:
+            if not chunk:
                 break
-            try:
-                ev = json.loads(line)
-            except ValueError:
-                continue
-            if ev.get("event") == "property-change" and ev.get("name") in self.state:
-                self.state[ev["name"]] = ev.get("data")
-                if ev["name"] == "time-pos":
-                    self.state_at = time.monotonic()
-            elif ev.get("event") in ("end-file", "shutdown"):
+            buf += chunk
+            *lines, buf = buf.split(b"\n")
+            if any(self._handle_event(line) for line in lines):
                 break
         self.closed.set()
+
+    def _handle_event(self, line):
+        """Apply one IPC line; True once mpv says the file ended."""
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            return False
+        if ev.get("event") == "property-change" and ev.get("name") in self.state:
+            self.state[ev["name"]] = ev.get("data")
+            if ev["name"] == "time-pos":
+                self.state_at = time.monotonic()
+        return ev.get("event") in ("end-file", "shutdown")
 
     def position(self):
         """time-pos extrapolated between IPC updates (smooth enough for 24 PPQN)."""
