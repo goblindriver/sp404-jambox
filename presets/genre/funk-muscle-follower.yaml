@@ -1,0 +1,24 @@
+name: funk-muscle-follower
+display_name: "Funk Muscle (song-follower)"
+category: genre
+bpm: 112
+key: Em
+description: "Funk Muscle laid out song-follower style, so it rides on top of any song. Pads 1-4 are drum hits and 5-8 are keyless hype and transitions; both work over whatever is playing. Only 9-12 carry the bank's key and tempo: break, slap bass, clavinet and wah guitar, synced from the MIDI clock."
+tags: [funk, raw, hype, energetic, warm, song-follower]
+energy: high
+pads:
+  # Row 1: drum hits (gate). Keyless, any tempo.
+  1: "KIK funk hard one-shot"
+  2: "SNR funk snappy one-shot"
+  3: "HAT funk tight one-shot"
+  4: "PRC funk conga one-shot"
+  # Row 2: hype and transitions (play-through). Keyless, any tempo.
+  5: "VOX funk hype shout one-shot"
+  6: "RSR noise riser transition"
+  7: "FX impact boom one-shot"
+  8: "FX scratch rewind transition"
+  # Row 3: the bank's identity (loop). Needs the song's tempo and a matching key.
+  9: "BRK funk tight loop"
+  10: "BAS funk slap loop"
+  11: "SYN funk clavinet loop"
+  12: "GTR funk wah loop"
