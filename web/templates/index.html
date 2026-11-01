@@ -15,6 +15,9 @@
         </div>
         <div class="header-right">
             <div class="header-app-group">
+                <button id="btn-karaoke" class="header-icon-btn" title="Karaoke mode" onclick="openKaraoke()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+                </button>
                 <button id="btn-help" class="header-icon-btn" title="How it works">?</button>
                 <button id="btn-settings" class="header-icon-btn" title="Settings &amp; admin">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -405,10 +408,59 @@
         </div>
     </div>
 
+    <!-- Karaoke mode -->
+    <div id="karaoke-view" class="karaoke-view hidden" role="dialog" aria-label="Karaoke">
+        <div class="karaoke-header">
+            <h2>KARA<span class="accent">OKE</span></h2>
+            <span id="karaoke-tools" class="karaoke-tools"></span>
+            <div class="karaoke-header-actions">
+                <button class="btn btn-sm" onclick="showKaraokeSetPlan()" title="Load drops, weapons and genre banks for karaoke night">Load Karaoke Set</button>
+                <button class="detail-close" onclick="closeKaraoke()" title="Close">&times;</button>
+            </div>
+        </div>
+        <div class="karaoke-body">
+            <aside class="karaoke-songs">
+                <div class="karaoke-prep">
+                    <div class="karaoke-prep-row">
+                        <select id="karaoke-playlist"><option value="">Plex playlist…</option></select>
+                        <select id="karaoke-model" title="htdemucs is fast; htdemucs_ft is cleaner and ~4x slower">
+                            <option value="htdemucs">fast</option>
+                            <option value="htdemucs_ft">clean</option>
+                        </select>
+                        <button class="btn btn-sm btn-accent" onclick="prepKaraokePlaylist()">Prep</button>
+                    </div>
+                    <div class="karaoke-prep-row">
+                        <input type="text" id="karaoke-track-search" placeholder="…or search a song to add" oninput="searchKaraokeTrack(this.value)" />
+                    </div>
+                    <div id="karaoke-track-results" class="karaoke-track-results"></div>
+                    <div id="karaoke-job" class="karaoke-job hidden"></div>
+                </div>
+                <input type="text" id="karaoke-filter" class="karaoke-filter" placeholder="Filter prepped songs" oninput="renderKaraokeSongs()" />
+                <div id="karaoke-song-list" class="karaoke-song-list"></div>
+            </aside>
+            <section id="karaoke-detail" class="karaoke-detail">
+                <div class="karaoke-empty">Prep a playlist, then pick a song to rehearse it, hear the drops and tweak the drop sheet.</div>
+            </section>
+        </div>
+    </div>
+
+    <div id="karaoke-set-modal" class="confirm-modal hidden">
+        <div class="confirm-modal-inner karaoke-set-inner">
+            <p>Load the karaoke-night banks?</p>
+            <div id="karaoke-set-plan" class="karaoke-set-plan"></div>
+            <p class="confirm-modal-subtitle">Replaces those banks in bank_config.yaml. Fetch All + Export afterwards. Banks A–B are internal memory.</p>
+            <div class="confirm-modal-actions">
+                <button class="btn btn-accent" onclick="loadKaraokeSet()">Load</button>
+                <button class="btn" onclick="document.getElementById('karaoke-set-modal').classList.add('hidden')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast hidden"></div>
 
     <audio id="audio-player"></audio>
 
     <script src="/static/js/app.js"></script>
+    <script src="/static/js/karaoke.js"></script>
 </body>
 </html>
