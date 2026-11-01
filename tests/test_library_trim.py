@@ -200,6 +200,18 @@ class LibraryTrimTests(unittest.TestCase):
         self.assertEqual(dedup["possible_duplicates"],
                          [{"keep": "Drums/silent.wav", "duplicates": ["Drums/silent_copy.wav"]}])
 
+    def test_the_flac_copy_is_kept_over_a_bigger_aiff(self):
+        self._add_copy("Drums/twin.flac", dict(COPY_ROW))
+        self._add_copy("Drums/twin.aiff", dict(COPY_ROW))
+        with open(os.path.join(self.lib, "Drums", "twin.aiff"), "wb") as fh:
+            fh.write(b"FORM" * 100)  # uncompressed: bigger than the .flac
+        same = {"kind": "fpcalc", "value": "1,2,3,4"}
+
+        self._run_dedup({"twin.flac": same, "twin.aiff": dict(same)})
+
+        dedup = self._report()["passes"]["dedup"]
+        self.assertEqual(dedup["duplicates"], [{"keep": "Drums/twin.flac", "duplicates": ["Drums/twin.aiff"]}])
+
     def test_chromaprint_match_with_other_timbre_or_length_is_review_only(self):
         # A held organ note and a synth pad on a related note score ~0.93 on chromaprint.
         other_timbre = {**COPY_ROW, "features": {"mfcc": [v + 3.0 for v in HAT_MFCC]}}

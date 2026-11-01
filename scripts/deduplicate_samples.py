@@ -43,6 +43,9 @@ DURATION_TOLERANCE_RATIO = 0.10
 COPY_DURATION_SECONDS = 0.1
 COPY_DURATION_RATIO = 0.02
 COPY_MFCC_DISTANCE = 0.5
+# Which copy to keep: the library's storage format first (FLAC), then other
+# lossless, then the best-tagged and largest file.
+_FORMAT_RANK = {".flac": 2, ".wav": 1, ".aif": 1, ".aiff": 1}
 _BLOCK_ELEMENTS = 1 << 22  # rows x cols x frames scored per numpy step (~16 MB of uint32)
 _CACHE_SAVE_SECONDS = 120  # checkpoint the fingerprint cache so a killed run keeps its work
 
@@ -516,9 +519,11 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
         return {"path": rel_path, "size": sizes[rel_path], "tag_count": len(entry.get("tags", [])),
                 "type_code": entry.get("type_code")}
 
+    def item_rank(item):
+        return _FORMAT_RANK.get(os.path.splitext(item["path"])[1].lower(), 0), item["tag_count"], item["size"]
+
     def rank(rel_path):
-        item = member(rel_path)
-        return item["tag_count"], item["size"]
+        return item_rank(member(rel_path))
 
     groups = [("fpcalc", group) for group in _direct_groups(paths, adjacency["fpcalc"], rank)]
     groups += [(match, group) for match in ("fpcalc_review", "fallback")
@@ -527,7 +532,7 @@ def find_duplicate_groups(db, threshold=0.93, limit=0, type_code=None, workers=D
     for match, group in groups:
         members = [member(rel_path) for rel_path in group]
         # Stable: a direct group's keeper stays first among equally ranked files.
-        members.sort(key=lambda item: (item["tag_count"], item["size"]), reverse=True)
+        members.sort(key=item_rank, reverse=True)
         reports.append({
             "keep": members[0]["path"],
             "duplicates": [item["path"] for item in members[1:]],
