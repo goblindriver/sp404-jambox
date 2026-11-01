@@ -2008,3 +2008,128 @@ main {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* ═══════════════ Karaoke mode ═══════════════ */
+.karaoke-view {
+    position: fixed; inset: 0; z-index: 400;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+}
+.karaoke-view.hidden { display: none; }
+.karaoke-header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 24px; border-bottom: 1px solid var(--border);
+}
+.karaoke-header h2 { font-family: 'Space Mono', monospace; font-size: 18px; letter-spacing: 2px; }
+.karaoke-tools { display: flex; gap: 6px; }
+.karaoke-header-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.karaoke-body { flex: 1; display: flex; min-height: 0; }
+.karaoke-songs {
+    width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: 0; background: var(--bg-raised);
+}
+.karaoke-prep { padding: 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.karaoke-prep-row { display: flex; gap: 6px; }
+.karaoke-prep-row select, .karaoke-prep-row input, .karaoke-filter, .kara-drop-row input, .kara-drop-row select, .kara-chip select {
+    background: var(--bg-surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 6px 8px; font-size: 12px; min-width: 0;
+}
+.karaoke-prep-row select:first-child, .karaoke-prep-row input { flex: 1; }
+.karaoke-filter { margin: 10px 12px 6px; }
+.karaoke-track-results { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
+.kara-result { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; font-size: 12px; border-radius: var(--radius-sm); cursor: pointer; }
+.kara-result:hover { background: var(--bg-hover); }
+.karaoke-job { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.karaoke-job.hidden { display: none; }
+.kara-job-current { color: var(--accent); }
+.kara-job-err { color: #f66; }
+.kara-job-log { font-size: 10px; color: var(--text-dim); white-space: pre-wrap; max-height: 90px; overflow-y: auto; }
+.karaoke-song-list { flex: 1; overflow-y: auto; padding: 4px 8px 12px; }
+.kara-song { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: var(--radius-sm); cursor: pointer; }
+.kara-song:hover { background: var(--bg-hover); }
+.kara-song.active { background: var(--bg-surface); box-shadow: inset 3px 0 0 var(--accent); }
+.kara-thumb { width: 36px; height: 36px; border-radius: 3px; object-fit: cover; background: var(--bg-surface); flex-shrink: 0; }
+.kara-song-text { flex: 1; min-width: 0; }
+.kara-song-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kara-song-meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kara-song-badges { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+.kara-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    padding: 2px 6px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-dim);
+}
+.kara-chip.ok { color: #6c6; border-color: #3a5a3a; }
+.kara-chip.off { color: var(--text-muted); }
+.kara-chip select { padding: 1px 4px; font-size: 10px; }
+.karaoke-detail { flex: 1; overflow-y: auto; padding: 20px 28px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.karaoke-empty { color: var(--text-dim); margin: auto; text-align: center; max-width: 360px; line-height: 1.5; }
+.karaoke-empty.small { margin: 12px 0; font-size: 12px; }
+.kara-head { display: flex; gap: 16px; align-items: center; }
+.kara-cover { width: 84px; height: 84px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0; }
+.kara-cover.blank { display: flex; align-items: center; justify-content: center; background: var(--bg-surface); font-size: 32px; color: var(--text-muted); }
+.kara-head-text { flex: 1; min-width: 0; }
+.kara-title { font-size: 20px; font-weight: 600; }
+.kara-artist { color: var(--text-dim); margin-bottom: 8px; }
+.kara-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.kara-head-actions { display: flex; gap: 8px; }
+
+/* Stage: mirrors the CRT lyric layout (current line big + filling, next line dim) */
+.kara-stage {
+    position: relative; overflow: hidden;
+    aspect-ratio: 4 / 3; max-height: 46vh; width: 100%; max-width: calc(46vh * 4 / 3); align-self: center;
+    background: #000; border-radius: var(--radius);
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+    padding: 0 6% 9%; text-align: center; gap: 2%;
+}
+.kara-stage:fullscreen { max-width: none; max-height: none; border-radius: 0; padding-bottom: 8vh; }
+.kara-stage-bg { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(2px) brightness(0.35); }
+.kara-line-now { position: relative; font-weight: 700; font-size: clamp(18px, 4.2vh, 64px); line-height: 1.2; }
+.kara-stage:fullscreen .kara-line-now { font-size: 9vh; }
+.kara-line-now .kara-text { color: #fff; text-shadow: 0 2px 4px #000; }
+.kara-line-now .kara-fill { position: absolute; inset: 0; color: var(--accent); text-shadow: 0 2px 4px #000; clip-path: inset(0 100% 0 0); white-space: inherit; }
+.kara-line-next { position: relative; color: #aaa; font-size: clamp(13px, 2.8vh, 44px); min-height: 1.2em; text-shadow: 0 2px 4px #000; }
+.kara-stage:fullscreen .kara-line-next { font-size: 6vh; }
+.kara-flash {
+    position: absolute; top: 6%; left: 0; right: 0; text-align: center;
+    font-family: 'Space Mono', monospace; font-weight: 700; color: var(--accent);
+    font-size: clamp(12px, 2.4vh, 36px); opacity: 0; pointer-events: none;
+}
+.kara-flash.go { animation: kara-flash 1.2s ease-out; }
+@keyframes kara-flash { 0% { opacity: 1; transform: scale(1.25); } 70% { opacity: 1; transform: scale(1); } 100% { opacity: 0; } }
+
+.kara-transport { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.kara-time { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--text-dim); min-width: 90px; }
+.kara-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.kara-timeline {
+    position: relative; height: 34px; background: var(--bg-surface);
+    border-radius: var(--radius-sm); cursor: pointer; flex-shrink: 0;
+}
+.kara-chorus { position: absolute; top: 0; bottom: 0; background: rgba(255, 140, 0, 0.14); border-left: 1px solid rgba(255, 140, 0, 0.4); }
+.kara-marker {
+    position: absolute; top: 5px; width: 10px; height: 24px; margin-left: -5px;
+    background: var(--accent); border-radius: 2px; opacity: 0.85;
+}
+.kara-marker:hover { opacity: 1; transform: scaleY(1.15); }
+.kara-marker.hit { animation: kara-hit 0.6s ease-out; }
+@keyframes kara-hit { 0% { box-shadow: 0 0 0 0 rgba(255,140,0,0.9); } 100% { box-shadow: 0 0 0 10px rgba(255,140,0,0); } }
+.kara-playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; left: 0; pointer-events: none; }
+.kara-drops-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.kara-drops-head h4 { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.kara-drops-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kara-hint { font-size: 11px; color: var(--text-muted); }
+.kara-drop-table { display: flex; flex-direction: column; gap: 4px; }
+.kara-drop-row { display: grid; grid-template-columns: 26px 80px 52px 150px 64px 1fr 28px 28px; gap: 6px; align-items: center; }
+.kara-drop-go, .kara-drop-del {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: var(--radius-sm); height: 28px; cursor: pointer;
+}
+.kara-drop-go:hover, .kara-drop-del:hover { color: var(--accent); border-color: var(--accent); }
+.karaoke-set-inner { text-align: left; }
+.karaoke-set-plan { font-family: 'Space Mono', monospace; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; margin-bottom: 12px; }
+.karaoke-set-plan b { color: var(--accent); margin-right: 6px; }
+@media (max-width: 900px) {
+    .karaoke-body { flex-direction: column; }
+    .karaoke-songs { width: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+    .kara-drop-row { grid-template-columns: 26px 70px 48px 1fr 56px 28px 28px; }
+    .kara-drop-row input[type=text] { display: none; }
+}

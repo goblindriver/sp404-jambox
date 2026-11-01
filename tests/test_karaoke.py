@@ -311,3 +311,111 @@ class TypeCodeAliasTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KaraokeApiTests(unittest.TestCase):
+    def setUp(self):
+        web_dir = os.path.join(REPO_ROOT, "web")
+        if web_dir not in sys.path:
+            sys.path.insert(0, web_dir)
+        from flask import Flask
+        from api.karaoke import karaoke_bp
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = os.path.join(self.tmp.name, "Karaoke")
+        song_dir = os.path.join(self.root, "Home Front - Test")
+        os.makedirs(song_dir)
+        for name in ("backing.flac", "guide.flac"):
+            with open(os.path.join(song_dir, name), "wb") as fh:
+                fh.write(b"fLaC")
+        with open(os.path.join(song_dir, "lyrics.lrc"), "w") as fh:
+            fh.write(SONG_LRC)
+        with open(os.path.join(song_dir, "song.json"), "w") as fh:
+            json.dump({"artist": "Home Front", "title": "Test", "bpm": 120.0, "beat_offset_s": 0.5,
+                       "duration_s": 80.0, "energy": "high", "choruses": [[17.5, 25.5], [61.5, 69.5]],
+                       "preset": "genre/synth-punk-pogo", "drops": [], "drops_locked": False,
+                       "has_lyrics": True}, fh)
+        app = Flask(__name__)
+        app.config.update(KARAOKE_DIR=self.root, TESTING=True)
+        app.register_blueprint(karaoke_bp, url_prefix="/api")
+        self.client = app.test_client()
+        self.dir = "Home Front - Test"
+
+    def test_songs_and_detail(self):
+        songs = self.client.get("/api/karaoke/songs").get_json()["songs"]
+        self.assertEqual([s["dir"] for s in songs], [self.dir])
+        self.assertTrue(songs[0]["has_guide"])
+        detail = self.client.get(f"/api/karaoke/song/{self.dir}").get_json()
+        self.assertEqual(detail["song"]["artist"], "Home Front")
+        self.assertEqual(detail["lyrics"][0], {"t": 10.0, "text": "Verse line one"})
+        self.assertTrue(detail["has_guide"])
+
+    def test_rejects_traversal_and_unknown(self):
+        for bad in ("..", "_index.json", "nope"):
+            self.assertEqual(self.client.get(f"/api/karaoke/song/{bad}").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/karaoke/audio/{self.dir}/song.json").status_code, 404)
+
+    def test_audio_served(self):
+        resp = self.client.get(f"/api/karaoke/audio/{self.dir}/backing")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, b"fLaC")
+        resp.close()
+
+    def test_save_drops_locks_and_validates(self):
+        resp = self.client.put(f"/api/karaoke/song/{self.dir}/drops",
+                               json={"drops": [{"t": 12, "bank": "a", "pad": 3, "vel": 999, "label": "horn"}],
+                                     "preset": "genre/riot-mode"})
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["drops"][0], {"t": 12.0, "bank": "A", "pad": 3, "vel": 127, "label": "horn"})
+        with open(os.path.join(self.root, self.dir, "song.json")) as fh:
+            saved = json.load(fh)
+        self.assertTrue(saved["drops_locked"])
+        self.assertEqual(saved["preset"], "genre/riot-mode")
+        bad = self.client.put(f"/api/karaoke/song/{self.dir}/drops", json={"drops": [{"t": 1, "pad": 99}]})
+        self.assertEqual(bad.status_code, 400)
+
+    def test_redraft_unlocks(self):
+        data = self.client.post(f"/api/karaoke/song/{self.dir}/redraft").get_json()
+        self.assertFalse(data["drops_locked"])
+        self.assertTrue(any(d["label"] == "air horn: chorus 1" for d in data["drops"]))
+
+    def test_set_plan_prefers_song_presets(self):
+        from api.karaoke import plan_karaoke_set
+        plan = plan_karaoke_set(["genre/disco-inferno", "genre/disco-inferno", "genre/riot-mode", None,
+                                 "genre/karaoke-metal"])
+        self.assertEqual(plan[:5], [("a", "utility/karaoke-drops"), ("b", "genre/weapons-cache"),
+                                    ("c", "genre/karaoke-metal"), ("d", "genre/disco-inferno"),
+                                    ("e", "genre/riot-mode")])
+        self.assertEqual(len(plan), 10)
+        self.assertEqual(len({ref for _, ref in plan}), 10)
+        import preset_utils
+        for _, ref in plan:
+            self.assertTrue(preset_utils.load_preset(ref), ref)
+
+    def test_load_set_uses_preset_utils(self):
+        import preset_utils
+        with mock.patch.object(preset_utils, "load_preset_to_bank", return_value={"name": "x"}) as m:
+            data = self.client.post("/api/karaoke/load-set").get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(m.call_count, 10)
+        self.assertEqual(m.call_args_list[0].args, ("utility/karaoke-drops", "a"))
+
+    def test_prep_requires_source(self):
+        resp = self.client.post("/api/karaoke/prep", json={"dir": "nope"})
+        self.assertEqual(resp.status_code, 404)
+        resp = self.client.post("/api/karaoke/prep", json={"model": "bogus"})
+        self.assertEqual(resp.status_code, 400)
+
+
+class ChorusGapTests(unittest.TestCase):
+    def test_instrumental_gap_splits_choruses(self):
+        lines = karaoke_lyrics.parse_lrc(
+            "[00:10.00]verse a\n[00:14.00]hook one\n[00:18.00]hook two\n[00:22.00]verse b\n"
+            "[00:26.00]hook one\n[00:30.00]hook two\n[00:34.00]\n[00:50.00]hook one\n[00:54.00]hook two\n")
+        self.assertEqual([c[0] for c in karaoke_lyrics.find_choruses(lines)], [14.0, 26.0, 50.0])
+
+    def test_long_silence_splits_choruses(self):
+        lines = karaoke_lyrics.parse_lrc(
+            "[00:10.00]hook one\n[00:14.00]hook two\n[00:40.00]hook one\n[00:44.00]hook two\n[00:48.00]end\n")
+        self.assertEqual([c[0] for c in karaoke_lyrics.find_choruses(lines)], [10.0, 40.0])
