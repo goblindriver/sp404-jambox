@@ -79,10 +79,10 @@ Note: jambox defaults to `/opt/homebrew/bin/ffmpeg` and Mac paths. Anything that
 
 ### Sync to GOBLINDRIVER
 
-The iMac shares `~/Music/Karaoke` over SMB. GOBLINDRIVER pulls it into **`D:\Karaoke`**: the Scratch SSD has 135 GB free, and `O:` is 88% full, so not there.
+The iMac shares `~/Music/Karaoke` over SMB. GOBLINDRIVER pulls it into **`D:\Karaoke\Songs`** (never `D:\Karaoke` itself: `/MIR` would delete the GPU karaoke lane that lives there): the Scratch SSD has 135 GB free, and `O:` is 88% full, so not there.
 
 ```
-robocopy \\<imac>\Karaoke D:\Karaoke /MIR /COPY:DT /R:1 /W:1
+robocopy \\<imac>\jasongronvold\Music\Karaoke D:\Karaoke\Songs /MIR /COPY:DT /R:1 /W:1
 ```
 
 That's the same `/COPY:DT` pattern COPS already uses for QNAP transfers. Run it before a party, or on a schedule.

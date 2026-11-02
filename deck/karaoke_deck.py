@@ -2,12 +2,12 @@
 """Karaoke deck ("the stage"): mpv + SP-404A over USB MIDI, on GOBLINDRIVER.
 
 Plays a prepped song (``scripts/karaoke_prep.py`` output, mirrored to
-``D:\\Karaoke``) in mpv with lyrics on screen, and keeps the SP-404A locked to
+``D:\\Karaoke\\Songs``) in mpv with lyrics on screen, and keeps the SP-404A locked to
 it: MIDI clock at the song's BPM (Start lands on the first downbeat), the
 song's drop sheet fired on time, and manual pad drops from the keyboard.
 
-    py deck\\karaoke_deck.py                       # pick songs from D:\\Karaoke\\_index.json
-    py deck\\karaoke_deck.py --root D:\\Karaoke --midi "USB Midi" --base-ch 1
+    py deck\\karaoke_deck.py                       # pick songs from D:\\Karaoke\\Songs\\_index.json
+    py deck\\karaoke_deck.py --root D:\\Karaoke\\Songs --midi "USB Midi" --base-ch 1
     py deck\\karaoke_deck.py --list-ports           # MIDI + audio device names
     py deck\\karaoke_deck.py --dry-run              # no MIDI; prints what it would send
 
@@ -43,7 +43,10 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 import karaoke_drops  # noqa: E402  (pure python, no jambox config needed)
 
 PPQN = 24
-DEFAULT_ROOT = r"D:\Karaoke" if os.name == "nt" else os.path.expanduser("~/Music/Karaoke")
+# Songs live in their own folder: D:\Karaoke also holds the GPU karaoke lane (venv, models,
+# work), which a /MIR mirror straight into D:\Karaoke would delete.
+DEFAULT_ROOT = r"D:\Karaoke\Songs" if os.name == "nt" else os.path.expanduser("~/Music/Karaoke")
+MIRROR_HINT = r'robocopy "\\<citadel>\jasongronvold\Music\Karaoke" D:\Karaoke\Songs /MIR /COPY:DT /R:1 /W:1'
 PIPE_NAME = r"\\.\pipe\jambox-karaoke" if os.name == "nt" else "/tmp/jambox-karaoke.sock"
 GUIDE_LEVELS_DB = (None, -18, -9)           # None = off
 SEEK_JUMP_S = 0.75                           # a time-pos jump bigger than this = seek
@@ -451,7 +454,8 @@ class Deck:
 def load_index(root):
     path = os.path.join(root, "_index.json")
     if not os.path.isfile(path):
-        raise SystemExit(f"No {path}. Run scripts/karaoke_prep.py on the iMac and mirror it here.")
+        raise SystemExit(f"No {path}. Prep songs on citadel (scripts/karaoke_prep.py or the web UI's "
+                         f"Karaoke tab), then mirror them here: {MIRROR_HINT}")
     with open(path, encoding="utf-8") as fh:
         return json.load(fh).get("songs", [])
 

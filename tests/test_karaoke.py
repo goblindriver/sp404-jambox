@@ -724,6 +724,15 @@ class DeckTests(unittest.TestCase):
     def setUpClass(cls):
         cls.deck = _load_deck()
 
+    def test_songs_never_share_the_gpu_lanes_folder(self):
+        # D:\Karaoke holds the GPU lane (venv, models, work); a /MIR mirror into it would delete them.
+        if os.name == "nt":
+            self.assertEqual(self.deck.DEFAULT_ROOT, r"D:\Karaoke\Songs")
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaises(SystemExit) as ctx:
+                self.deck.load_index(root)
+        self.assertIn(r"D:\Karaoke\Songs /MIR", str(ctx.exception))
+
     def test_ticks_due(self):
         d = self.deck
         self.assertEqual(d.ticks_due(0.4, 120, 0.5), 0)       # before first downbeat
