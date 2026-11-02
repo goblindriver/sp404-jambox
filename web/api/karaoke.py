@@ -80,6 +80,8 @@ def _tool_status():
         'backend': kp.KARAOKE_BACKEND,
         # Configured, not checked: lane.free() goes over ssh, too slow for a status poll.
         'remote_lane': kp.KARAOKE_REMOTE_HOST or None,
+        # Music videos (prep option); SP404_YTDLP must be in this process's environment too.
+        'ytdlp': shutil.which(kp.karaoke_video.YTDLP) is not None,
     }
 
 
@@ -127,6 +129,7 @@ def song(name):
         'plain_lyrics': plain,
         'has_guide': os.path.isfile(os.path.join(path, 'guide.flac')),
         'has_cover': os.path.isfile(os.path.join(path, 'cover.jpg')),
+        'has_video': bool(data.get('video')) and os.path.isfile(os.path.join(path, data['video'].get('file') or '')),
     })
 
 
@@ -220,7 +223,7 @@ def _run_prep(app, job_id, tracks, opts):
             _prep_tracker.update(job_id, status='error', error='Another karaoke prep is running')
             return
         try:
-            log, counts, counts_lock = [], {'started': 0, 'done': 0, 'failed': 0}, threading.Lock()
+            log, counts, counts_lock = [], {'started': 0, 'done': 0, 'failed': 0, 'videos': 0}, threading.Lock()
             lane = (kp.RemoteLane(kp.KARAOKE_REMOTE_HOST)
                     if kp.KARAOKE_REMOTE_HOST and opts['backend'] == 'karaoke-gen' else None)
 
@@ -238,9 +241,16 @@ def _run_prep(app, job_id, tracks, opts):
                     done, failed = counts['done'], counts['failed']
                 _prep_tracker.update(job_id, done=done, failed=failed, log=log[-40:])
 
+            def on_video(meta, video, error):
+                with counts_lock:
+                    counts['videos'] += 1 if video else 0
+                    videos = counts['videos']
+                _prep_tracker.update(job_id, videos=videos, log=log[-40:])
+
             # Songs run on the remote GPU lane and this machine at once; a song the
             # lane yields to a game is re-queued (see karaoke_prep.prep_batch).
             kp.prep_batch(tracks, lane=lane, on_start=on_start, on_done=on_done, log=log.append,
+                          videos=opts['videos'], revideo=opts['revideo'], on_video=on_video,
                           out_root=root, model=opts['model'], refresh=opts['refresh'],
                           force=opts['force'], online=True, backend=opts['backend'])
             kp.rebuild_index(root)
@@ -255,7 +265,8 @@ def _run_prep(app, job_id, tracks, opts):
 def prep():
     """Start a prep job. Body: one of {playlist}, {track_id}, {track_ids: []}, {dir} (re-prep)
     plus optional model ('karaoke-gen'|'htdemucs'|'htdemucs_ft'; the Demucs ones pick
-    the Demucs backend), refresh, force."""
+    the Demucs backend), refresh, force, videos (fetch a music video per song) and
+    revideo (re-fetch it; with {dir} alone that's all it does)."""
     try:
         body = json_object_body()
     except ValueError as exc:
@@ -268,7 +279,8 @@ def prep():
         return jsonify({'ok': False, 'error': 'model must be karaoke-gen, htdemucs or htdemucs_ft'}), 400
     opts = {'backend': 'karaoke-gen' if model == 'karaoke-gen' else 'demucs',
             'model': 'htdemucs' if model == 'karaoke-gen' else model,
-            'refresh': bool(body.get('refresh')), 'force': bool(body.get('force'))}
+            'refresh': bool(body.get('refresh')), 'force': bool(body.get('force')),
+            'videos': bool(body.get('videos') or body.get('revideo')), 'revideo': bool(body.get('revideo'))}
 
     tracks = []
     if body.get('dir'):
@@ -280,7 +292,7 @@ def prep():
                    'title': data.get('title'), 'album': data.get('album'), 'id': data.get('plex_id'),
                    'moods': data.get('moods'), 'styles': data.get('styles'),
                    'duration_s': data.get('duration_s')}]
-        if not opts['force']:
+        if not opts['force'] and not opts['revideo']:
             opts['refresh'] = True
     else:
         plex = _get_plex()
