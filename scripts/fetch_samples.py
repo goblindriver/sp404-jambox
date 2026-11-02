@@ -17,6 +17,7 @@ sys.path.insert(0, SCRIPT_DIR)
 from jambox_config import (
     get_score_version,
     is_excluded_rel_path,
+    resolve_command,
     load_bank_config,
     load_scoring_config,
     load_settings_for_script,
@@ -803,6 +804,18 @@ def fetch_pad(bank_letter, pad_number, pad_query, bank_config, tag_db, used_file
     return None
 
 
+def require_ffmpeg():
+    """Raise before a fetch clears anything when ffmpeg can't be found.
+
+    Every pad conversion needs it. Without it each match failed to convert
+    ("Conversion failed"), and publishing the empty staging area then cleared
+    the bank's WAVs from the card template.
+    """
+    _ensure_settings()
+    if not resolve_command(SETTINGS["FFMPEG_BIN"]):
+        raise RuntimeError("ffmpeg not found (%s): install it or set SP404_FFMPEG" % SETTINGS["FFMPEG_BIN"])
+
+
 def main():
     _ensure_settings()
     parser = argparse.ArgumentParser(description='Fetch samples for SP-404 banks')
@@ -813,6 +826,12 @@ def main():
         parser.error('--pad requires --bank')
     if args.pad is not None and not 1 <= args.pad <= 12:
         parser.error('--pad must be between 1 and 12')
+
+    try:
+        require_ffmpeg()
+    except RuntimeError as exc:
+        print("ERROR: %s" % exc, file=sys.stderr)
+        sys.exit(1)
 
     config = load_config()
     os.makedirs(STAGING, exist_ok=True)

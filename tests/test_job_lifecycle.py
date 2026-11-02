@@ -85,6 +85,19 @@ class ApiJobTests(unittest.TestCase):
             with self.assertRaises(pipeline_api.FetchBusy):
                 pipeline_api.execute_fetch_scope({}, bank="b")
 
+    def test_a_fetch_without_ffmpeg_fails_before_clearing_the_bank(self):
+        # Every conversion would fail, and publishing the empty staging area
+        # used to clear the bank's WAVs from the card template.
+        import fetch_samples
+
+        with patch.object(fetch_samples, "resolve_command", return_value=None), \
+             patch.object(fetch_samples, "clear_staging_wavs") as clear, \
+             patch.object(fetch_samples, "publish_staging") as publish:
+            with self.assertRaisesRegex(RuntimeError, "ffmpeg not found"):
+                pipeline_api.execute_fetch_scope({"REPO_DIR": REPO_ROOT}, bank="b")
+        clear.assert_not_called()
+        publish.assert_not_called()
+
     def test_failed_vibe_startup_does_not_block_later_jobs(self):
         with patch.object(vibe_api, "_build_metadata_prompt", side_effect=RuntimeError("config unreadable")):
             response = self.client.post("/api/vibe/generate-fetch-bank", json={"bank": "c"})

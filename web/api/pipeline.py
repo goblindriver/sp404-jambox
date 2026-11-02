@@ -127,6 +127,7 @@ def _execute_fetch_scope(settings, bank, pad, progress_callback):
     import fetch_samples as fs
     from jambox_cache import load_score_cache, save_score_cache
 
+    fs.require_ffmpeg()  # before anything is cleared; the job reports the error
     config = fs.load_config()
     os.makedirs(fs.STAGING, exist_ok=True)
     fs.clear_staging_wavs(bank=bank, pad=pad)
