@@ -36,6 +36,7 @@ from jambox_config import (
     TRASH_DIRNAME,
     build_subprocess_env,
     delete_tag_paths,
+    export_tags_json,
     is_excluded_rel_path,
     load_settings_for_script,
     load_tag_db,
@@ -347,6 +348,7 @@ class TrashRun:
         self.root = os.path.join(self.library, TRASH_DIRNAME, self.run_id)
         self.manifest = os.path.join(self.root, "manifest.jsonl")
         self._pending_deletes = []
+        self.moved = 0
 
     def move(self, rel_path, entry, reason):
         src = os.path.join(self.library, rel_path)
@@ -358,6 +360,7 @@ class TrashRun:
         with open(self.manifest, "a", encoding="utf-8") as fh:
             fh.write(json.dumps({"rel_path": rel_path, "reason": reason, "tag_row": entry}) + "\n")
         self._pending_deletes.append(rel_path)
+        self.moved += 1
         if len(self._pending_deletes) >= 200:
             self.flush()
 
@@ -594,6 +597,8 @@ def run_execute(args):
 
     if trash is not None:
         trash.flush()
+        if trash.moved:
+            export_tags_json(TAGS_FILE)  # _tags.json would still list the trashed rows
         empty_removed = _cleanup_empty_dirs(LIBRARY)
         if empty_removed:
             print("\n  Cleaned up %d empty directories" % empty_removed)
@@ -676,6 +681,8 @@ def run_restore(args):
         restored += 1
 
     upsert_tag_entries(TAGS_FILE, rows)
+    if rows:
+        export_tags_json(TAGS_FILE)
     print("Restored %d files (%d tag rows) from %s" % (restored, len(rows), run.root))
     if conflicts:
         print("Left %d in the trash because the library already has a file at that path:" % len(conflicts))
