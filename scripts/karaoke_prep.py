@@ -78,6 +78,8 @@ LANE_YIELDED = 75
 # The local lane (~15-19 min a song on an M3) only takes a song while the remote
 # one (~2 min on GOBLINDRIVER's RTX) is free if this many are still queued.
 LOCAL_TAKES_AT = 8
+# A song the remote lane yields or can't finish this many times is left to the local lane.
+REMOTE_TRIES = 2
 
 HIGH_MOODS = {"aggressive", "energetic", "intense", "fiery", "rousing", "boisterous",
               "volatile", "hostile", "rowdy", "raucous", "exuberant", "anthemic", "celebratory"}
@@ -255,6 +257,36 @@ def _karaoke_gen_files(track_dir):
     }
 
 
+def vocal_presence(path, *, hop_s=0.05, floor_db=15.0):
+    """``sung(t0, t1)``: the share of a span where the separated vocal is audible, or None.
+
+    A frame counts as sung when it is within ``floor_db`` of the stem's loud
+    end (95th percentile), which still separates singing from the instrumental
+    bleed every separated vocal carries.
+    """
+    if not os.path.isfile(path):
+        return None
+    try:
+        import numpy as np
+        import soundfile as sf
+        audio, rate = sf.read(path, dtype="float32", always_2d=True)
+    except Exception:
+        return None
+    mono = audio.mean(axis=1)
+    hop = max(1, int(rate * hop_s))
+    frames = len(mono) // hop
+    if not frames:
+        return None
+    level = 20 * np.log10(np.sqrt((mono[:frames * hop].reshape(frames, hop) ** 2).mean(axis=1)) + 1e-9)
+    active = level > np.percentile(level, 95) - floor_db
+
+    def sung(t0, t1):
+        a = int(t0 / hop_s)
+        span = active[a:max(int(t1 / hop_s), a + 1)]
+        return float(span.mean()) if len(span) else 0.0
+    return sung
+
+
 def karaoke_gen_args(audio_path, out_dir, *, artist=None, title=None, lyrics_file=None, lyrics_only=False):
     """karaoke-gen's arguments: prep phase only, unattended, no video, into ``out_dir``."""
     args = ["--lyrics-only" if lyrics_only else "--prep-only", "-y", "--skip_transcription_review",
@@ -267,8 +299,12 @@ def karaoke_gen_args(audio_path, out_dir, *, artist=None, title=None, lyrics_fil
     return args
 
 
-class LaneYielded(RuntimeError):
-    """The remote lane gave its GPU back to a game mid-song; the song goes back in the queue."""
+class LaneUnavailable(RuntimeError):
+    """The remote lane couldn't finish this song (unreachable, timed out); it goes back in the queue."""
+
+
+class LaneYielded(LaneUnavailable):
+    """The remote lane gave its GPU back to a game mid-song."""
 
 
 class RemoteLane:
@@ -280,8 +316,13 @@ class RemoteLane:
     the GPU to a game. Audio goes up as ``in\\input<ext>`` and the artist/title
     as ``in\\meta.json`` (UTF-8), so names never pass through cmd.exe or file
     names; the lane appends them to karaoke-gen's arguments itself. The job
-    folder is removed afterwards.
+    folder is removed afterwards. A transport failure (the machine asleep,
+    rebooting, off the network) raises ``LaneUnavailable``, and a run that
+    didn't come back is stopped so it can't hold the GPU.
     """
+
+    TRANSPORT_ERRORS = (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError)
+    SSH_FAILED = 255  # ssh's own exit status when the connection fails
 
     def __init__(self, host, lane=KARAOKE_REMOTE_LANE, work=KARAOKE_REMOTE_WORK, *, run=subprocess.run):
         self.name = host
@@ -305,7 +346,7 @@ class RemoteLane:
         """``(free, reason)`` from ``lane.cmd check``; an unreachable lane is busy."""
         try:
             res = self._ssh(f"{self.lane} check", capture_output=True, text=True, timeout=60)
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except self.TRANSPORT_ERRORS as exc:
             return False, f"unreachable: {exc}"
         return res.returncode == 0, (res.stdout or res.stderr or "").strip()
 
@@ -314,40 +355,57 @@ class RemoteLane:
         """Run karaoke-gen remotely and copy its output into ``out_dir``. Returns its exit code."""
         job = f"citadel-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{os.urandom(2).hex()}"
         audio_name = "input" + os.path.splitext(audio_path)[1].lower()
+        came_back = False
         try:
-            self._ssh(f'mkdir "{self._path(job, "in")}"', check=True, capture_output=True, timeout=60)
-            self._scp(audio_path, self._scp_path(job, "in", audio_name), check=True, timeout=900)
-            if lyrics_file:
-                self._scp(lyrics_file, self._scp_path(job, "in", "lyrics.txt"), check=True, timeout=120)
-            with tempfile.TemporaryDirectory() as tmp:
-                meta_path = os.path.join(tmp, "meta.json")
-                with open(meta_path, "w", encoding="utf-8") as fh:
-                    json.dump({k: v for k, v in (("artist", artist), ("title", title)) if v}, fh, ensure_ascii=False)
-                self._scp(meta_path, self._scp_path(job, "in", "meta.json"), check=True, timeout=120)
-            args = karaoke_gen_args(self._path(job, "in", audio_name), self._path(job, "out"),
-                                    lyrics_file=self._path(job, "in", "lyrics.txt") if lyrics_file else None,
-                                    lyrics_only=lyrics_only)
-            res = self._ssh(f"{self.lane} run {job} " + " ".join(f'"{a}"' for a in args),
-                            stdout=log_fh, stderr=subprocess.STDOUT, timeout=3600)
-            if res.returncode != LANE_YIELDED:
-                # Fetch beside out_dir, not into it: the importer expects one track folder there.
-                with tempfile.TemporaryDirectory(dir=os.path.dirname(out_dir)) as fetched:
-                    self._scp("-r", self._scp_path(job, "out"), fetched, timeout=900)
-                    remote_out = os.path.join(fetched, "out")
-                    for name in os.listdir(remote_out) if os.path.isdir(remote_out) else ():
-                        shutil.move(os.path.join(remote_out, name), os.path.join(out_dir, name))
-            if log_fh is not None:
-                with tempfile.TemporaryDirectory() as tmp:
-                    remote_log = os.path.join(tmp, "karaoke-gen.log")
-                    if self._scp(self._scp_path(job, "karaoke-gen.log"), remote_log, timeout=120).returncode == 0:
-                        with open(remote_log, encoding="utf-8", errors="replace") as fh:
-                            log_fh.write(f"--- {self.name} {job} ---\n{fh.read()}")
+            try:
+                self._upload(job, audio_path, audio_name, lyrics_file, artist, title)
+                args = karaoke_gen_args(self._path(job, "in", audio_name), self._path(job, "out"),
+                                        lyrics_file=self._path(job, "in", "lyrics.txt") if lyrics_file else None,
+                                        lyrics_only=lyrics_only)
+                res = self._ssh(f"{self.lane} run {job} " + " ".join(f'"{a}"' for a in args),
+                                stdout=log_fh, stderr=subprocess.STDOUT, timeout=3600)
+                if res.returncode == self.SSH_FAILED:
+                    raise LaneUnavailable(f"{self.name}: connection lost during the run")
+                came_back = True
+                if res.returncode != LANE_YIELDED:
+                    self._fetch(job, out_dir)
+                if log_fh is not None:
+                    self._append_log(job, log_fh)
+            except self.TRANSPORT_ERRORS as exc:
+                raise LaneUnavailable(f"{self.name} unavailable: {exc}") from exc
             return res.returncode
         finally:
-            try:
-                self._ssh(f'rmdir /s /q "{self._path(job)}"', capture_output=True, timeout=60)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+            for command in ([] if came_back else [f"{self.lane} stop"]) + [f'rmdir /s /q "{self._path(job)}"']:
+                try:
+                    self._ssh(command, capture_output=True, timeout=60)
+                except self.TRANSPORT_ERRORS:
+                    pass
+
+    def _upload(self, job, audio_path, audio_name, lyrics_file, artist, title):
+        self._ssh(f'mkdir "{self._path(job, "in")}"', check=True, capture_output=True, timeout=60)
+        self._scp(audio_path, self._scp_path(job, "in", audio_name), check=True, timeout=900)
+        if lyrics_file:
+            self._scp(lyrics_file, self._scp_path(job, "in", "lyrics.txt"), check=True, timeout=120)
+        with tempfile.TemporaryDirectory() as tmp:
+            meta_path = os.path.join(tmp, "meta.json")
+            with open(meta_path, "w", encoding="utf-8") as fh:
+                json.dump({k: v for k, v in (("artist", artist), ("title", title)) if v}, fh, ensure_ascii=False)
+            self._scp(meta_path, self._scp_path(job, "in", "meta.json"), check=True, timeout=120)
+
+    def _fetch(self, job, out_dir):
+        # Fetch beside out_dir, not into it: the importer expects one track folder there.
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(out_dir)) as fetched:
+            self._scp("-r", self._scp_path(job, "out"), fetched, check=True, timeout=900)
+            remote_out = os.path.join(fetched, "out")
+            for name in os.listdir(remote_out) if os.path.isdir(remote_out) else ():
+                shutil.move(os.path.join(remote_out, name), os.path.join(out_dir, name))
+
+    def _append_log(self, job, log_fh):
+        with tempfile.TemporaryDirectory() as tmp:
+            remote_log = os.path.join(tmp, "karaoke-gen.log")
+            if self._scp(self._scp_path(job, "karaoke-gen.log"), remote_log, timeout=120).returncode == 0:
+                with open(remote_log, encoding="utf-8", errors="replace") as fh:
+                    log_fh.write(f"--- {self.name} {job} ---\n{fh.read()}")
 
 
 def separate_with_karaoke_gen(audio_path, song_dir, *, artist=None, title=None, lyrics_file=None,
@@ -368,12 +426,15 @@ def separate_with_karaoke_gen(audio_path, song_dir, *, artist=None, title=None, 
                 returncode = lane.run(audio_path, work, artist=artist, title=title, lyrics_file=lyrics_file,
                                       lyrics_only=lyrics_only, log_fh=log_fh)
             else:
+                if runner is subprocess.run and not shutil.which(KARAOKE_GEN):
+                    raise RuntimeError(f"karaoke-gen not found at {KARAOKE_GEN!r}; set SP404_KARAOKE_GEN to it")
                 cmd = [KARAOKE_GEN] + karaoke_gen_args(audio_path, work, artist=artist, title=title,
                                                        lyrics_file=lyrics_file, lyrics_only=lyrics_only)
                 if KARAOKE_GEN_MODELS:
                     cmd[1:1] = ["--model_file_dir", KARAOKE_GEN_MODELS]
                 env = dict(os.environ, SKIP_CORRECTION="false")
-                env["PATH"] = os.pathsep.join([os.path.dirname(FFMPEG), env.get("PATH", "")])
+                if os.path.dirname(FFMPEG):
+                    env["PATH"] = os.pathsep.join([os.path.dirname(FFMPEG), env.get("PATH", "")])
                 returncode = runner(cmd, cwd=work, env=env, stdin=subprocess.DEVNULL, stdout=log_fh,
                                     stderr=subprocess.STDOUT, timeout=3600).returncode
         if lane is not None and returncode == LANE_YIELDED:
@@ -401,7 +462,8 @@ def separate_with_karaoke_gen(audio_path, song_dir, *, artist=None, title=None, 
         if files["lrc"]:
             with open(files["lrc"], encoding="utf-8") as fh:
                 lines = karaoke_lyrics.parse_midico(fh.read())
-            lines = karaoke_lyrics.tighten_word_gaps(karaoke_lyrics.drop_word_loops(lines))
+            lines = karaoke_lyrics.tighten_word_gaps(karaoke_lyrics.drop_word_loops(lines),
+                                                     sung=vocal_presence(os.path.join(song_dir, "guide.flac")))
         if files["corrections"]:
             with open(files["corrections"], encoding="utf-8") as fh:
                 references = sorted((json.load(fh).get("reference_lyrics") or {}).keys())
@@ -409,28 +471,51 @@ def separate_with_karaoke_gen(audio_path, song_dir, *, artist=None, title=None, 
             "references": references}
 
 
-@contextlib.contextmanager
-def reference_lyrics_file(audio_path, artist=None, title=None, album=None, duration_s=None, *,
-                          online=True):
-    """Lyrics text for karaoke-gen to correct its transcription against, or None.
+_reference_cache = {}
+_reference_lock = threading.Lock()
 
-    A hand-placed ``.lrc`` beside the audio wins. Otherwise, without a Genius
-    token LRCLIB is karaoke-gen's only source, so it is fetched here with
-    retries (LRCLIB answers 503 for minutes at a time) and handed over as a
-    file. With ``GENIUS_API_TOKEN`` set this yields None and karaoke-gen asks
-    LRCLIB and Genius itself; a lyrics file would switch those off.
+
+def _meta_duration(meta):
+    return meta.get("duration_s") or (meta["duration"] / 1000.0 if meta.get("duration") else None)
+
+
+def reference_lyrics(meta, *, online=True):
+    """``(lines, source, plain)`` from a ``.lrc`` beside the audio or LRCLIB, looked up once per song.
+
+    LRCLIB answers 503 for minutes at a time, so a lookup retries with backoff;
+    the result is kept for an hour (a miss for ten minutes) so karaoke-gen's
+    input and the quality check share one lookup, and ``prep_batch`` warms it
+    for the whole queue before any GPU lane needs it.
     """
-    sidecar = os.path.splitext(audio_path)[0] + ".lrc"
+    key = (meta.get("file_path"), meta.get("artist"), meta.get("title"), meta.get("album"), online)
+    with _reference_lock:
+        cached = _reference_cache.get(key)
+    if cached and cached[0] > time.time():
+        return cached[1]
+    found = karaoke_lyrics.find_lyrics(meta.get("file_path"), meta.get("artist"), meta.get("title"),
+                                       meta.get("album"), _meta_duration(meta), online=online, retries=4)
+    with _reference_lock:
+        _reference_cache[key] = (time.time() + (600 if found[1] == "none" else 3600), found)
+    return found
+
+
+@contextlib.contextmanager
+def reference_lyrics_file(reference):
+    """Reference lyrics as a text file for karaoke-gen to correct its transcription against, or None.
+
+    ``reference`` is ``reference_lyrics()``'s result. A hand-placed ``.lrc``
+    always goes in. LRCLIB's lyrics go in without a Genius token, when LRCLIB
+    is karaoke-gen's only source anyway and they're already fetched; with
+    ``GENIUS_API_TOKEN`` set this yields None and karaoke-gen asks LRCLIB and
+    Genius itself, which a lyrics file would switch off.
+    """
+    lines, source, plain = reference
     texts = []
-    if os.path.isfile(sidecar):
-        with open(sidecar, encoding="utf-8", errors="replace") as fh:
-            texts = [ln.text for ln in karaoke_lyrics.parse_lrc(fh.read()) if ln.text.strip()]
-    elif online and not os.environ.get("GENIUS_API_TOKEN"):
-        hit = karaoke_lyrics.fetch_lrclib(artist, title, album, duration_s, retries=4)
-        if hit and hit.get("plain"):
-            texts = [row.strip() for row in hit["plain"].splitlines() if row.strip()]
-        elif hit and hit.get("synced"):
-            texts = [ln.text for ln in karaoke_lyrics.parse_lrc(hit["synced"]) if ln.text.strip()]
+    if source == "sidecar" or (source != "none" and not os.environ.get("GENIUS_API_TOKEN")):
+        if plain:
+            texts = [row.strip() for row in plain.splitlines() if row.strip()]
+        else:
+            texts = [ln.text for ln in lines if ln.text.strip()]
     if not texts:
         yield None
         return
@@ -468,11 +553,9 @@ def choose_lyrics(transcribed, reference_lines, reference_plain, reference_sourc
 def _separator_for(backend, meta, keep_stems, online, lyrics_only=False, lane=None):
     if backend == "demucs":
         return separate
-    duration_s = meta.get("duration_s") or (meta["duration"] / 1000.0 if meta.get("duration") else None)
 
     def run(audio_path, song_dir, _model):
-        with reference_lyrics_file(audio_path, meta.get("artist"), meta.get("title"), meta.get("album"),
-                                   duration_s, online=online) as lyrics_file:
+        with reference_lyrics_file(reference_lyrics(meta, online=online)) as lyrics_file:
             return separate_with_karaoke_gen(audio_path, song_dir, artist=meta.get("artist"),
                                              title=meta.get("title"), lyrics_file=lyrics_file,
                                              keep_stems=keep_stems, lyrics_only=lyrics_only, lane=lane)
@@ -546,10 +629,9 @@ def prep_song(meta, *, out_root=None, model="htdemucs", refresh=False, force=Fal
 
     lrc_path = os.path.join(song_dir, "lyrics.lrc")
     fresh = separated or relyriced
-    lyrics_wer = existing.get("lyrics_wer") if fresh is None else None
+    lyrics_wer = existing.get("lyrics_wer") if separated is None and relyriced is None else None
     if fresh and fresh.get("lines"):
-        ref_lines, ref_source, ref_plain = karaoke_lyrics.find_lyrics(
-            audio_path, artist, title, meta.get("album"), duration_s, online=online, retries=4)
+        ref_lines, ref_source, ref_plain = reference_lyrics(meta, online=online)
         lines, lyrics_source, lyrics_wer = choose_lyrics(fresh["lines"], ref_lines, ref_plain, ref_source)
         plain = None
         if lyrics_source != "karaoke-gen":
@@ -678,12 +760,22 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
     free. The local lane takes one while the remote is busy (a game is running,
     or it is unreachable) or while ``LOCAL_TAKES_AT``+ songs are waiting, since
     one local song takes about as long as eight remote ones. A song the lane
-    yields to a game goes back to the front of the queue. ``on_start(meta, where)``
-    and ``on_done(meta, error)`` report progress. Returns ``(done, failed)``.
+    yields or can't finish goes back to the front of the queue; after
+    ``REMOTE_TRIES`` such attempts it is left to the local lane. The local lane
+    stays until nothing is queued or in flight remotely, so a late yield never
+    strands a song. ``on_start(meta, where)`` and ``on_done(meta, error)``
+    report progress. Returns ``(done, failed)``.
     """
-    queue = collections.deque(tracks)
+    seen, unique = set(), []
+    for meta in tracks:  # the same file twice would prep one folder on both lanes at once
+        key = meta.get("file_path") or id(meta)
+        if key not in seen:
+            seen.add(key)
+            unique.append(meta)
+    queue = collections.deque(unique)
     cond = threading.Condition()
-    state = {"done": 0, "failed": 0, "remote_free": lane is not None}
+    state = {"done": 0, "failed": 0, "remote_free": lane is not None, "remote_busy": 0}
+    remote_tries = collections.Counter()
 
     def prep(meta, use_lane):
         label = f"{meta.get('artist') or '?'} - {meta.get('title') or '?'}"
@@ -692,10 +784,11 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
         try:
             prep_song(meta, lane=use_lane, log=log, **prep_kwargs)
             error = None
-        except LaneYielded as exc:
+        except LaneUnavailable as exc:
             log(f"  ↺ {label}: {exc}; back in the queue")
             with cond:
                 state["remote_free"] = False
+                remote_tries[id(meta)] += 1
                 queue.appendleft(meta)
                 cond.notify_all()
             return
@@ -708,11 +801,18 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
         if on_done:
             on_done(meta, error)
 
+    def next_for_remote():
+        for meta in queue:
+            if remote_tries[id(meta)] < REMOTE_TRIES:
+                queue.remove(meta)
+                return meta
+        return None
+
     def remote_worker():
         try:
             while True:
                 with cond:
-                    if not queue:
+                    if not any(remote_tries[id(m)] < REMOTE_TRIES for m in queue):
                         return
                 free, why = lane.free()
                 with cond:
@@ -723,11 +823,17 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
                     if not free:
                         cond.wait(poll_s)
                         continue
-                    if not queue:
+                    meta = next_for_remote()
+                    if meta is None:
                         return
-                    meta = queue.popleft()
+                    state["remote_busy"] += 1
                     cond.notify_all()
-                prep(meta, lane)
+                try:
+                    prep(meta, lane)
+                finally:
+                    with cond:
+                        state["remote_busy"] -= 1
+                        cond.notify_all()
         finally:
             with cond:
                 state["remote_free"] = False
@@ -736,13 +842,20 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
     def local_worker():
         while True:
             with cond:
-                while queue and state["remote_free"] and len(queue) < LOCAL_TAKES_AT:
+                while (queue and state["remote_free"] and len(queue) < LOCAL_TAKES_AT
+                       and any(remote_tries[id(m)] < REMOTE_TRIES for m in queue)) \
+                        or (not queue and state["remote_busy"]):
                     cond.wait(poll_s)
                 if not queue:
                     return
                 meta = queue.popleft()
             prep(meta, None)
 
+    if (prep_kwargs.get("backend") or KARAOKE_BACKEND) == "karaoke-gen":
+        # Look every song's reference lyrics up front, so no GPU lane waits on LRCLIB.
+        online = prep_kwargs.get("online", True)
+        threading.Thread(target=lambda: [reference_lyrics(m, online=online) for m in unique],
+                         name="lyrics-prefetch", daemon=True).start()
     workers = []
     if lane is not None:
         workers.append(threading.Thread(target=remote_worker, name=f"lane-{lane.name}"))
@@ -752,6 +865,12 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
         worker.start()
     for worker in workers:
         worker.join()
+    for meta in queue:  # remote-only, and the lane gave up on these
+        state["failed"] += 1
+        error = LaneUnavailable(f"{lane.name} couldn't finish it after {REMOTE_TRIES} tries")
+        log(f"  ! {meta.get('artist') or '?'} - {meta.get('title') or '?'}: {error}")
+        if on_done:
+            on_done(meta, error)
     return state["done"], state["failed"]
 
 

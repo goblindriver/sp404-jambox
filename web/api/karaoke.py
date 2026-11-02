@@ -69,10 +69,17 @@ def _get_plex():
 
 def _tool_status():
     import importlib.util
+    import shutil
+    kp = _prep_module()
     return {
         'demucs': importlib.util.find_spec('demucs') is not None,
         'librosa': importlib.util.find_spec('librosa') is not None,
         'plex': _get_plex() is not None,
+        # Without SP404_KARAOKE_GEN in this process's environment every karaoke-gen prep fails.
+        'karaoke_gen': shutil.which(kp.KARAOKE_GEN) is not None,
+        'backend': kp.KARAOKE_BACKEND,
+        # Configured, not checked: lane.free() goes over ssh, too slow for a status poll.
+        'remote_lane': kp.KARAOKE_REMOTE_HOST or None,
     }
 
 
@@ -213,18 +220,23 @@ def _run_prep(app, job_id, tracks, opts):
             _prep_tracker.update(job_id, status='error', error='Another karaoke prep is running')
             return
         try:
-            log, started, finished = [], [0], {'done': 0, 'failed': 0}
+            log, counts, counts_lock = [], {'started': 0, 'done': 0, 'failed': 0}, threading.Lock()
             lane = (kp.RemoteLane(kp.KARAOKE_REMOTE_HOST)
                     if kp.KARAOKE_REMOTE_HOST and opts['backend'] == 'karaoke-gen' else None)
 
+            # Both lanes call these from their own threads.
             def on_start(meta, where):
                 label = f"{meta.get('artist') or '?'} - {meta.get('title') or '?'}"
-                _prep_tracker.update(job_id, status='running', current=f"{label} ({where})", index=started[0])
-                started[0] += 1
+                with counts_lock:
+                    index = counts['started']
+                    counts['started'] += 1
+                _prep_tracker.update(job_id, status='running', current=f"{label} ({where})", index=index)
 
             def on_done(meta, error):
-                finished['failed' if error else 'done'] += 1
-                _prep_tracker.update(job_id, done=finished['done'], failed=finished['failed'], log=log[-40:])
+                with counts_lock:
+                    counts['failed' if error else 'done'] += 1
+                    done, failed = counts['done'], counts['failed']
+                _prep_tracker.update(job_id, done=done, failed=failed, log=log[-40:])
 
             # Songs run on the remote GPU lane and this machine at once; a song the
             # lane yields to a game is re-queued (see karaoke_prep.prep_batch).

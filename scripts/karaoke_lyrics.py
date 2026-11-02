@@ -114,20 +114,39 @@ def parse_midico(text):
     return [LyricLine(t, " ".join(w for _, w in words), tuple(words)) for t, words in lines if words]
 
 
-def tighten_word_gaps(lines, *, max_gap_s=3.0, step_s=0.3):
+# With the separated vocal to listen to, a gap over this is checked, and the word
+# moves when the vocal is audible for less than this share of it. Words Whisper
+# parked in an intro or break measure 0.06-0.17; a held note around 0.5.
+SUNG_CHECK_GAP_S = 2.5
+HELD_NOTE_SUNG = 0.35
+
+
+def tighten_word_gaps(lines, *, sung=None, first_line_gap_s=3.0, max_gap_s=8.0, step_s=0.3):
     """Pull stray early words up to the word after them, within each line.
 
     Whisper parks the first words of a line that follows an instrumental intro
-    at 0:00 or seconds early ("Get" at 0.0, "a" at 13.2, "little" at 17.5).
-    Words in one sung line never start that far apart, so a word more than
-    ``max_gap_s`` before the next one is moved to ``step_s`` before it.
+    or break at 0:00 or seconds early ("Get" at 0.0, "a" at 13.2, "little" at
+    17.5). A stray word is moved to ``step_s`` before the next word in its line.
+
+    ``sung(t0, t1)`` is the share of that span where the separated vocal is
+    audible: with it, any gap over ``SUNG_CHECK_GAP_S`` is checked and a word
+    moves only when the vocal is mostly silent, so a held note keeps its start.
+    Without it, the first sung line allows ``first_line_gap_s`` and later lines
+    ``max_gap_s``.
     """
     out = []
+    first = True
     for ln in lines:
         words = list(ln.words)
+        gap = first_line_gap_s if first and words else max_gap_s
+        first = first and not words
         for i in range(len(words) - 2, -1, -1):
-            nxt = words[i + 1][0]
-            if nxt - words[i][0] > max_gap_s:
+            t, nxt = words[i][0], words[i + 1][0]
+            if sung is not None:
+                stray = nxt - t > SUNG_CHECK_GAP_S and sung(t, nxt) < HELD_NOTE_SUNG
+            else:
+                stray = nxt - t > gap
+            if stray:
                 words[i] = (round(max(0.0, nxt - step_s), 3), words[i][1])
         out.append(LyricLine(words[0][0], ln.text, tuple(words)) if words else ln)
     return out
