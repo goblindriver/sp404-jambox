@@ -467,6 +467,24 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(moved.words[0], (4.0, "Get"))
         self.assertEqual(kept, held)
 
+    def test_concurrent_reference_lookups_share_one_fetch(self):
+        meta = {"file_path": os.path.join(self.tmp.name, "src", "y.flac"), "artist": "A", "title": "Raced"}
+        found = ([], "lrclib-plain", "words\n")
+
+        def slow(*args, **kwargs):
+            time.sleep(0.1)  # LRCLIB backing off while the prefetch and a lane both ask
+            return found
+        results = []
+        with mock.patch.object(karaoke_lyrics, "find_lyrics", side_effect=slow) as find:
+            threads = [threading.Thread(target=lambda: results.append(self.prep.reference_lyrics(meta)))
+                       for _ in range(3)]
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join()
+        find.assert_called_once()
+        self.assertEqual(results, [found] * 3)
+
     def test_reference_lyrics_looks_up_once_and_retries_misses_later(self):
         meta = {"file_path": os.path.join(self.tmp.name, "src", "x.flac"), "artist": "A", "title": "Once",
                 "duration": 200000}
@@ -578,9 +596,12 @@ class RemoteLaneTests(unittest.TestCase):
                 lane, calls = self._failing_lane(fail)
                 with self.assertRaises(self.prep.LaneUnavailable):
                     lane.run(self.audio, self.work, artist="A", title="B")
-                cleanup = [c[-1].split(" ")[0] for c in calls[-2:]]
-                self.assertEqual(cleanup, [self.prep.KARAOKE_REMOTE_LANE, "rmdir"])  # stop, then remove
-                self.assertTrue(calls[-2][-1].endswith(" stop"))
+                stops = [c for c in calls if c[0] == "ssh" and c[-1].endswith(" stop")]
+                self.assertTrue(calls[-1][-1].startswith("rmdir /s /q"))
+                if name == "upload":  # nothing was started, so nothing to stop (it could be another job)
+                    self.assertEqual(stops, [])
+                else:
+                    self.assertEqual(calls[-2], stops[0])  # stop, then remove
 
     def test_free_reports_the_lane_check(self):
         lane = self.prep.RemoteLane("g", run=lambda cmd, **kw: mock.Mock(returncode=1, stdout="busy: game\n",
@@ -676,6 +697,20 @@ class PrepBatchTests(unittest.TestCase):
         done, failed, _ = self._batch(lane, fake, local=False)
         self.assertEqual((done, failed), (0, 3))
         self.assertEqual(len(tries), 3 * self.prep.REMOTE_TRIES)
+
+    def test_game_yields_dont_use_up_remote_tries(self):
+        self.tracks = self.tracks[:1]
+        lane = mock.Mock(free=mock.Mock(return_value=(True, "free")))
+        lane.name = "goblindriver"
+        yields = []
+
+        def fake(meta, use_lane):
+            if len(yields) < 3:
+                yields.append(meta["title"])
+                raise self.prep.LaneYielded("game started")
+        done, failed, ran = self._batch(lane, fake, local=False)
+        self.assertEqual((done, failed, len(yields)), (1, 0, 3))
+        self.assertEqual(ran, [("Song 0", "goblindriver")])
 
     def test_the_same_file_twice_is_prepped_once(self):
         self.tracks = [{"file_path": "/m/a.flac", "title": "A"}, {"file_path": "/m/a.flac", "title": "A"},

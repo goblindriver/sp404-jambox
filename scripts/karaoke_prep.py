@@ -78,7 +78,7 @@ LANE_YIELDED = 75
 # The local lane (~15-19 min a song on an M3) only takes a song while the remote
 # one (~2 min on GOBLINDRIVER's RTX) is free if this many are still queued.
 LOCAL_TAKES_AT = 8
-# A song the remote lane yields or can't finish this many times is left to the local lane.
+# A song the remote lane can't finish this many times (yields to a game aside) is left to the local lane.
 REMOTE_TRIES = 2
 
 HIGH_MOODS = {"aggressive", "energetic", "intense", "fiery", "rousing", "boisterous",
@@ -355,13 +355,14 @@ class RemoteLane:
         """Run karaoke-gen remotely and copy its output into ``out_dir``. Returns its exit code."""
         job = f"citadel-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{os.urandom(2).hex()}"
         audio_name = "input" + os.path.splitext(audio_path)[1].lower()
-        came_back = False
+        sent = came_back = False
         try:
             try:
                 self._upload(job, audio_path, audio_name, lyrics_file, artist, title)
                 args = karaoke_gen_args(self._path(job, "in", audio_name), self._path(job, "out"),
                                         lyrics_file=self._path(job, "in", "lyrics.txt") if lyrics_file else None,
                                         lyrics_only=lyrics_only)
+                sent = True
                 res = self._ssh(f"{self.lane} run {job} " + " ".join(f'"{a}"' for a in args),
                                 stdout=log_fh, stderr=subprocess.STDOUT, timeout=3600)
                 if res.returncode == self.SSH_FAILED:
@@ -375,7 +376,10 @@ class RemoteLane:
                 raise LaneUnavailable(f"{self.name} unavailable: {exc}") from exc
             return res.returncode
         finally:
-            for command in ([] if came_back else [f"{self.lane} stop"]) + [f'rmdir /s /q "{self._path(job)}"']:
+            # Stop only a run this call sent and lost track of; a failed upload never started
+            # one, and stopping then could end another dispatcher's job.
+            stop = [f"{self.lane} stop"] if sent and not came_back else []
+            for command in stop + [f'rmdir /s /q "{self._path(job)}"']:
                 try:
                     self._ssh(command, capture_output=True, timeout=60)
                 except self.TRANSPORT_ERRORS:
@@ -472,6 +476,7 @@ def separate_with_karaoke_gen(audio_path, song_dir, *, artist=None, title=None, 
 
 
 _reference_cache = {}
+_reference_pending = {}  # key -> Event while one lookup for it is in flight
 _reference_lock = threading.Lock()
 
 
@@ -488,15 +493,26 @@ def reference_lyrics(meta, *, online=True):
     for the whole queue before any GPU lane needs it.
     """
     key = (meta.get("file_path"), meta.get("artist"), meta.get("title"), meta.get("album"), online)
-    with _reference_lock:
-        cached = _reference_cache.get(key)
-    if cached and cached[0] > time.time():
-        return cached[1]
-    found = karaoke_lyrics.find_lyrics(meta.get("file_path"), meta.get("artist"), meta.get("title"),
-                                       meta.get("album"), _meta_duration(meta), online=online, retries=4)
-    with _reference_lock:
-        _reference_cache[key] = (time.time() + (600 if found[1] == "none" else 3600), found)
-    return found
+    while True:
+        with _reference_lock:
+            cached = _reference_cache.get(key)
+            if cached and cached[0] > time.time():
+                return cached[1]
+            pending = _reference_pending.get(key)
+            if pending is None:  # nobody is asking yet: this call does
+                pending = _reference_pending[key] = threading.Event()
+                break
+        pending.wait()  # the prefetch and a lane want the same song: wait for its answer
+    try:
+        found = karaoke_lyrics.find_lyrics(meta.get("file_path"), meta.get("artist"), meta.get("title"),
+                                           meta.get("album"), _meta_duration(meta), online=online, retries=4)
+        with _reference_lock:
+            _reference_cache[key] = (time.time() + (600 if found[1] == "none" else 3600), found)
+        return found
+    finally:
+        with _reference_lock:
+            _reference_pending.pop(key, None)
+        pending.set()
 
 
 @contextlib.contextmanager
@@ -761,8 +777,9 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
     or it is unreachable) or while ``LOCAL_TAKES_AT``+ songs are waiting, since
     one local song takes about as long as eight remote ones. A song the lane
     yields or can't finish goes back to the front of the queue; after
-    ``REMOTE_TRIES`` such attempts it is left to the local lane. The local lane
-    stays until nothing is queued or in flight remotely, so a late yield never
+    ``REMOTE_TRIES`` failures (yields to a game don't count) it is left to the
+    local lane. The local lane stays until nothing is queued or in flight
+    remotely, so a late yield never
     strands a song. ``on_start(meta, where)`` and ``on_done(meta, error)``
     report progress. Returns ``(done, failed)``.
     """
@@ -788,7 +805,8 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
             log(f"  ↺ {label}: {exc}; back in the queue")
             with cond:
                 state["remote_free"] = False
-                remote_tries[id(meta)] += 1
+                if not isinstance(exc, LaneYielded):  # a game yield isn't the lane failing
+                    remote_tries[id(meta)] += 1
                 queue.appendleft(meta)
                 cond.notify_all()
             return
