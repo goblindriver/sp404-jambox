@@ -423,9 +423,10 @@
                 <div class="karaoke-prep">
                     <div class="karaoke-prep-row">
                         <select id="karaoke-playlist"><option value="">Plex playlist…</option></select>
-                        <select id="karaoke-model" title="htdemucs is fast; htdemucs_ft is cleaner and ~4x slower">
-                            <option value="htdemucs">fast</option>
-                            <option value="htdemucs_ft">clean</option>
+                        <select id="karaoke-model" title="karaoke-gen: best separation + word-timed lyrics (~15 min/song); Demucs fast/clean: the older split with LRCLIB line lyrics">
+                            <option value="karaoke-gen">karaoke-gen</option>
+                            <option value="htdemucs">demucs fast</option>
+                            <option value="htdemucs_ft">demucs clean</option>
                         </select>
                         <button class="btn btn-sm btn-accent" onclick="prepKaraokePlaylist()">Prep</button>
                     </div>

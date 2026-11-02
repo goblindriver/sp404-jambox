@@ -213,18 +213,24 @@ def _run_prep(app, job_id, tracks, opts):
             _prep_tracker.update(job_id, status='error', error='Another karaoke prep is running')
             return
         try:
-            done, failed, log = 0, 0, []
-            for i, meta in enumerate(tracks):
+            log, started, finished = [], [0], {'done': 0, 'failed': 0}
+            lane = (kp.RemoteLane(kp.KARAOKE_REMOTE_HOST)
+                    if kp.KARAOKE_REMOTE_HOST and opts['backend'] == 'karaoke-gen' else None)
+
+            def on_start(meta, where):
                 label = f"{meta.get('artist') or '?'} - {meta.get('title') or '?'}"
-                _prep_tracker.update(job_id, status='running', current=label, index=i)
-                try:
-                    kp.prep_song(meta, out_root=root, model=opts['model'], refresh=opts['refresh'],
-                                 force=opts['force'], online=True, log=log.append)
-                    done += 1
-                except Exception as exc:  # keep the batch going
-                    failed += 1
-                    log.append(f"! {label}: {exc}")
-                _prep_tracker.update(job_id, done=done, failed=failed, log=log[-40:])
+                _prep_tracker.update(job_id, status='running', current=f"{label} ({where})", index=started[0])
+                started[0] += 1
+
+            def on_done(meta, error):
+                finished['failed' if error else 'done'] += 1
+                _prep_tracker.update(job_id, done=finished['done'], failed=finished['failed'], log=log[-40:])
+
+            # Songs run on the remote GPU lane and this machine at once; a song the
+            # lane yields to a game is re-queued (see karaoke_prep.prep_batch).
+            kp.prep_batch(tracks, lane=lane, on_start=on_start, on_done=on_done, log=log.append,
+                          out_root=root, model=opts['model'], refresh=opts['refresh'],
+                          force=opts['force'], online=True, backend=opts['backend'])
             kp.rebuild_index(root)
             _prep_tracker.update(job_id, status='done', current=None)
         except Exception as exc:
@@ -236,17 +242,21 @@ def _run_prep(app, job_id, tracks, opts):
 @karaoke_bp.route('/karaoke/prep', methods=['POST'])
 def prep():
     """Start a prep job. Body: one of {playlist}, {track_id}, {track_ids: []}, {dir} (re-prep)
-    plus optional model ('htdemucs'|'htdemucs_ft'), refresh, force."""
+    plus optional model ('karaoke-gen'|'htdemucs'|'htdemucs_ft'; the Demucs ones pick
+    the Demucs backend), refresh, force."""
     try:
         body = json_object_body()
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
     if _prep_lock.locked():
         return jsonify({'ok': False, 'error': 'A karaoke prep job is already running'}), 409
-    model = body.get('model') or 'htdemucs'
-    if model not in ('htdemucs', 'htdemucs_ft'):
-        return jsonify({'ok': False, 'error': 'model must be htdemucs or htdemucs_ft'}), 400
-    opts = {'model': model, 'refresh': bool(body.get('refresh')), 'force': bool(body.get('force'))}
+    default = 'karaoke-gen' if _prep_module().KARAOKE_BACKEND == 'karaoke-gen' else 'htdemucs'
+    model = body.get('model') or default
+    if model not in ('karaoke-gen', 'htdemucs', 'htdemucs_ft'):
+        return jsonify({'ok': False, 'error': 'model must be karaoke-gen, htdemucs or htdemucs_ft'}), 400
+    opts = {'backend': 'karaoke-gen' if model == 'karaoke-gen' else 'demucs',
+            'model': 'htdemucs' if model == 'karaoke-gen' else model,
+            'refresh': bool(body.get('refresh')), 'force': bool(body.get('force'))}
 
     tracks = []
     if body.get('dir'):
