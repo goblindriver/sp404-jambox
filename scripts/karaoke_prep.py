@@ -604,21 +604,27 @@ def prep_song(meta, *, out_root=None, model="htdemucs", refresh=False, force=Fal
     if backend not in BACKENDS:
         raise ValueError(f"unknown karaoke backend {backend!r}")
     audio_path = meta.get("file_path")
-    if not audio_path or not os.path.isfile(audio_path):
-        raise FileNotFoundError(f"audio not found: {audio_path}")
+    if not audio_path:
+        raise FileNotFoundError("audio not found: no file_path")
     artist, title = meta.get("artist"), meta.get("title")
     if not title:
         title = os.path.splitext(os.path.basename(audio_path))[0]
     song_dir = os.path.join(out_root, safe_dirname(artist, title))
-    os.makedirs(song_dir, exist_ok=True)
     existing = load_song_json(song_dir) or {}
     backing = os.path.join(song_dir, "backing.flac")
 
     label = f"{artist or '?'} - {title}"
+    prepped = os.path.isfile(backing) and not force
+    if prepped and not relyric and not refresh:  # needs nothing from the source (its drive may be offline)
+        log(f"  = {label} (already prepped; --refresh to redo lyrics/drops, --force to re-split)")
+        return existing
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"audio not found: {audio_path}")
+    os.makedirs(song_dir, exist_ok=True)
     meta = dict(meta, artist=artist, title=title)
     separated = None   # a separation run's result; None keeps the existing stems
     relyriced = None   # a lyrics-only karaoke-gen run's result
-    if os.path.isfile(backing) and not force:
+    if prepped:
         if relyric:
             log(f"  ~ {label}: re-transcribing lyrics (karaoke-gen)...")
             t0 = time.time()
@@ -626,9 +632,6 @@ def prep_song(meta, *, out_root=None, model="htdemucs", refresh=False, force=Fal
                                                      lane=lane)
             relyriced = transcribe(audio_path, song_dir, model) or {}
             log(f"    lyrics done in {time.time() - t0:.0f}s")
-        elif not refresh:
-            log(f"  = {label} (already prepped; --refresh to redo lyrics/drops, --force to re-split)")
-            return existing
         else:
             log(f"  ~ {label}: refreshing lyrics + drops")
     else:
@@ -810,7 +813,7 @@ def rebuild_index(out_root=None):
 
 
 def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, log=print, poll_s=60,
-               videos=False, revideo=False, on_video=None, **prep_kwargs):
+               videos=False, revideo=False, video_only=False, on_video=None, **prep_kwargs):
     """Prep songs on this machine's GPU and a remote lane at the same time.
 
     The remote lane takes the next song whenever ``lane.free()`` says its GPU is
@@ -828,6 +831,10 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
     video (``prep_video``; ``revideo`` re-fetches) on a thread of its own, so
     downloads never hold a GPU lane. ``on_video(meta, video, error)`` reports
     each; a missing video doesn't fail the song.
+
+    ``video_only``: the songs are prepped already, so skip prep (and the lanes:
+    no ssh, no lyrics lookups) and only fetch their videos; ``on_start`` and
+    ``on_done`` then report the video work, and a video that errors fails it.
     """
     seen, unique = set(), []
     for meta in tracks:  # the same file twice would prep one folder on both lanes at once
@@ -836,7 +843,7 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
             seen.add(key)
             unique.append(meta)
     queue = collections.deque(unique)
-    video_todo = SimpleQueue() if videos or revideo else None
+    video_todo = SimpleQueue() if videos or revideo or video_only else None
     cond = threading.Condition()
     state = {"done": 0, "failed": 0, "remote_free": lane is not None, "remote_busy": 0}
     remote_tries = collections.Counter()
@@ -870,6 +877,8 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
 
     def video_worker():
         while (meta := video_todo.get()) is not None:
+            if video_only and on_start:
+                on_start(meta, "video")
             try:
                 video, error = prep_video(meta, out_root=prep_kwargs.get("out_root"), refresh=revideo,
                                           log=log), None
@@ -878,6 +887,11 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
                 log(f"  ! video for {meta.get('artist') or '?'} - {meta.get('title') or '?'}: {exc}")
             if on_video:
                 on_video(meta, video, error)
+            if video_only:  # nothing else happens to these songs
+                with cond:
+                    state["failed" if error else "done"] += 1
+                if on_done:
+                    on_done(meta, error)
 
     def next_for_remote():
         for meta in queue:
@@ -929,7 +943,11 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
                 meta = queue.popleft()
             prep(meta, None)
 
-    if (prep_kwargs.get("backend") or KARAOKE_BACKEND) == "karaoke-gen":
+    if video_only:
+        queue.clear()
+        for meta in unique:
+            video_todo.put(meta)
+    elif (prep_kwargs.get("backend") or KARAOKE_BACKEND) == "karaoke-gen":
         # Look every song's reference lyrics up front, so no GPU lane waits on LRCLIB.
         online = prep_kwargs.get("online", True)
         threading.Thread(target=lambda: [reference_lyrics(m, online=online) for m in unique],
@@ -939,9 +957,9 @@ def prep_batch(tracks, *, lane=None, local=True, on_start=None, on_done=None, lo
         video_thread = threading.Thread(target=video_worker, name="videos")
         video_thread.start()
     workers = []
-    if lane is not None:
+    if lane is not None and not video_only:
         workers.append(threading.Thread(target=remote_worker, name=f"lane-{lane.name}"))
-    if local or lane is None:
+    if (local or lane is None) and not video_only:
         workers.append(threading.Thread(target=local_worker, name="lane-local"))
     for worker in workers:
         worker.start()
@@ -1006,6 +1024,8 @@ def main(argv=None):
     ap.add_argument("--videos", action="store_true",
                     help="Also fetch a music video per song (yt-dlp, SP404_YTDLP) for the deck's second screen")
     ap.add_argument("--revideo", action="store_true", help="Re-fetch music videos even where one exists")
+    ap.add_argument("--video-only", action="store_true",
+                    help="Songs already prepped: only fetch videos (no separation, no GPU lanes)")
     ap.add_argument("--out", default=None, help=f"Output root (default {KARAOKE_DIR})")
     lanes = ap.add_mutually_exclusive_group()
     lanes.add_argument("--local-only", action="store_true",
@@ -1026,7 +1046,8 @@ def main(argv=None):
 
     tracks = resolve_tracks(args)
     lane = None
-    if KARAOKE_REMOTE_HOST and not args.local_only and (args.backend or KARAOKE_BACKEND) == "karaoke-gen":
+    if KARAOKE_REMOTE_HOST and not args.local_only and not args.video_only \
+            and (args.backend or KARAOKE_BACKEND) == "karaoke-gen":
         lane = RemoteLane(KARAOKE_REMOTE_HOST)
     elif args.remote_only:
         ap.error("--remote-only needs SP404_KARAOKE_REMOTE and the karaoke-gen backend")
@@ -1035,7 +1056,8 @@ def main(argv=None):
     _done, failures = prep_batch(
         tracks, lane=lane, local=not args.remote_only, out_root=out_root, model=args.model,
         refresh=args.refresh, force=args.force, online=not args.offline, backend=args.backend,
-        keep_stems=args.keep_stems, relyric=args.relyric, videos=args.videos, revideo=args.revideo)
+        keep_stems=args.keep_stems, relyric=args.relyric, videos=args.videos, revideo=args.revideo,
+        video_only=args.video_only)
     songs = rebuild_index(out_root)
     print(f"Done. {len(songs)} songs ready, {failures} failed. Index: {os.path.join(out_root, '_index.json')}")
     return 1 if failures and not songs else 0

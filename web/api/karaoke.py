@@ -225,7 +225,8 @@ def _run_prep(app, job_id, tracks, opts):
         try:
             log, counts, counts_lock = [], {'started': 0, 'done': 0, 'failed': 0, 'videos': 0}, threading.Lock()
             lane = (kp.RemoteLane(kp.KARAOKE_REMOTE_HOST)
-                    if kp.KARAOKE_REMOTE_HOST and opts['backend'] == 'karaoke-gen' else None)
+                    if kp.KARAOKE_REMOTE_HOST and opts['backend'] == 'karaoke-gen'
+                    and not opts['video_only'] else None)
 
             # Both lanes call these from their own threads.
             def on_start(meta, where):
@@ -250,7 +251,8 @@ def _run_prep(app, job_id, tracks, opts):
             # Songs run on the remote GPU lane and this machine at once; a song the
             # lane yields to a game is re-queued (see karaoke_prep.prep_batch).
             kp.prep_batch(tracks, lane=lane, on_start=on_start, on_done=on_done, log=log.append,
-                          videos=opts['videos'], revideo=opts['revideo'], on_video=on_video,
+                          videos=opts['videos'], revideo=opts['revideo'], video_only=opts['video_only'],
+                          on_video=on_video,
                           out_root=root, model=opts['model'], refresh=opts['refresh'],
                           force=opts['force'], online=True, backend=opts['backend'])
             kp.rebuild_index(root)
@@ -280,7 +282,8 @@ def prep():
     opts = {'backend': 'karaoke-gen' if model == 'karaoke-gen' else 'demucs',
             'model': 'htdemucs' if model == 'karaoke-gen' else model,
             'refresh': bool(body.get('refresh')), 'force': bool(body.get('force')),
-            'videos': bool(body.get('videos') or body.get('revideo')), 'revideo': bool(body.get('revideo'))}
+            'videos': bool(body.get('videos') or body.get('revideo')), 'revideo': bool(body.get('revideo')),
+            'video_only': False}
 
     tracks = []
     if body.get('dir'):
@@ -292,6 +295,8 @@ def prep():
                    'title': data.get('title'), 'album': data.get('album'), 'id': data.get('plex_id'),
                    'moods': data.get('moods'), 'styles': data.get('styles'),
                    'duration_s': data.get('duration_s')}]
+        # Video button: the song is prepped, so skip prep and the lanes (its source may be offline).
+        opts['video_only'] = opts['revideo'] and not opts['force'] and not opts['refresh']
         if not opts['force'] and not opts['revideo']:
             opts['refresh'] = True
     else:

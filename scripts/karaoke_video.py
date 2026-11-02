@@ -11,7 +11,7 @@ in the background instead (``offset_s`` None). Used by ``karaoke_prep.py --video
     # {"file": "video.mp4", "mode": "sync", "offset_s": 4.21, "confidence": 0.93, ...}
 
 A video file beside the source track (``Song.mp4`` next to ``Song.flac``) is
-used as-is; otherwise yt-dlp searches YouTube (``SP404_YTDLP``; YouTube needs
+used as-is (copied, not re-encoded); otherwise yt-dlp searches YouTube (``SP404_YTDLP``; YouTube needs
 its JS challenge solver: node on PATH plus the ``yt-dlp-ejs`` package).
 """
 import json
@@ -44,6 +44,8 @@ SKIP_WORDS = ("lyric", "lyrics", "karaoke", "reaction", "cover", "remix", "instr
               "visualizer", "visualiser", "fan made", "fanmade", "ai")
 LIVE_WORDS = ("live", "concert", "session", "sessions", "performance", "tour", "festival")
 FEAT_WORDS = ("ft", "feat", "featuring")
+# What artists' own channels tack on to their name: LeTigreWorld, ChrisStapletonVEVO.
+CHANNEL_SUFFIXES = ("vevo", "official", "music", "tv", "band", "channel", "records", "world")
 
 # Alignment: onset-strength envelopes at 22.05 kHz / 512 hop (~23 ms frames).
 SR = 22050
@@ -85,12 +87,18 @@ def rank_candidates(entries, artist, title, duration_s=None):
     A hit must name the song, and name the artist in its title or come from the
     artist's channel (no covers). The artist's own channel counts most, over
     anyone else's "official video" label (fan uploads use it too), then a
-    length close to the track's. Live takes can't
-    sync, so they rank lower; lyric, audio-only, cover and remix uploads, and
-    other artists' features, are dropped.
+    length close to the track's. Live takes can't sync, so they rank lower;
+    lyric, audio-only, cover and remix uploads, and other artists' features,
+    are dropped.
+
+    The artist's channel is their name, alone or with a usual suffix
+    (``CHANNEL_SUFFIXES``), or, for names of 5+ letters, a channel that
+    contains the name ("Yusuf / Cat Stevens"); a short name like Low or Can
+    would otherwise claim "Low Key Covers".
     """
     want_title, want_artist = _norm(clean_title(title)), _norm(artist)
     compact_artist = want_artist.replace(" ", "")
+    own_channel = re.compile(re.escape(compact_artist) + "(" + "|".join(CHANNEL_SUFFIXES) + ")?")
     if want_artist.startswith("the "):
         want_artist = want_artist[4:]
     scored, seen = [], set()
@@ -102,8 +110,9 @@ def rank_candidates(entries, artist, title, duration_s=None):
         if channel.endswith(" topic") or any(
                 _has_words(name, w) and not _has_words(want_title, w) for w in map(_norm, SKIP_WORDS)):
             continue
-        from_artist = bool(want_artist) and (_has_words(channel, want_artist)
-                                             or channel.replace(" ", "").startswith(compact_artist))
+        from_artist = bool(compact_artist) and (
+            own_channel.fullmatch(channel.replace(" ", "")) is not None
+            or (len(compact_artist) >= 5 and _has_words(channel, want_artist)))
         if not from_artist and not _has_words(name, want_artist):
             continue
         score = 1 + (8 if from_artist else 0)
@@ -153,11 +162,15 @@ def is_still(path):
     """True when the video is one picture (an audio upload with cover art).
 
     Compares the keyframes (only those are decoded, so it's quick) at 32x18 grey.
+    Raises ``RuntimeError`` when ffmpeg can't read it.
     """
     import numpy as np
-    res = subprocess.run([FFMPEG, "-v", "error", "-skip_frame", "nokey", "-i", path, "-an", "-vsync", "0",
-                          "-vf", "scale=32:18,format=gray", "-f", "rawvideo", "-"],
+    res = subprocess.run([FFMPEG, "-v", "error", "-skip_frame", "nokey", "-i", path, "-an",
+                          "-fps_mode", "passthrough", "-vf", "scale=32:18,format=gray", "-f", "rawvideo", "-"],
                          capture_output=True, timeout=300)
+    if res.returncode != 0:
+        err = (res.stderr or b"").decode("utf-8", "replace").strip()
+        raise RuntimeError(f"ffmpeg couldn't read the video: {err[-300:]}")
     frames = np.frombuffer(res.stdout, dtype=np.uint8)
     frames = frames[:len(frames) // 576 * 576].reshape(-1, 576).astype(np.float32)
     if len(frames) < 2:
@@ -266,11 +279,13 @@ def fetch_video(song_dir, audio_path, *, source_path=None, artist=None, title=No
 
     ``audio_path`` is what the video is aligned against (the song's full mix);
     a video beside ``source_path`` (default ``audio_path``) wins over YouTube.
-    The file lands as ``song_dir/video.<ext>`` only once it has been checked.
+    Downloads go to the system temp folder, so a half-fetched file never sits
+    in a song folder someone is mirroring; the file lands as
+    ``song_dir/video.<ext>`` only once it has been checked.
     """
     source_path = source_path or audio_path
     found = local_video(source_path)
-    with tempfile.TemporaryDirectory(dir=song_dir, prefix=".video-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="jambox-video-") as tmp:
         if found:
             ext = os.path.splitext(found)[1].lower()
             path = os.path.join(tmp, "video" + ext)
@@ -282,11 +297,11 @@ def fetch_video(song_dir, audio_path, *, source_path=None, artist=None, title=No
                 dest = os.path.join(tmp, f"{hit.get('id') or 'video'}.mp4")
                 try:
                     download(hit["url"], dest, run=run)
+                    if still(dest):
+                        log(f"    video {hit.get('title')!r} is a still picture; next")
+                        continue
                 except RuntimeError as exc:
                     log(f"    video {hit.get('title')!r}: {exc}")
-                    continue
-                if still(dest):
-                    log(f"    video {hit.get('title')!r} is a still picture; next")
                     continue
                 path, info = dest, {"origin": "yt-dlp", "source": hit["url"], "title": hit.get("title"),
                                     "channel": hit.get("channel") or hit.get("uploader")}
@@ -304,7 +319,7 @@ def fetch_video(song_dir, audio_path, *, source_path=None, artist=None, title=No
             if old.startswith("video.") and os.path.splitext(old)[1].lower() in VIDEO_EXTS:
                 os.remove(os.path.join(song_dir, old))
         final = os.path.join(song_dir, name)
-        os.replace(path, final)
+        shutil.move(path, final)  # a rename when the temp folder shares the disk
     log(f"    video: {info['title']} ({mode}{'' if offset_s is None else f', offset {offset_s:+.2f}s'})")
     return {"file": name, "mode": mode, "offset_s": offset_s, "confidence": confidence,
             "duration_s": video_duration(final), "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S"), **info}
