@@ -10,6 +10,14 @@ song's drop sheet fired on time, and manual pad drops from the keyboard.
     py deck\\karaoke_deck.py --root D:\\Karaoke\\Songs --midi "USB Midi" --base-ch 1
     py deck\\karaoke_deck.py --list-ports           # MIDI + audio device names
     py deck\\karaoke_deck.py --dry-run              # no MIDI; prints what it would send
+    py deck\\karaoke_deck.py --screen 1 --video-screen 2   # lyrics on display 1, video on display 2
+
+Two screens: ``--video-screen`` opens a second, muted window for the room (the
+CRT via Moonlight, or the computer screen). It plays the song's music video
+(``song.json`` ``video``: kept on the song in ``sync`` mode, looping in
+``loose`` mode) or, without one, a visual of the backing track, with a "now
+singing / up next" card. The lyrics window stays the audio and MIDI clock.
+``--video-lead`` runs the video that much ahead to cover a stream's lag.
 
 Set the SP-404A to MIDI SYNC ``tnP`` ([10] + CTRL 3) so tempo follows the song
 but patterns never auto-start.
@@ -48,7 +56,15 @@ PPQN = 24
 DEFAULT_ROOT = r"D:\Karaoke\Songs" if os.name == "nt" else os.path.expanduser("~/Music/Karaoke")
 MIRROR_HINT = r'robocopy "\\<citadel>\jasongronvold\Music\Karaoke" D:\Karaoke\Songs /MIR /COPY:DT /R:1 /W:1'
 PIPE_NAME = r"\\.\pipe\jambox-karaoke" if os.name == "nt" else "/tmp/jambox-karaoke.sock"
+VIDEO_PIPE = PIPE_NAME + "-video"
 GUIDE_LEVELS_DB = (None, -18, -9)           # None = off
+VIDEO_TOLERANCE_S = 0.3                      # re-seek the video window when it drifts further
+VIDEO_FOLLOW_EVERY_S = 0.25
+VIDEO_SEEK_SETTLE_S = 1.0                    # after a seek, before checking drift again
+CARD_FIRST_S = 15.0                          # "now singing" for a song's first seconds
+CARD_NEXT_S = 30.0                           # "up next" for its last
+# The second screen without a music video: a spectrum of the backing track (audio output off).
+VISUAL_GRAPH = "[aid1]asplit[ao][a];[a]showcqt=s=1280x720:fps=30:count=4:bar_g=2:sono_g=4:axis=0[vo]"
 SEEK_JUMP_S = 0.75                           # a time-pos jump bigger than this = seek
 MAX_SEMITONES = 6
 
@@ -109,7 +125,7 @@ def build_mpv_args(song_dir, song, *, ipc=PIPE_NAME, audio_device=None, fullscre
     if fullscreen:
         args.append("--fullscreen")
     if screen is not None:
-        args.append(f"--fs-screen={screen}")
+        args += [f"--screen={screen}", f"--fs-screen={screen}"]
     if sub_delay:
         args.append(f"--sub-delay={sub_delay}")
     return args
@@ -124,6 +140,75 @@ def guide_graph(level_db, has_cover):
     if has_cover:
         graph += ";[vid1]null[vo]"
     return graph
+
+
+def song_video(song_dir, song):
+    """``(path, mode, offset_s)`` of the song's music video, or ``(None, None, None)``.
+
+    ``song.json`` ``video``: ``{"file", "mode": "sync"|"loose", "offset_s"}`` where
+    video_pos = song_pos + offset_s. A sync entry without an offset plays loose.
+    """
+    video = song.get("video") or {}
+    path = os.path.join(song_dir, video["file"]) if video.get("file") else None
+    if not path or not os.path.isfile(path):
+        return None, None, None
+    offset = video.get("offset_s")
+    if video.get("mode") == "sync" and isinstance(offset, (int, float)):
+        return path, "sync", float(offset)
+    return path, "loose", None
+
+
+def build_video_args(song_dir, song, *, ipc=VIDEO_PIPE, fullscreen=True, screen=None, mpv="mpv"):
+    """The second screen's mpv: the music video muted, or a visual of the backing track.
+
+    It starts paused unless the video loops on its own; ``VideoScreen`` keeps it
+    on the song.
+    """
+    path, mode, _offset = song_video(song_dir, song)
+    # No default key bindings: a stray q or space in the room window would quit or pause it alone.
+    args = [mpv, f"--input-ipc-server={ipc}", "--force-window=yes", "--keep-open=yes", "--idle=no",
+            "--osc=no", "--sid=no", "--input-default-bindings=no", "--cursor-autohide=always",
+            f"--title=Jambox: {song.get('artist') or ''} - {song.get('title') or ''}"]
+    if path:
+        args += [path, "--aid=no"]
+        args.append("--loop-file=inf" if mode == "loose" else "--pause")
+    else:
+        args += [os.path.join(song_dir, "backing.flac"), "--ao=null", "--pause",
+                 f"--lavfi-complex={VISUAL_GRAPH}"]
+    if fullscreen:
+        args.append("--fullscreen")
+    if screen is not None:
+        args += [f"--screen={screen}", f"--fs-screen={screen}"]
+    return args
+
+
+def video_seek_target(song_pos, offset_s, lead_s, video_pos, *, tolerance=VIDEO_TOLERANCE_S):
+    """Where the video window should seek to stay on the song, or None while it's close enough.
+
+    It belongs at song_pos + offset_s + lead_s (the lead covers a streamed
+    screen's lag); before the video starts it waits at 0.
+    """
+    target = max(0.0, song_pos + offset_s + lead_s)
+    if video_pos is None or abs(video_pos - target) > tolerance:
+        return round(target, 3)
+    return None
+
+
+def _ass_text(text):
+    return str(text or "").replace("\\", "/").replace("{", "(").replace("}", ")")
+
+
+def card_text(song, next_song, song_pos):
+    """The second screen's overlay at ``song_pos``: "now singing", then "up next" near the end, or ''."""
+    def name(s):
+        return " - ".join(_ass_text(v) for v in (s.get("artist"), s.get("title")) if v)
+
+    if song_pos < CARD_FIRST_S and name(song):
+        return "{\\an1\\fs34\\bord3}Now singing\\N{\\b1\\fs52}" + name(song)
+    duration = song.get("duration_s")
+    if next_song and duration and song_pos > duration - CARD_NEXT_S and name(next_song):
+        return "{\\an3\\fs34\\bord3}Up next\\N{\\b1\\fs44}" + name(next_song)
+    return ""
 
 
 # ── mpv IPC ──────────────────────────────────────────────────────────
@@ -161,7 +246,14 @@ class Mpv:
             self.command("observe_property", i, prop)
 
     def command(self, *cmd):
-        msg = json.dumps({"command": list(cmd)}).encode() + b"\n"
+        self._send({"command": list(cmd)})
+
+    def command_named(self, **cmd):
+        """mpv's named-argument form, e.g. ``osd-overlay``."""
+        self._send({"command": cmd})
+
+    def _send(self, payload):
+        msg = json.dumps(payload).encode() + b"\n"
         try:
             with self.lock:
                 self._send_raw(msg)
@@ -342,6 +434,57 @@ def start_key_listener(keyq):
 
 # ── Song runner ──────────────────────────────────────────────────────
 
+class VideoScreen:
+    """The second screen: follows the lyrics window's position, pause and song; shows the card."""
+
+    def __init__(self, song_dir, song, next_song, args):
+        path, mode, offset = song_video(song_dir, song)
+        # The visual plays the backing track itself, so it follows the song like a synced video.
+        self.mode, self.offset = (mode, offset) if path else ("visual", 0.0)
+        self.end = (song.get("video") or {}).get("duration_s") if path else None
+        self.song, self.next_song, self.lead = song, next_song, args.video_lead
+        self.proc = subprocess.Popen(build_video_args(
+            song_dir, song, fullscreen=not args.windowed, screen=args.video_screen, mpv=args.mpv))
+        try:
+            self.mpv = Mpv(VIDEO_PIPE)
+        except RuntimeError:
+            self.proc.kill()
+            raise
+        self._due, self._card = 0.0, None
+        print(f"  video screen: {'music video, ' + mode if path else 'visual (no music video)'}")
+
+    def update(self, song_pos, paused, speed=1.0):
+        now = time.monotonic()
+        if now < self._due or self.mpv.closed.is_set():
+            return
+        self._due = now + VIDEO_FOLLOW_EVERY_S
+        if self.mode == "loose":
+            hold = paused
+        else:
+            hold = paused or song_pos + self.offset + self.lead < 0
+            if self.mpv.state["speed"] != speed:
+                self.mpv.command("set_property", "speed", speed)
+            target = video_seek_target(song_pos, self.offset, self.lead, self.mpv.position())
+            if target is not None and not (self.end and target >= self.end - 0.5):
+                self.mpv.command("seek", target, "absolute+exact")
+                self._due = now + VIDEO_SEEK_SETTLE_S   # time-pos lags a seek; don't chase it
+        if bool(self.mpv.state["pause"]) != hold:
+            self.mpv.command("set_property", "pause", hold)
+        text = card_text(self.song, self.next_song, song_pos)
+        if text != self._card:
+            self._card = text
+            self.mpv.command_named(name="osd-overlay", id=1, format="ass-events" if text else "none",
+                                   data=text, res_x=1280, res_y=720)
+
+    def close(self):
+        if self.proc.poll() is None:
+            self.mpv.command("quit")
+            try:
+                self.proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+
+
 class Deck:
     def __init__(self, args):
         self.args = args
@@ -350,7 +493,7 @@ class Deck:
         self.bank = "A"
         print(f"Keys: {start_key_listener(self.keys)}")
 
-    def play(self, song_dir):
+    def play(self, song_dir, next_song=None):
         with open(os.path.join(song_dir, "song.json"), encoding="utf-8") as fh:
             song = json.load(fh)
         drops = karaoke_drops.validate_drops(song.get("drops"))
@@ -362,6 +505,13 @@ class Deck:
         print(f"\n▶ {song.get('artist')} - {song.get('title')}  "
               f"[{bpm} bpm, key {song.get('key')}, {len(drops)} drops, bank {self.bank}]")
 
+        # The room screen opens first so the lyrics window, opened last, keeps the focus.
+        video = None
+        if self.args.video_screen is not None:
+            try:
+                video = VideoScreen(song_dir, song, next_song, self.args)
+            except (OSError, RuntimeError) as exc:  # the song still plays on the lyrics screen
+                print(f"  video screen unavailable: {exc}")
         proc = subprocess.Popen(build_mpv_args(
             song_dir, song, audio_device=self.args.audio_device, fullscreen=not self.args.windowed,
             screen=self.args.screen, sub_delay=self.args.sub_delay, mpv=self.args.mpv))
@@ -369,6 +519,8 @@ class Deck:
             mpv = Mpv(PIPE_NAME)
         except RuntimeError as exc:
             print(exc)
+            if video is not None:
+                video.close()
             proc.wait()
             return "next"
 
@@ -401,6 +553,8 @@ class Deck:
                             self.midi.pad(d["bank"], d["pad"], d["vel"], self.args.base_ch)
                     prev_pos = pos
 
+                if video is not None and pos is not None:
+                    video.update(pos, bool(mpv.state["pause"]), float(mpv.state["speed"] or 1.0))
                 result = self._handle_keys(mpv, has_cover, has_guide) or result
                 if result in ("quit", "skip"):
                     break
@@ -408,6 +562,8 @@ class Deck:
         finally:
             if started:
                 self.midi.stop()
+            if video is not None:
+                video.close()
             if proc.poll() is None:
                 mpv.command("quit")
                 try:
@@ -501,8 +657,13 @@ def main(argv=None):
     ap.add_argument("--midi", default="USB Midi", help="substring of the MIDI output name")
     ap.add_argument("--base-ch", type=int, default=1, help="SP-404A Pad Base Ch (1-16)")
     ap.add_argument("--audio-device", default=None, help="mpv device id, e.g. wasapi/{...} (the M6)")
-    ap.add_argument("--screen", type=int, default=None, help="fullscreen on this display index")
+    ap.add_argument("--screen", "--lyrics-screen", type=int, default=None,
+                    help="lyrics window: fullscreen on this display index")
     ap.add_argument("--sub-delay", type=float, default=0.0, help="lyrics offset, e.g. 0.1 for Moonlight lag")
+    ap.add_argument("--video-screen", type=int, default=None,
+                    help="also open the room screen (music video or visual + now-singing card) on this display")
+    ap.add_argument("--video-lead", type=float, default=0.0,
+                    help="run the video this many seconds ahead, e.g. 0.1 when it goes out over Moonlight")
     ap.add_argument("--windowed", action="store_true")
     ap.add_argument("--hot", action="store_true", help="manual drops at velocity 127")
     ap.add_argument("--mpv", default="mpv")
@@ -526,8 +687,9 @@ def main(argv=None):
         return 0
     deck = Deck(args)
     try:
-        for s in q:
-            if deck.play(os.path.join(args.root, s["dir"])) == "quit":
+        for i, s in enumerate(q):
+            next_song = q[i + 1] if i + 1 < len(q) else None
+            if deck.play(os.path.join(args.root, s["dir"]), next_song) == "quit":
                 break
     except KeyboardInterrupt:
         pass
