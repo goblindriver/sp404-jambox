@@ -783,8 +783,24 @@ def library_rel_path(full_path, library_root):
     return full_path[len(prefix):].replace("\\", "/")
 
 
+def _tolerate_console_encoding():
+    """Replace what the console can't encode instead of crashing on it.
+
+    Scripts print "→", "✓" and the like; a Windows console (cp1252) raised
+    UnicodeEncodeError on them, e.g. at the end of fetch_samples.py.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        if encoding and encoding != "utf8" and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def load_settings_for_script(script_file):
     """Load settings for a script living in the repo's scripts directory."""
+    _tolerate_console_encoding()
     script_dir = os.path.dirname(os.path.abspath(script_file))
     repo_dir = os.path.dirname(script_dir)
     return load_settings(repo_dir)
