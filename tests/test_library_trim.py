@@ -99,14 +99,20 @@ class LibraryTrimTests(unittest.TestCase):
         self.assertEqual(manifest["Drums/long.wav"]["reason"], "duration")
         self.assertEqual(manifest["Drums/silent.wav"]["tag_row"], self.rows["Drums/silent.wav"])
 
+    def _exported(self):
+        with open(self.tags, encoding="utf-8") as fh:
+            return json.load(fh)
+
     def test_restore_puts_files_and_tag_rows_back(self):
         self._run(apply=True)
         run_id = os.listdir(os.path.join(self.lib, "_TRASH"))[0]
+        self.assertEqual(set(self._exported()), set(load_tag_db(self.tags)))  # _tags.json follows the trim
 
         with redirect_stdout(io.StringIO()):
             self.assertEqual(library_trim.run_restore(argparse.Namespace(run_id=run_id)), 0)
 
         self.assertEqual(load_tag_db(self.tags), self.rows)
+        self.assertEqual(set(self._exported()), set(self.rows))  # ...and the restore
         for rel in self.rows:
             self.assertTrue(os.path.exists(os.path.join(self.lib, rel)))
 
