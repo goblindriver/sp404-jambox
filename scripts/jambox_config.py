@@ -404,6 +404,8 @@ def load_settings(repo_dir):
         "KARAOKE_REMOTE_HOST": os.environ.get("SP404_KARAOKE_REMOTE", "").strip(),
         "KARAOKE_REMOTE_LANE": _read_command("SP404_KARAOKE_REMOTE_LANE", r"D:\Karaoke\lane.cmd"),
         "KARAOKE_REMOTE_WORK": _read_command("SP404_KARAOKE_REMOTE_WORK", r"D:\Karaoke\work"),
+        # yt-dlp for karaoke music videos (needs a JS runtime: node, plus the yt-dlp-ejs package).
+        "YTDLP_BIN": _read_command("SP404_YTDLP", "yt-dlp"),
         "STAGING_DIR": os.path.join(repo_dir, "_CARD_STAGING"),
         "SMPL_DIR": os.path.join(repo_dir, "sd-card-template", "ROLAND", "SP-404SX", "SMPL"),
         "CONFIG_PATH": os.path.join(repo_dir, "bank_config.yaml"),

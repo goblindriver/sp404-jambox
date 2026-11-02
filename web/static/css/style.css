@@ -2064,14 +2064,14 @@ main {
 .karaoke-detail { flex: 1; overflow-y: auto; padding: 20px 28px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .karaoke-empty { color: var(--text-dim); margin: auto; text-align: center; max-width: 360px; line-height: 1.5; }
 .karaoke-empty.small { margin: 12px 0; font-size: 12px; }
-.kara-head { display: flex; gap: 16px; align-items: center; }
+.kara-head { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
 .kara-cover { width: 84px; height: 84px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0; }
 .kara-cover.blank { display: flex; align-items: center; justify-content: center; background: var(--bg-surface); font-size: 32px; color: var(--text-muted); }
 .kara-head-text { flex: 1; min-width: 0; }
 .kara-title { font-size: 20px; font-weight: 600; }
 .kara-artist { color: var(--text-dim); margin-bottom: 8px; }
 .kara-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.kara-head-actions { display: flex; gap: 8px; }
+.kara-head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Stage: mirrors the CRT lyric layout (current line big + filling, next line dim) */
 .kara-stage {

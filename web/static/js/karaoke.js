@@ -59,7 +59,7 @@ async function openKaraoke() {
         const chip = (ok, name) => `<span class="kara-chip ${ok ? 'ok' : 'off'}">${ok ? '✓' : '✕'} ${name}</span>`;
         document.getElementById('karaoke-tools').innerHTML =
             chip(t.plex, 'Plex') + chip(t.karaoke_gen, 'karaoke-gen') +
-            (t.remote_lane ? chip(true, `lane: ${escapeHtml(t.remote_lane)}`) : '') +
+            (t.remote_lane ? chip(true, `lane: ${escapeHtml(t.remote_lane)}`) : '') + chip(t.ytdlp, 'yt-dlp') +
             chip(t.demucs, 'Demucs') + chip(t.librosa, 'librosa');
     } catch (e) {
         toast(`Karaoke status failed: ${e.message}`, 'error');
@@ -115,6 +115,7 @@ function renderKaraokeSongs() {
             </div>
             <div class="kara-song-badges">
                 ${s.has_lyrics ? '<span class="kara-chip ok">lyrics</span>' : '<span class="kara-chip off">no lyrics</span>'}
+                ${s.has_video ? '<span class="kara-chip ok">video</span>' : ''}
                 <span class="kara-chip">${s.drops} ✦</span>
             </div>
         </div>`).join('');
@@ -155,12 +156,14 @@ function renderKaraokeDetail() {
                     <span class="kara-chip">${escapeHtml(s.key || 'key ?')}</span>
                     <span class="kara-chip">${escapeHtml(s.energy || '')} energy</span>
                     <span class="kara-chip ${s.has_lyrics ? 'ok' : 'off'}">lyrics: ${escapeHtml(s.lyrics_source || 'none')}</span>
+                    ${c.has_video ? `<span class="kara-chip ok" title="${escapeHtml(s.video.title || '')}${s.video.channel ? ' · ' + escapeHtml(s.video.channel) : ''}">video: ${escapeHtml(s.video.mode)}</span>` : ''}
                     <span class="kara-chip">bank: <select id="kara-preset" onchange="karaMarkDirty()"><option value="">—</option>${presetOpts}</select></span>
                 </div>
             </div>
             <div class="kara-head-actions">
                 <button class="btn btn-sm" onclick="reprepKaraoke(false)" title="Keep stems; redo analysis, lyrics and drops">Refresh</button>
                 <button class="btn btn-sm" onclick="reprepKaraoke(true)" title="Re-run Demucs from scratch">Re-split</button>
+                <button class="btn btn-sm" onclick="refetchKaraokeVideo()" title="Find the music video again (YouTube via yt-dlp)">Video</button>
             </div>
         </div>
 
@@ -513,6 +516,11 @@ function reprepKaraoke(force) {
     startKaraokePrep({ dir: kara.current.dir, force: !!force, refresh: !force });
 }
 
+function refetchKaraokeVideo() {
+    if (!kara.current) return;
+    startKaraokePrep({ dir: kara.current.dir, revideo: true });
+}
+
 function searchKaraokeTrack(q) {
     clearTimeout(kara.searchTimer);
     const box = document.getElementById('karaoke-track-results');
@@ -533,6 +541,7 @@ function searchKaraokeTrack(q) {
 
 async function startKaraokePrep(body) {
     body.model = document.getElementById('karaoke-model').value;
+    if (body.videos === undefined) body.videos = document.getElementById('karaoke-videos').checked;
     try {
         const data = await karaApi('/api/karaoke/prep', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -553,7 +562,7 @@ function pollKaraokeJob(jobId) {
         try { job = await karaApi(`/api/karaoke/prep-status/${jobId}`); } catch (e) { clearInterval(kara.jobTimer); return; }
         const pct = job.total ? Math.round(((job.done || 0) + (job.failed || 0)) / job.total * 100) : 0;
         box.innerHTML = `
-            <div class="kara-job-line">${job.status === 'done' ? 'Done' : job.status === 'error' ? 'Error' : 'Prepping'} ${(job.done || 0) + (job.failed || 0)}/${job.total}${job.failed ? ` · ${job.failed} failed` : ''}</div>
+            <div class="kara-job-line">${job.status === 'done' ? 'Done' : job.status === 'error' ? 'Error' : 'Prepping'} ${(job.done || 0) + (job.failed || 0)}/${job.total}${job.failed ? ` · ${job.failed} failed` : ''}${job.videos ? ` · ${job.videos} video${job.videos === 1 ? '' : 's'}` : ''}</div>
             ${job.current ? `<div class="kara-job-current">${escapeHtml(job.current)}</div>` : ''}
             <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
             ${job.error ? `<div class="kara-job-err">${escapeHtml(job.error)}</div>` : ''}

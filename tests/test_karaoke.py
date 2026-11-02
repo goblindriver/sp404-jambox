@@ -311,6 +311,47 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(song["drops"][0]["label"], "mine")
         self.assertTrue(song["drops_locked"])
 
+    def test_a_prepped_song_doesnt_need_its_source(self):
+        out = os.path.join(self.tmp.name, "out")
+        kwargs = dict(out_root=out, separator=self._fake_separator, online=False, log=lambda *_: None)
+        with mock.patch.object(self.prep, "analyze",
+                               return_value={"bpm": 120.0, "first_beat_s": 0.0, "key": None, "duration_s": 80.0}):
+            song = self.prep.prep_song({"file_path": self.audio, "artist": "A", "title": "B"}, **kwargs)
+        gone = os.path.join(self.tmp.name, "offline", "B.flac")  # the source drive unmounted
+        self.assertEqual(self.prep.prep_song({"file_path": gone, "artist": "A", "title": "B"}, **kwargs), song)
+        with self.assertRaises(FileNotFoundError):
+            self.prep.prep_song({"file_path": gone, "artist": "A", "title": "B"}, refresh=True, **kwargs)
+        with self.assertRaises(FileNotFoundError):
+            self.prep.prep_song({"file_path": gone, "artist": "A", "title": "New"}, **kwargs)
+        self.assertFalse(os.path.exists(os.path.join(out, "A - New")))  # no empty folder left behind
+
+    def test_prep_video_is_noted_and_survives_a_refresh(self):
+        out = os.path.join(self.tmp.name, "out")
+        kwargs = dict(out_root=out, separator=self._fake_separator, online=False, log=lambda *_: None)
+        meta = {"file_path": self.audio, "artist": "A", "title": "B"}
+        fetched = []
+
+        def fetch(song_dir, mix, *, source_path, artist, title, duration_s, log):
+            fetched.append((mix, source_path, artist, title, duration_s))
+            with open(os.path.join(song_dir, "video.mp4"), "wb") as fh:
+                fh.write(b"mp4")
+            return {"file": "video.mp4", "mode": "sync", "offset_s": 1.5, "confidence": 0.93}
+        with mock.patch.object(self.prep, "analyze",
+                               return_value={"bpm": 120.0, "first_beat_s": 0.0, "key": None, "duration_s": 80.0}):
+            self.prep.prep_song(meta, **kwargs)
+            with self.assertRaises(FileNotFoundError):  # not prepped: nothing to hang a video on
+                self.prep.prep_video({"file_path": self.audio, "title": "Other"}, out_root=out, fetch=fetch)
+            video = self.prep.prep_video(meta, out_root=out, fetch=fetch, log=lambda *_: None)
+            self.assertEqual(fetched, [(self.audio, self.audio, "A", "B", 80.0)])
+            self.assertEqual(self.prep.prep_song(meta, refresh=True, **kwargs)["video"], video)
+        self.assertEqual(self.prep.prep_video(meta, out_root=out, fetch=fetch), video)  # kept, not re-fetched
+        self.assertEqual(len(fetched), 1)
+        self.assertEqual(self.prep.prep_video(meta, out_root=out, refresh=True, fetch=lambda *a, **k: None,
+                                              log=lambda *_: None), video)  # nothing better: the old one stays
+        self.assertTrue(self.prep.rebuild_index(out)[0]["has_video"])
+        os.remove(os.path.join(out, "A - B", "video.mp4"))
+        self.assertFalse(self.prep.rebuild_index(out)[0]["has_video"])
+
     def _fake_karaoke_gen(self, audio_path, song_dir, model):
         for name in ("backing.flac", "backing_bv.flac", "guide.flac"):
             open(os.path.join(song_dir, name), "wb").close()
@@ -718,6 +759,216 @@ class PrepBatchTests(unittest.TestCase):
         done, _, ran = self._batch(None, lambda meta, lane: None)
         self.assertEqual((done, sorted(t for t, _ in ran)), (2, ["A", "B"]))
 
+    def test_videos_follow_prepped_songs_on_their_own_thread(self):
+        lane = mock.Mock(free=mock.Mock(return_value=(True, "free")))
+        lane.name = "goblindriver"
+        fetched, reported = [], []
+
+        def prep_video(meta, *, out_root=None, refresh=False, log=None):
+            fetched.append((meta["title"], refresh, threading.current_thread().name))
+            if meta["title"] == "Song 2":
+                raise RuntimeError("yt-dlp missing")
+            return {"file": "video.mp4"}
+
+        def fake(meta, use_lane):
+            if meta["title"] == "Song 1":
+                raise RuntimeError("bad file")
+        with mock.patch.object(self.prep, "prep_video", side_effect=prep_video):
+            done, failed, _ = self._batch(lane, fake, revideo=True,
+                                          on_video=lambda meta, video, error: reported.append(
+                                              (meta["title"], bool(video), error is not None)))
+        self.assertEqual((done, failed), (2, 1))  # a missing video doesn't fail the song
+        self.assertEqual(sorted(fetched), [("Song 0", True, "videos"), ("Song 2", True, "videos")])
+        self.assertEqual(sorted(reported), [("Song 0", True, False), ("Song 2", False, True)])
+
+    def test_video_only_skips_prep_and_the_lanes(self):
+        lane = mock.Mock(free=mock.Mock(return_value=(True, "free")))
+        lane.name = "goblindriver"
+        started, finished = [], []
+
+        def prep_video(meta, *, out_root=None, refresh=False, log=None):
+            if meta["title"] == "Song 1":
+                raise RuntimeError("yt-dlp missing")
+            return None if meta["title"] == "Song 2" else {"file": "video.mp4"}
+        with mock.patch.object(self.prep, "prep_video", side_effect=prep_video), \
+                mock.patch.object(self.prep, "reference_lyrics") as lookups:
+            done, failed, ran = self._batch(lane, lambda meta, lane: None, video_only=True, revideo=True,
+                                            on_start=lambda meta, where: started.append(where),
+                                            on_done=lambda meta, error: finished.append(meta["title"]))
+        self.assertEqual((done, failed, ran), (2, 1, []))  # nothing found isn't a failure; an error is
+        self.assertEqual(started, ["video"] * 3)
+        self.assertEqual(sorted(finished), ["Song 0", "Song 1", "Song 2"])
+        lane.free.assert_not_called()
+        lookups.assert_not_called()
+
+    def test_no_videos_unless_asked(self):
+        with mock.patch.object(self.prep, "prep_video") as prep_video:
+            self._batch(None, lambda meta, lane: None)
+        prep_video.assert_not_called()
+
+
+@unittest.skipUnless(importlib.util.find_spec("scipy"), "needs scipy")
+class VideoTests(unittest.TestCase):
+    def setUp(self):
+        import karaoke_video
+        self.kv = karaoke_video
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    ENTRIES = [
+        {"id": "lyr", "title": "Le Tigre - Deceptacon (Lyrics)", "channel": "Stereogram", "duration": 185},
+        {"id": "cov", "title": "Deceptacon (cover)", "channel": "Some Band", "duration": 185},
+        {"id": "other", "title": "Deceptacon", "channel": "Some Band", "duration": 185},
+        {"id": "topic", "title": "Deceptacon", "channel": "Le Tigre - Topic", "duration": 185},
+        {"id": "fake", "title": "Le Tigre ft. Adele - Deceptacon (Official 2026 Video)", "channel": "x",
+         "duration": 270},
+        {"id": "live", "title": "Le Tigre - Deceptacon (Live at Farm Aid)", "channel": "Le Tigre", "duration": 190},
+        {"id": "label", "title": "Le Tigre - Deceptacon (Official Video)", "channel": "Mr. Lady", "duration": 186},
+        {"id": "own", "title": "Deceptacon", "channel": "LeTigreWorld", "duration": 185},
+        {"id": "fan", "title": "Le Tigre - Deceptacon Music Video (Official)", "channel": "FanFilms",
+         "duration": 185},
+    ]
+
+    def test_rank_prefers_the_artist_and_drops_lyric_cover_and_audio_uploads(self):
+        ranked = [e["id"] for e in self.kv.rank_candidates(self.ENTRIES, "Le Tigre", "Deceptacon", 184.6)]
+        self.assertEqual(ranked[0], "own")  # the artist's own upload beats anyone's "official" tag
+        self.assertEqual(set(ranked[1:3]), {"fan", "label"})
+        self.assertNotIn("lyr", ranked)
+        self.assertNotIn("cov", ranked)
+        self.assertNotIn("other", ranked)   # another channel, no artist named: a cover
+        self.assertNotIn("topic", ranked)   # auto-generated audio
+        self.assertLess(ranked.index("label"), ranked.index("live"))
+        self.assertEqual(self.kv.rank_candidates(self.ENTRIES, None, "Deceptacon"), [])
+
+    def test_short_artist_names_need_their_own_channel(self):
+        entries = [{"id": "fans", "title": "Words", "channel": "Low Key Covers", "duration": 200},
+                   {"id": "fans2", "title": "Words", "channel": "lowkeycovers", "duration": 200},
+                   {"id": "vevo", "title": "Words", "channel": "LowVEVO", "duration": 200},
+                   {"id": "own", "title": "Words", "channel": "Low", "duration": 200}]
+        self.assertEqual([e["id"] for e in self.kv.rank_candidates(entries, "Low", "Words", 200)], ["vevo", "own"])
+        entries = [{"id": "yusuf", "title": "Wild World", "channel": "Yusuf / Cat Stevens", "duration": 201}]
+        self.assertEqual(len(self.kv.rank_candidates(entries, "Cat Stevens", "Wild World", 201)), 1)
+
+    def test_skip_words_in_the_song_title_are_allowed(self):
+        entries = [{"id": "a", "title": "Bruce Springsteen - Cover Me (Official Video)",
+                    "channel": "Bruce Springsteen", "duration": 207}]
+        self.assertEqual(len(self.kv.rank_candidates(entries, "Bruce Springsteen", "Cover Me", 207)), 1)
+
+    def test_clean_title(self):
+        self.assertEqual(self.kv.clean_title("Wild World (Remastered 2020)"), "Wild World")
+        self.assertEqual(self.kv.clean_title("Because the Night - 2010 Remaster"), "Because the Night")
+        self.assertEqual(self.kv.clean_title("Fineshrine"), "Fineshrine")
+
+    def _envelope(self, seconds, seed):
+        import numpy as np
+        rng = np.random.default_rng(seed)
+        env = rng.exponential(size=int(seconds * self.kv.SR / self.kv.HOP)) ** 3
+        return (env - env.mean()) / env.std()
+
+    def test_align_locks_the_same_audio_with_its_offset(self):
+        import numpy as np
+        song = self._envelope(180, 1)
+        pad = self._envelope(12, 2)  # a 12 s intro before the song starts in the video
+        video = np.concatenate([pad, song + 0.3 * self._envelope(180, 3), self._envelope(5, 4)])
+        mode, offset_s, confidence = self.kv.align(song, video)
+        self.assertEqual(mode, "sync")
+        self.assertAlmostEqual(offset_s, len(pad) * self.kv.HOP / self.kv.SR, places=2)
+        self.assertGreater(confidence, 0.9)
+
+    def test_align_plays_other_takes_re_edits_and_bar_loops_loose(self):
+        import numpy as np
+        song = self._envelope(180, 1)
+        self.assertEqual(self.kv.align(song, self._envelope(200, 5))[:2], ("loose", None))
+        bar = self._envelope(2, 6)  # one bar copied over and over: every bar-length lag fits equally
+        loop = np.tile(bar, 90)
+        self.assertEqual(self.kv.align(loop, np.concatenate([self._envelope(3, 7), loop]))[:2], ("loose", None))
+        cut = int(30 * self.kv.SR / self.kv.HOP)  # a radio edit: 30 s gone from the middle
+        half = len(song) // 2
+        self.assertEqual(self.kv.align(song, np.concatenate([song[:half], song[half + cut:]]))[:2],
+                         ("loose", None))
+
+    def test_is_still_compares_keyframes(self):
+        import numpy as np
+        same = np.full((4, 576), 80, dtype=np.uint8).tobytes()
+        moving = np.concatenate([np.full((2, 576), 80), np.full((2, 576), 200)]).astype(np.uint8).tobytes()
+        for frames, expected in ((same, True), (moving, False), (b"", True)):
+            with mock.patch.object(self.kv.subprocess, "run",
+                                   return_value=subprocess.CompletedProcess([], 0, stdout=frames)):
+                self.assertEqual(self.kv.is_still("v.mp4"), expected)
+
+    def test_is_still_with_real_ffmpeg(self):
+        if not shutil.which(self.kv.FFMPEG):
+            self.skipTest("needs ffmpeg")
+        clips = {}
+        for name, source in (("moving", "testsrc=size=64x36:rate=25:duration=3"),
+                             ("still", "color=c=red:size=64x36:rate=25:duration=3")):
+            clips[name] = os.path.join(self.tmp.name, name + ".mp4")
+            subprocess.run([self.kv.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", source, "-c:v", "mpeg4",
+                            "-g", "10", clips[name]], check=True, capture_output=True)
+        self.assertFalse(self.kv.is_still(clips["moving"]))
+        self.assertTrue(self.kv.is_still(clips["still"]))
+        broken = os.path.join(self.tmp.name, "broken.mp4")
+        with open(broken, "wb") as fh:
+            fh.write(b"not a video")
+        with self.assertRaises(RuntimeError):
+            self.kv.is_still(broken)
+
+    def _fake_ytdlp(self, cmd, **_kw):
+        if "--dump-single-json" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps({"entries": self.ENTRIES}), stderr="")
+        dest = cmd[cmd.index("-o") + 1]
+        with open(dest, "wb") as fh:
+            fh.write(cmd[-1].encode())
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    def test_fetch_video_skips_unreadable_and_still_downloads(self):
+        song_dir = os.path.join(self.tmp.name, "Le Tigre - Deceptacon")
+        os.makedirs(song_dir)
+        open(os.path.join(song_dir, "video.webm"), "wb").close()  # an older fetch, replaced
+        env = self._envelope(180, 1)
+        logged = []
+
+        def still(path):
+            with open(path, "rb") as fh:
+                url = fh.read()
+            if url.endswith(b"own"):
+                raise RuntimeError("ffmpeg couldn't read the video")
+            return url.endswith(b"label")
+        with mock.patch.object(self.kv, "video_duration", return_value=186.0):
+            video = self.kv.fetch_video(song_dir, os.path.join(self.tmp.name, "Deceptacon.mp3"),
+                                        artist="Le Tigre", title="Deceptacon", duration_s=184.6,
+                                        log=logged.append, run=self._fake_ytdlp, envelope=lambda p: env,
+                                        still=still)
+        self.assertEqual((video["file"], video["mode"], video["offset_s"]), ("video.mp4", "sync", 0.0))
+        self.assertEqual((video["origin"], video["channel"], video["duration_s"]), ("yt-dlp", "FanFilms", 186.0))
+        self.assertTrue(video["source"].endswith("v=fan"))
+        self.assertTrue(any("couldn't read" in line for line in logged))
+        self.assertTrue(any("still picture" in line for line in logged))
+        self.assertEqual(sorted(os.listdir(song_dir)), ["video.mp4"])  # temp folder gone, old video replaced
+
+    def test_fetch_video_gives_up_quietly_when_nothing_fits(self):
+        song_dir = os.path.join(self.tmp.name, "song")
+        os.makedirs(song_dir)
+        video = self.kv.fetch_video(song_dir, "x.mp3", artist="Nobody", title="Nothing", log=lambda *_: None,
+                                    run=self._fake_ytdlp, envelope=lambda p: None, still=lambda p: False)
+        self.assertIsNone(video)
+        self.assertEqual(os.listdir(song_dir), [])
+
+    def test_a_video_beside_the_source_wins(self):
+        song_dir = os.path.join(self.tmp.name, "song")
+        os.makedirs(song_dir)
+        source = os.path.join(self.tmp.name, "Deceptacon.flac")
+        open(source, "wb").close()
+        with open(os.path.join(self.tmp.name, "Deceptacon.mkv"), "wb") as fh:
+            fh.write(b"mkv")
+        never = mock.Mock(side_effect=AssertionError("searched YouTube"))
+        with mock.patch.object(self.kv, "video_duration", return_value=None):
+            video = self.kv.fetch_video(song_dir, source, artist="Le Tigre", title="Deceptacon",
+                                        log=lambda *_: None, run=never, envelope=lambda p: None)
+        self.assertEqual((video["file"], video["origin"], video["mode"]), ("video.mkv", "local", "loose"))
+        with open(os.path.join(song_dir, "video.mkv"), "rb") as fh:
+            self.assertEqual(fh.read(), b"mkv")
+
 
 class DeckTests(unittest.TestCase):
     @classmethod
@@ -1079,6 +1330,31 @@ class KaraokeApiTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": "nope"})
         self.assertEqual(resp.status_code, 404)  # karaoke-gen passes validation
+
+    def test_video_shows_in_the_list_and_detail(self):
+        song_dir = os.path.join(self.root, self.dir)
+        with open(os.path.join(song_dir, "song.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+        data["video"] = {"file": "video.mp4", "mode": "loose", "offset_s": None}
+        with open(os.path.join(song_dir, "song.json"), "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        self.assertFalse(self.client.get(f"/api/karaoke/song/{self.dir}").get_json()["has_video"])  # no file
+        open(os.path.join(song_dir, "video.mp4"), "wb").close()
+        self.assertTrue(self.client.get(f"/api/karaoke/song/{self.dir}").get_json()["has_video"])
+        self.assertTrue(self.client.get("/api/karaoke/songs").get_json()["songs"][0]["has_video"])
+
+    def test_revideo_on_a_song_only_fetches_its_video(self):
+        import api.karaoke as karaoke_api
+        with mock.patch.object(karaoke_api, "_run_prep") as run_prep:
+            resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir, "revideo": True})
+            self.assertTrue(resp.get_json()["ok"])
+            for _ in range(100):
+                if run_prep.called:
+                    break
+                time.sleep(0.01)
+        opts = run_prep.call_args.args[3]
+        self.assertEqual((opts["videos"], opts["revideo"], opts["video_only"], opts["refresh"], opts["force"]),
+                         (True, True, True, False, False))
 
 
 class ChorusGapTests(unittest.TestCase):
