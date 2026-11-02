@@ -1,9 +1,12 @@
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -74,6 +77,57 @@ class LyricsTests(unittest.TestCase):
         again = karaoke_lyrics.parse_lrc(karaoke_lyrics.format_lrc(lines))
         self.assertEqual([ln.text for ln in again], [ln.text for ln in lines])
 
+    def test_enhanced_lrc_word_times_parse_and_roundtrip(self):
+        lines = karaoke_lyrics.parse_lrc(
+            "[offset:+500]\n[00:10.50]<00:10.50>Seen <00:11.20>my <00:11.60>share\n"
+            "[00:20.00][00:40.00]Chorus <00:21.00>twice\n")
+        self.assertEqual(lines[0], LyricLine(10.0, "Seen my share", ((10.0, "Seen"), (10.7, "my"), (11.1, "share"))))
+        self.assertEqual((lines[1].text, lines[1].words), ("Chorus twice", ()))  # absolute stamps, sung twice
+        again = karaoke_lyrics.parse_lrc(karaoke_lyrics.format_lrc(lines))
+        self.assertEqual(again[0].words, lines[0].words)
+
+    def test_parse_midico_groups_words_into_lines(self):
+        lines = karaoke_lyrics.parse_midico(
+            "[re:MidiCo]\n[00:00.980]1:/Seen \n[00:01.720]1:my \n[00:02.100]1:share\n"
+            "[00:04.000]1:/Broken \n[00:04.860]1:halos\n")
+        self.assertEqual([ln.text for ln in lines], ["Seen my share", "Broken halos"])
+        self.assertEqual(lines[0].t, 0.98)
+        self.assertEqual(lines[1].words, ((4.0, "Broken"), (4.86, "halos")))
+
+    def test_word_error_rate(self):
+        ref = karaoke_lyrics.lyric_words("Seen my share of broken halos")
+        self.assertEqual(karaoke_lyrics.word_error_rate(ref, ref), 0.0)
+        self.assertAlmostEqual(karaoke_lyrics.word_error_rate(
+            ref, karaoke_lyrics.lyric_words("St. Mysero, broken halo")), 5 / 6)
+        self.assertEqual(karaoke_lyrics.word_error_rate([], []), 0.0)
+
+    def test_drop_word_loops_removes_impossibly_fast_repeats(self):
+        loop = LyricLine(14.14, " ".join(["la"] * 8), tuple((round(14.14 + 0.02 * i, 2), "la") for i in range(8)))
+        sung = LyricLine(0.34, " ".join(["la"] * 8), tuple((round(0.34 + 0.3 * i, 2), "la") for i in range(8)))
+        mixed = LyricLine(20.0, "x", ((20.0, "Oh"),) + tuple((20.5 + 0.01 * i, "na,") for i in range(7))
+                          + ((21.0, "baby"),))
+        out = karaoke_lyrics.drop_word_loops([loop, sung, mixed, LyricLine(30.0, "untimed")])
+        self.assertEqual([ln.t for ln in out], [0.34, 20.0, 30.0])  # the loop line is gone
+        self.assertEqual(out[1].text, "Oh baby")
+        self.assertEqual(out[0], sung)
+
+    def test_tighten_word_gaps_pulls_stray_early_words_forward(self):
+        line = LyricLine(0.0, "Get a little closer", ((0.0, "Get"), (13.18, "a"), (17.46, "little"), (17.7, "closer")))
+        held = LyricLine(30.0, "Ohhh baby", ((30.0, "Ohhh"), (35.5, "baby")))  # a held note after the first line
+        parked = LyricLine(40.0, "after the break", ((40.0, "after"), (60.0, "the"), (60.4, "break")))
+        fixed, kept, moved = karaoke_lyrics.tighten_word_gaps([line, held, parked])
+        self.assertEqual(fixed.words, ((16.86, "Get"), (17.16, "a"), (17.46, "little"), (17.7, "closer")))
+        self.assertEqual(fixed.t, 16.86)
+        self.assertEqual(kept, held)  # 5.5s is a held note, not a stray word
+        self.assertEqual(moved.words[0], (59.7, "after"))  # 20s isn't
+
+    def test_render_ass_sweeps_word_by_word(self):
+        line = LyricLine(10.0, "Seen my share", ((10.0, "Seen"), (10.7, "my"), (11.1, "share")))
+        ass = karaoke_lyrics.render_ass([line, LyricLine(14.0, "")], duration_s=20, countdown=False)
+        self.assertIn("{\\kf70}Seen {\\kf40}my {\\kf150}share", ass)  # last word fills for 1.5s
+        late = karaoke_lyrics.render_ass([LyricLine(10.0, "x", ((10.5, "x"),))], duration_s=20, countdown=False)
+        self.assertIn("{\\k50}{\\kf150}x", late)  # a pause before the first word
+
     def test_fetch_lrclib_prefers_get_then_search_by_duration(self):
         class Resp:
             def __init__(self, code, data):
@@ -98,6 +152,29 @@ class LyricsTests(unittest.TestCase):
         hit = karaoke_lyrics.fetch_lrclib("A", "B", duration_s=180, session=Session())
         self.assertEqual(hit["id"], 2)
         self.assertTrue(calls[0].endswith("/get") and calls[1].endswith("/search"))
+
+    def test_fetch_lrclib_retries_server_errors_only(self):
+        class Resp:
+            def __init__(self, code, data=None):
+                self.status_code, self._data = code, data
+
+            def json(self):
+                return self._data
+
+        replies = [Resp(503), Resp(503), Resp(200, {"id": 7, "plainLyrics": "hi", "syncedLyrics": None})]
+
+        class Session:
+            def get(self, url, params=None, headers=None, timeout=None):
+                return replies.pop(0)
+
+        with mock.patch.object(karaoke_lyrics.time, "sleep") as sleep:
+            hit = karaoke_lyrics.fetch_lrclib("A", "B", session=Session(), retries=3)
+        self.assertEqual(hit["id"], 7)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [2.0, 4.0])
+        replies[:] = [Resp(404), Resp(404)]  # not found is an answer: no retries
+        with mock.patch.object(karaoke_lyrics.time, "sleep") as sleep:
+            self.assertIsNone(karaoke_lyrics.fetch_lrclib("A", "B", session=Session(), retries=3))
+        sleep.assert_not_called()
 
     def test_find_lyrics_uses_sidecar_first(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,6 +311,197 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(song["drops"][0]["label"], "mine")
         self.assertTrue(song["drops_locked"])
 
+    def _fake_karaoke_gen(self, audio_path, song_dir, model):
+        for name in ("backing.flac", "backing_bv.flac", "guide.flac"):
+            open(os.path.join(song_dir, name), "wb").close()
+        return {"lines": [LyricLine(10.0, "Seen my share", ((10.0, "Seen"), (10.7, "my"), (11.1, "share")))],
+                "lyrics_source": "karaoke-gen", "model": "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+                "references": ["file"]}
+
+    def test_karaoke_gen_lyrics_are_word_timed_and_survive_refresh(self):
+        out = os.path.join(self.tmp.name, "out")
+        bare = os.path.join(self.tmp.name, "src", "A - B.flac")  # no sidecar: no reference lyrics offline
+        open(bare, "wb").close()
+        meta = {"file_path": bare, "artist": "A", "title": "B"}
+        quiet = dict(out_root=out, online=False, log=lambda *_: None)
+        with mock.patch.object(self.prep, "analyze",
+                               return_value={"bpm": 120.0, "first_beat_s": 0.0, "key": None, "duration_s": 80.0}):
+            song = self.prep.prep_song(meta, separator=self._fake_karaoke_gen, backend="karaoke-gen", **quiet)
+            self.assertEqual((song["lyrics_source"], song["separator"]), ("karaoke-gen", "karaoke-gen"))
+            self.assertEqual(song["separation_model"], "model_bs_roformer_ep_317_sdr_12.9755.ckpt")
+            self.assertIsNone(song["demucs_model"])
+            self.assertIsNone(song["lyrics_wer"])  # nothing to check against
+            with open(os.path.join(out, "A - B", "lyrics.lrc"), encoding="utf-8") as fh:
+                self.assertIn("<00:10.70>my", fh.read())
+            with open(os.path.join(out, "A - B", "lyrics.ass"), encoding="utf-8") as fh:
+                self.assertIn("{\\kf40}my", fh.read())
+            # The sidecar .lrc is still there, but a refresh keeps the word-timed lyrics.
+            song = self.prep.prep_song(meta, refresh=True, **quiet)
+            self.assertEqual((song["lyrics_source"], song["separator"]), ("karaoke-gen", "karaoke-gen"))
+            self.assertEqual(song["lyrics_references"], ["file"])
+
+            def relyric(audio_path, song_dir, model):
+                self.assertTrue(os.path.isfile(os.path.join(song_dir, "backing.flac")))  # stems kept
+                return {"lines": [LyricLine(9.0, "New words", ((9.0, "New"), (9.5, "words")))],
+                        "lyrics_source": "karaoke-gen", "model": None, "references": ["genius", "lrclib"]}
+            song = self.prep.prep_song(meta, relyric=True, separator=relyric, **quiet)
+        self.assertEqual(song["separation_model"], "model_bs_roformer_ep_317_sdr_12.9755.ckpt")
+        self.assertEqual(song["lyrics_references"], ["genius", "lrclib"])
+        with open(os.path.join(out, "A - B", "lyrics.lrc"), encoding="utf-8") as fh:
+            self.assertIn("<00:09.50>words", fh.read())
+        entry = self.prep.rebuild_index(out)[0]
+        self.assertTrue(entry["has_backing_vocals"])
+        self.assertTrue(entry["lyrics_need_review"])  # never compared with reference lyrics
+
+    def test_choose_lyrics_falls_back_to_synced_reference_when_transcription_strays(self):
+        ref = karaoke_lyrics.parse_lrc("[00:13.85]Now that I've lost everything to you\n"
+                                       "[00:18.21]You say you wanna start something new\n")
+        good = [LyricLine(13.9, "Now that I've lost everything to you"),
+                LyricLine(18.2, "you say you want to start something new")]
+        loop = [LyricLine(0.3, "la la la la la la la"), LyricLine(18.2, "you say you wanna start something new")]
+        lines, source, wer = self.prep.choose_lyrics(good, ref, None, "lrclib")
+        self.assertEqual((lines, source), (good, "karaoke-gen"))
+        self.assertAlmostEqual(wer, 2 / 14, places=3)  # "wanna" heard as "want to"
+        lines, source, wer = self.prep.choose_lyrics(loop, ref, None, "lrclib")
+        self.assertEqual((lines, source), (ref, "lrclib"))
+        self.assertGreater(wer, self.prep.MAX_TRANSCRIPT_WER)
+        # A skipped verse loses even when the overall word error rate looks fine.
+        long_ref = karaoke_lyrics.parse_lrc("".join(f"[00:{10 + 4 * i:02d}.00]line {i} has five words\n"
+                                                    for i in range(10)))
+        skipped = [LyricLine(10.0 + 4 * i, f"line {i} has five words") for i in range(3, 10)]
+        lines, source, wer = self.prep.choose_lyrics(skipped, long_ref, None, "lrclib")
+        self.assertEqual((source, wer), ("lrclib", 0.3))
+        lines, source, _ = self.prep.choose_lyrics(skipped, long_ref, None, "lrclib", max_wer=0.5)
+        self.assertEqual(source, "lrclib")  # 15 words skipped in a row
+        # Plain-text reference: no timing to fall back to, so the transcription stays.
+        lines, source, _ = self.prep.choose_lyrics(loop, [], "Now that I've lost everything to you", "lrclib-plain")
+        self.assertEqual((lines, source), (loop, "karaoke-gen"))
+        self.assertEqual(self.prep.choose_lyrics(good, [], None, "none"), (good, "karaoke-gen", None))
+
+    def test_separate_with_karaoke_gen_imports_its_outputs(self):
+        song_dir = os.path.join(self.tmp.name, "A - B")
+        os.makedirs(song_dir)
+        model = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        calls = {}
+
+        def runner(cmd, cwd, env, **_kw):
+            calls.update(cmd=cmd, env=env)
+            track = os.path.join(cmd[cmd.index("--output_dir") + 1], "A - B")
+            os.makedirs(os.path.join(track, "stems"))
+            os.makedirs(os.path.join(track, "lyrics"))
+            for rel in (f"A - B (Instrumental {model}).flac",
+                        "A - B (Instrumental +BV mel_band_roformer_karaoke.ckpt).flac",
+                        f"stems/A - B (Vocals {model}).flac", "stems/A - B (Vocals htdemucs_6s.yaml).flac"):
+                with open(os.path.join(track, rel), "w") as fh:
+                    fh.write(rel)
+            with open(os.path.join(track, "lyrics", "A - B (Lyrics Corrections).json"), "w") as fh:
+                json.dump({"reference_lyrics": {"lrclib": {}, "genius": {}}}, fh)
+            with open(os.path.join(track, "lyrics", "A - B (Karaoke).lrc"), "w") as fh:
+                fh.write("[re:MidiCo]\n[00:01.000]1:/Hello \n[00:01.500]1:world\n")
+            return mock.Mock(returncode=0)
+
+        with mock.patch.object(self.prep, "to_flac", side_effect=shutil.copyfile):
+            result = self.prep.separate_with_karaoke_gen(self.audio, song_dir, artist="A", title="B",
+                                                         runner=runner)
+        self.assertEqual(calls["env"]["SKIP_CORRECTION"], "false")
+        self.assertIn("--prep-only", calls["cmd"])
+        self.assertEqual(calls["cmd"][-3:], [self.audio, "A", "B"])
+        self.assertNotIn("--lyrics_file", calls["cmd"])  # online sources stay on
+        with open(os.path.join(song_dir, "backing.flac")) as fh:
+            self.assertIn(f"Instrumental {model}", fh.read())
+        with open(os.path.join(song_dir, "guide.flac")) as fh:
+            self.assertIn(f"Vocals {model}", fh.read())  # the clean model's vocals, not htdemucs'
+        for name in ("backing_bv.flac", "lyrics_corrections.json", "karaoke-gen.log"):
+            self.assertTrue(os.path.isfile(os.path.join(song_dir, name)), name)
+        self.assertFalse(os.path.isdir(os.path.join(song_dir, "stems")))  # only with keep_stems
+        self.assertFalse([n for n in os.listdir(song_dir) if n.startswith("_karaoke-gen-")])
+        self.assertEqual(result["lyrics_source"], "karaoke-gen")
+        self.assertEqual(result["model"], model)
+        self.assertEqual(result["references"], ["genius", "lrclib"])
+        self.assertEqual(result["lines"][0].words, ((1.0, "Hello"), (1.5, "world")))
+
+    def test_separate_with_karaoke_gen_fails_without_an_instrumental(self):
+        song_dir = os.path.join(self.tmp.name, "A - B")
+        os.makedirs(song_dir)
+        with self.assertRaisesRegex(RuntimeError, "no instrumental"):
+            self.prep.separate_with_karaoke_gen(self.audio, song_dir, runner=lambda *a, **k: mock.Mock(returncode=1))
+
+    def test_reference_lyrics_file_sources(self):
+        # A hand-placed .lrc always goes in, as plain text.
+        sidecar = (karaoke_lyrics.parse_lrc(SONG_LRC), "sidecar", None)
+        with mock.patch.dict(os.environ, {"GENIUS_API_TOKEN": "x"}):
+            with self.prep.reference_lyrics_file(sidecar) as path:
+                with open(path, encoding="utf-8") as fh:
+                    text = fh.read()
+        self.assertIn("We are the front line", text)
+        self.assertNotIn("[", text)
+        self.assertFalse(os.path.exists(path))
+        lrclib = ([], "lrclib-plain", "line one\n\nline two\n")
+        with mock.patch.dict(os.environ, {"GENIUS_API_TOKEN": ""}):
+            # Without Genius, LRCLIB (already fetched) is karaoke-gen's only source: hand it over.
+            with self.prep.reference_lyrics_file(lrclib) as path:
+                with open(path, encoding="utf-8") as fh:
+                    self.assertEqual(fh.read(), "line one\nline two\n")
+            with self.prep.reference_lyrics_file(([], "none", None)) as path:
+                self.assertIsNone(path)
+        with mock.patch.dict(os.environ, {"GENIUS_API_TOKEN": "x"}):
+            # With Genius, karaoke-gen asks LRCLIB and Genius itself; a file would switch them off.
+            with self.prep.reference_lyrics_file(lrclib) as path:
+                self.assertIsNone(path)
+
+    def test_vocal_presence_tells_a_held_note_from_a_silent_intro(self):
+        import numpy as np
+        import soundfile as sf
+        rate = 8000
+        t = np.arange(rate * 10) / rate
+        vocal = np.where((t > 4) & (t < 8), 0.5, 0.001) * np.sin(2 * np.pi * 220 * t)  # sung 4-8 s, bleed elsewhere
+        path = os.path.join(self.tmp.name, "guide.flac")
+        sf.write(path, vocal.astype("float32"), rate)
+        sung = self.prep.vocal_presence(path)
+        self.assertLess(sung(0.5, 3.5), 0.1)
+        self.assertGreater(sung(4.5, 7.5), 0.9)
+        self.assertIsNone(self.prep.vocal_presence(os.path.join(self.tmp.name, "missing.flac")))
+        parked = LyricLine(0.0, "Get it", ((0.0, "Get"), (4.3, "it")))  # Whisper's word in the intro
+        held = LyricLine(4.2, "Ohhh baby", ((4.2, "Ohhh"), (7.9, "baby")))  # held for 3.7 s
+        moved, kept = karaoke_lyrics.tighten_word_gaps([parked, held], sung=sung)
+        self.assertEqual(moved.words[0], (4.0, "Get"))
+        self.assertEqual(kept, held)
+
+    def test_concurrent_reference_lookups_share_one_fetch(self):
+        meta = {"file_path": os.path.join(self.tmp.name, "src", "y.flac"), "artist": "A", "title": "Raced"}
+        found = ([], "lrclib-plain", "words\n")
+
+        def slow(*args, **kwargs):
+            time.sleep(0.1)  # LRCLIB backing off while the prefetch and a lane both ask
+            return found
+        results = []
+        with mock.patch.object(karaoke_lyrics, "find_lyrics", side_effect=slow) as find:
+            threads = [threading.Thread(target=lambda: results.append(self.prep.reference_lyrics(meta)))
+                       for _ in range(3)]
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join()
+        find.assert_called_once()
+        self.assertEqual(results, [found] * 3)
+
+    def test_reference_lyrics_looks_up_once_and_retries_misses_later(self):
+        meta = {"file_path": os.path.join(self.tmp.name, "src", "x.flac"), "artist": "A", "title": "Once",
+                "duration": 200000}
+        found = ([], "lrclib-plain", "words\n")
+        with mock.patch.object(karaoke_lyrics, "find_lyrics", return_value=found) as find:
+            self.assertEqual(self.prep.reference_lyrics(meta), found)
+            self.assertEqual(self.prep.reference_lyrics(meta), found)
+        find.assert_called_once()
+        self.assertEqual(find.call_args.args[4], 200.0)
+        self.assertEqual(find.call_args.kwargs["retries"], 4)
+        miss = dict(meta, title="Missing")
+        with mock.patch.object(karaoke_lyrics, "find_lyrics", return_value=([], "none", None)) as find, \
+                mock.patch.object(self.prep.time, "time", side_effect=[1000.0, 1700.0, 1700.0]):
+            self.prep.reference_lyrics(miss)
+            self.prep.reference_lyrics(miss)  # ten minutes later: ask again
+        self.assertEqual(find.call_count, 2)
+
     def test_suggest_preset_and_dirname(self):
         self.assertEqual(self.prep.suggest_preset(["Synth Punk"], []), "genre/synth-punk-pogo")
         self.assertEqual(self.prep.suggest_preset(["Hardcore Punk"], []), "genre/riot-mode")
@@ -241,6 +509,214 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(self.prep.suggest_preset(["Heavy Metal"]), "genre/karaoke-metal")
         self.assertIsNone(self.prep.suggest_preset([], []))
         self.assertEqual(self.prep.safe_dirname('AC/DC', 'What?: "x"'), "AC_DC - What__ _x_")
+
+
+class RemoteLaneTests(unittest.TestCase):
+    def setUp(self):
+        import karaoke_prep
+        self.prep = karaoke_prep
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.audio = os.path.join(self.tmp.name, "Song & odd! ✓.MP3")
+        open(self.audio, "wb").close()
+        self.lyrics = os.path.join(self.tmp.name, "ref.txt")
+        open(self.lyrics, "w", encoding="utf-8").close()
+        self.work = os.path.join(self.tmp.name, "song", "work")
+        os.makedirs(self.work)
+
+    def _lane(self, run_exit=0):
+        calls = []
+        self.meta = None
+
+        def run(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[0] == "ssh" and " run " in cmd[-1]:
+                return mock.Mock(returncode=run_exit)
+            if cmd[0] == "scp" and cmd[-1].endswith("/in/meta.json"):
+                with open(cmd[-2], encoding="utf-8") as fh:
+                    self.meta = json.load(fh)
+            elif cmd[0] == "scp" and "-r" in cmd:
+                os.makedirs(os.path.join(cmd[-1], "out", "A - B"))
+            elif cmd[0] == "scp" and cmd[-2].endswith("karaoke-gen.log"):
+                with open(cmd[-1], "w", encoding="utf-8") as fh:
+                    fh.write("separated on cuda\n")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        return self.prep.RemoteLane("goblindriver", r"D:\Karaoke\lane.cmd", "D:\\Karaoke\\work\\", run=run), calls
+
+    def test_run_uploads_runs_fetches_and_cleans_up(self):
+        lane, calls = self._lane()
+        log_path = os.path.join(self.tmp.name, "log")
+        with open(log_path, "w", encoding="utf-8") as log_fh:
+            rc = lane.run(self.audio, self.work, artist='Björk & "B"', title="Help! 100%", lyrics_file=self.lyrics,
+                          log_fh=log_fh)
+        self.assertEqual(rc, 0)
+        job = calls[0][-1].split("\\")[-2]
+        self.assertTrue(job.startswith("citadel-"))
+        self.assertEqual(calls[0][-1], f'mkdir "D:\\Karaoke\\work\\{job}\\in"')
+        self.assertEqual(calls[1][-1], f"goblindriver:D:/Karaoke/work/{job}/in/input.mp3")  # odd names stay home
+        self.assertEqual(calls[2][-1], f"goblindriver:D:/Karaoke/work/{job}/in/lyrics.txt")
+        self.assertEqual(self.meta, {"artist": 'Björk & "B"', "title": "Help! 100%"})  # exact, via meta.json
+        run_cmd = calls[4][-1]
+        self.assertTrue(run_cmd.startswith(f"D:\\Karaoke\\lane.cmd run {job} \"--prep-only\""))
+        self.assertIn(f'"--lyrics_file" "D:\\Karaoke\\work\\{job}\\in\\lyrics.txt"', run_cmd)
+        self.assertTrue(run_cmd.endswith(f'"D:\\Karaoke\\work\\{job}\\in\\input.mp3"'))  # no names on cmd.exe
+        self.assertEqual(os.listdir(self.work), ["A - B"])  # the track folder, ready to import
+        self.assertEqual(calls[-1][-1], f'rmdir /s /q "D:\\Karaoke\\work\\{job}"')
+        with open(log_path, encoding="utf-8") as fh:
+            self.assertIn("separated on cuda", fh.read())
+
+    def test_yield_skips_the_fetch_and_raises_through_the_importer(self):
+        lane, calls = self._lane(run_exit=self.prep.LANE_YIELDED)
+        song_dir = os.path.dirname(self.work)
+        with self.assertRaises(self.prep.LaneYielded):
+            self.prep.separate_with_karaoke_gen(self.audio, song_dir, artist="A", title="B", lane=lane)
+        self.assertFalse(any(c[0] == "scp" and "-r" in c for c in calls))
+        self.assertTrue(calls[-1][-1].startswith("rmdir /s /q"))
+
+    def _failing_lane(self, fail):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append(cmd)
+            failure = fail(cmd)
+            if isinstance(failure, BaseException):
+                raise failure
+            return mock.Mock(returncode=failure if failure is not None else 0, stdout="", stderr="")
+        return self.prep.RemoteLane("goblindriver", run=run), calls
+
+    def test_transport_failures_requeue_and_stop_the_remote_job(self):
+        cases = {
+            "upload": lambda c: subprocess.CalledProcessError(1, c) if c[0] == "scp" else None,
+            "timeout": lambda c: subprocess.TimeoutExpired(c, 3600) if " run " in c[-1] else None,
+            "dropped": lambda c: self.prep.RemoteLane.SSH_FAILED if " run " in c[-1] else None,
+        }
+        for name, fail in cases.items():
+            with self.subTest(name):
+                lane, calls = self._failing_lane(fail)
+                with self.assertRaises(self.prep.LaneUnavailable):
+                    lane.run(self.audio, self.work, artist="A", title="B")
+                stops = [c for c in calls if c[0] == "ssh" and c[-1].endswith(" stop")]
+                self.assertTrue(calls[-1][-1].startswith("rmdir /s /q"))
+                if name == "upload":  # nothing was started, so nothing to stop (it could be another job)
+                    self.assertEqual(stops, [])
+                else:
+                    self.assertEqual(calls[-2], stops[0])  # stop, then remove
+
+    def test_free_reports_the_lane_check(self):
+        lane = self.prep.RemoteLane("g", run=lambda cmd, **kw: mock.Mock(returncode=1, stdout="busy: game\n",
+                                                                           stderr=""))
+        self.assertEqual(lane.free(), (False, "busy: game"))
+
+        def unreachable(cmd, **kw):
+            raise subprocess.TimeoutExpired(cmd, 60)
+        self.assertFalse(self.prep.RemoteLane("g", run=unreachable).free()[0])
+
+
+class PrepBatchTests(unittest.TestCase):
+    def setUp(self):
+        import karaoke_prep
+        self.prep = karaoke_prep
+        self.tracks = [{"artist": "A", "title": f"Song {i}"} for i in range(3)]
+
+    def _batch(self, lane, fake, **kwargs):
+        ran = []
+
+        def prep_song(meta, lane=None, log=None, **_kw):
+            fake(meta, lane)
+            ran.append((meta["title"], lane.name if lane else "local"))
+        with mock.patch.object(self.prep, "prep_song", side_effect=prep_song):
+            done, failed = self.prep.prep_batch(self.tracks, lane=lane, log=lambda *_: None, poll_s=0.01,
+                                                **kwargs)
+        return done, failed, ran
+
+    def test_free_remote_lane_takes_a_short_queue(self):
+        lane = mock.Mock(free=mock.Mock(return_value=(True, "free")))
+        lane.name = "goblindriver"
+        done, failed, ran = self._batch(lane, lambda meta, lane: None)
+        self.assertEqual((done, failed), (3, 0))
+        self.assertEqual({where for _, where in ran}, {"goblindriver"})
+
+    def test_busy_remote_lane_leaves_songs_to_the_local_one(self):
+        lane = mock.Mock(free=mock.Mock(return_value=(False, "busy: game")))
+        lane.name = "goblindriver"
+        done, _, ran = self._batch(lane, lambda meta, lane: None)
+        self.assertEqual(done, 3)
+        self.assertEqual({where for _, where in ran}, {"local"})
+
+    def test_yielded_song_goes_back_to_the_queue(self):
+        lane = mock.Mock(free=mock.Mock(side_effect=[(True, "free")] + [(False, "busy: game")] * 1000))
+        lane.name = "goblindriver"
+
+        def fake(meta, use_lane):
+            if use_lane is not None:
+                raise self.prep.LaneYielded("game started")
+        done, failed, ran = self._batch(lane, fake)
+        self.assertEqual((done, failed), (3, 0))
+        self.assertEqual(sorted(title for title, where in ran if where == "local"), ["Song 0", "Song 1", "Song 2"])
+
+    def test_failures_are_counted_not_fatal(self):
+        def fake(meta, use_lane):
+            if meta["title"] == "Song 1":
+                raise RuntimeError("bad file")
+        done, failed, _ = self._batch(None, fake)
+        self.assertEqual((done, failed), (2, 1))
+
+    def test_local_lane_waits_for_a_late_yield(self):
+        self.tracks = self.tracks[:1]
+        lane = mock.Mock(free=mock.Mock(side_effect=[(True, "free")] + [(False, "busy: game")] * 1000))
+        lane.name = "goblindriver"
+
+        def fake(meta, use_lane):
+            if use_lane is not None:  # the only song, taken while the local lane had nothing queued
+                time.sleep(0.05)
+                raise self.prep.LaneYielded("game started")
+        done, failed, ran = self._batch(lane, fake)
+        self.assertEqual((done, failed), (1, 0))
+        self.assertEqual(ran, [("Song 0", "local")])
+
+    def test_unreachable_lane_hands_songs_to_the_local_one(self):
+        lane = mock.Mock(free=mock.Mock(return_value=(True, "free")))
+        lane.name = "goblindriver"
+
+        def fake(meta, use_lane):
+            if use_lane is not None:
+                raise self.prep.LaneUnavailable("goblindriver unavailable: timed out")
+        done, failed, ran = self._batch(lane, fake)
+        self.assertEqual((done, failed), (3, 0))
+        self.assertEqual({where for _, where in ran}, {"local"})
+
+    def test_remote_only_gives_up_after_its_tries(self):
+        lane = mock.Mock(free=mock.Mock(return_value=(True, "free")))
+        lane.name = "goblindriver"
+        tries = []
+
+        def fake(meta, use_lane):
+            tries.append(meta["title"])
+            raise self.prep.LaneUnavailable("timed out")
+        done, failed, _ = self._batch(lane, fake, local=False)
+        self.assertEqual((done, failed), (0, 3))
+        self.assertEqual(len(tries), 3 * self.prep.REMOTE_TRIES)
+
+    def test_game_yields_dont_use_up_remote_tries(self):
+        self.tracks = self.tracks[:1]
+        lane = mock.Mock(free=mock.Mock(return_value=(True, "free")))
+        lane.name = "goblindriver"
+        yields = []
+
+        def fake(meta, use_lane):
+            if len(yields) < 3:
+                yields.append(meta["title"])
+                raise self.prep.LaneYielded("game started")
+        done, failed, ran = self._batch(lane, fake, local=False)
+        self.assertEqual((done, failed, len(yields)), (1, 0, 3))
+        self.assertEqual(ran, [("Song 0", "goblindriver")])
+
+    def test_the_same_file_twice_is_prepped_once(self):
+        self.tracks = [{"file_path": "/m/a.flac", "title": "A"}, {"file_path": "/m/a.flac", "title": "A"},
+                       {"file_path": "/m/b.flac", "title": "B"}]
+        done, _, ran = self._batch(None, lambda meta, lane: None)
+        self.assertEqual((done, sorted(t for t, _ in ran)), (2, ["A", "B"]))
 
 
 class DeckTests(unittest.TestCase):
@@ -425,6 +901,14 @@ class KaraokeApiTests(unittest.TestCase):
         self.assertEqual(detail["lyrics"][0], {"t": 10.0, "text": "Verse line one"})
         self.assertTrue(detail["has_guide"])
 
+    def test_status_reports_karaoke_gen_and_the_lane(self):
+        import api.karaoke as karaoke_api
+        with mock.patch.object(karaoke_api, "_get_plex", return_value=None):
+            tools = self.client.get("/api/karaoke/status").get_json()["tools"]
+        self.assertIsInstance(tools["karaoke_gen"], bool)
+        self.assertIn(tools["backend"], ("karaoke-gen", "demucs"))
+        self.assertIn("remote_lane", tools)
+
     def test_rejects_traversal_and_unknown(self):
         for bad in ("..", "_index.json", "nope"):
             self.assertEqual(self.client.get(f"/api/karaoke/song/{bad}").status_code, 404)
@@ -481,6 +965,8 @@ class KaraokeApiTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
         resp = self.client.post("/api/karaoke/prep", json={"model": "bogus"})
         self.assertEqual(resp.status_code, 400)
+        resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": "nope"})
+        self.assertEqual(resp.status_code, 404)  # karaoke-gen passes validation
 
 
 class ChorusGapTests(unittest.TestCase):

@@ -396,6 +396,14 @@ def load_settings(repo_dir):
         "KARAOKE_DIR": _read_required_path(
             "SP404_KARAOKE_DIR", os.path.join(os.path.dirname(sample_library), "Karaoke")
         ),
+        # karaoke-gen (RoFormer separation + word-timed Whisper lyrics) or the old Demucs split.
+        "KARAOKE_BACKEND": _read_choice("SP404_KARAOKE_BACKEND", "karaoke-gen", {"karaoke-gen", "demucs"}),
+        "KARAOKE_GEN_BIN": _read_command("SP404_KARAOKE_GEN", "karaoke-gen"),
+        "KARAOKE_GEN_MODELS": _read_optional_path("SP404_KARAOKE_GEN_MODELS", ""),
+        # karaoke-gen on another machine's GPU (GOBLINDRIVER's lane.cmd), by ssh host alias; empty = local only.
+        "KARAOKE_REMOTE_HOST": os.environ.get("SP404_KARAOKE_REMOTE", "").strip(),
+        "KARAOKE_REMOTE_LANE": _read_command("SP404_KARAOKE_REMOTE_LANE", r"D:\Karaoke\lane.cmd"),
+        "KARAOKE_REMOTE_WORK": _read_command("SP404_KARAOKE_REMOTE_WORK", r"D:\Karaoke\work"),
         "STAGING_DIR": os.path.join(repo_dir, "_CARD_STAGING"),
         "SMPL_DIR": os.path.join(repo_dir, "sd-card-template", "ROLAND", "SP-404SX", "SMPL"),
         "CONFIG_PATH": os.path.join(repo_dir, "bank_config.yaml"),

@@ -58,7 +58,9 @@ async function openKaraoke() {
         const t = kara.status.tools || {};
         const chip = (ok, name) => `<span class="kara-chip ${ok ? 'ok' : 'off'}">${ok ? '✓' : '✕'} ${name}</span>`;
         document.getElementById('karaoke-tools').innerHTML =
-            chip(t.plex, 'Plex') + chip(t.demucs, 'Demucs') + chip(t.librosa, 'librosa');
+            chip(t.plex, 'Plex') + chip(t.karaoke_gen, 'karaoke-gen') +
+            (t.remote_lane ? chip(true, `lane: ${escapeHtml(t.remote_lane)}`) : '') +
+            chip(t.demucs, 'Demucs') + chip(t.librosa, 'librosa');
     } catch (e) {
         toast(`Karaoke status failed: ${e.message}`, 'error');
     }
