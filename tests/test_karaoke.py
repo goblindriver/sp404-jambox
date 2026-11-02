@@ -766,6 +766,109 @@ class DeckTests(unittest.TestCase):
         self.assertIn("[vid1]null[vo]", self.deck.guide_graph(-9, True))
         self.assertAlmostEqual(self.deck.pitch_scale(12), 2.0)
 
+    def test_song_video_needs_the_file_and_an_offset_to_sync(self):
+        d = self.deck
+        with tempfile.TemporaryDirectory() as tmp:
+            open(os.path.join(tmp, "video.mp4"), "wb").close()
+            path = os.path.join(tmp, "video.mp4")
+            self.assertEqual(d.song_video(tmp, {"video": {"file": "video.mp4", "mode": "sync", "offset_s": -1.5}}),
+                             (path, "sync", -1.5))
+            self.assertEqual(d.song_video(tmp, {"video": {"file": "video.mp4", "mode": "sync", "offset_s": None}}),
+                             (path, "loose", None))
+            self.assertEqual(d.song_video(tmp, {"video": {"file": "video.mp4", "mode": "loose"}}),
+                             (path, "loose", None))
+            self.assertEqual(d.song_video(tmp, {"video": {"file": "gone.mp4", "mode": "sync", "offset_s": 0}}),
+                             (None, None, None))
+            self.assertEqual(d.song_video(tmp, {}), (None, None, None))
+
+    def test_video_args_mute_the_video_or_draw_the_backing_track(self):
+        d = self.deck
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("backing.flac", "video.mp4"):
+                open(os.path.join(tmp, name), "wb").close()
+            synced = d.build_video_args(tmp, {"video": {"file": "video.mp4", "mode": "sync", "offset_s": 2.0}},
+                                        screen=2)
+            self.assertIn(os.path.join(tmp, "video.mp4"), synced)
+            self.assertIn(f"--input-ipc-server={d.VIDEO_PIPE}", synced)
+            self.assertNotEqual(d.VIDEO_PIPE, d.PIPE_NAME)
+            for flag in ("--aid=no", "--pause", "--fullscreen", "--screen=2", "--fs-screen=2",
+                         "--input-default-bindings=no"):
+                self.assertIn(flag, synced)
+            self.assertNotIn("--loop-file=inf", synced)
+
+            loose = d.build_video_args(tmp, {"video": {"file": "video.mp4", "mode": "loose"}}, fullscreen=False)
+            self.assertIn("--loop-file=inf", loose)
+            self.assertNotIn("--pause", loose)
+            self.assertNotIn("--fullscreen", loose)
+
+            visual = d.build_video_args(tmp, {})
+            joined = " ".join(visual)
+            self.assertIn(os.path.join(tmp, "backing.flac"), visual)
+            self.assertIn("--ao=null", visual)      # the M6 hears only the lyrics window
+            self.assertIn("--lavfi-complex=[aid1]", joined)
+            self.assertNotIn("--audio-device", joined)
+
+    def test_video_seek_target(self):
+        t = self.deck.video_seek_target
+        self.assertIsNone(t(10.0, 2.0, 0.0, 12.1))          # within tolerance
+        self.assertEqual(t(10.0, 2.0, 0.0, 13.0), 12.0)     # drifted
+        self.assertEqual(t(10.0, 2.0, 0.1, None), 12.1)     # unknown position; the lead runs it ahead
+        self.assertEqual(t(1.0, -4.0, 0.0, 2.0), 0.0)       # video hasn't started: wait at 0
+
+    def test_card_text_names_the_singer_then_whos_next(self):
+        d = self.deck
+        song = {"artist": "Ween", "title": "Push th' Little Daisies", "duration_s": 200}
+        nxt = {"artist": "Robyn", "title": "Dancing {On} My Own\\"}
+        self.assertIn("Now singing", d.card_text(song, nxt, 3.0))
+        self.assertIn("Ween - Push th' Little Daisies", d.card_text(song, nxt, 3.0))
+        self.assertEqual(d.card_text(song, nxt, 100.0), "")
+        up_next = d.card_text(song, nxt, 180.0)
+        self.assertIn("Up next", up_next)
+        self.assertTrue(up_next.endswith("Robyn - Dancing (On) My Own/"))   # no stray ASS tags
+        self.assertEqual(d.card_text(song, None, 180.0), "")
+        self.assertEqual(d.card_text({"artist": "A", "title": "B"}, nxt, 180.0), "")   # no duration
+
+    def _video_screen(self, mode, offset=0.0, end=None):
+        screen = object.__new__(self.deck.VideoScreen)
+        screen.mode, screen.offset, screen.end, screen.lead = mode, offset, end, 0.0
+        screen.song, screen.next_song = {"artist": "A", "title": "B", "duration_s": 200}, None
+        screen._due, screen._card = 0.0, None
+        sent = []
+        screen.mpv = mock.Mock(closed=threading.Event(), state={"pause": True, "speed": 1.0, "time-pos": None})
+        screen.mpv.command.side_effect = lambda *c: sent.append(c)
+        screen.mpv.command_named.side_effect = lambda **c: sent.append(c)
+        return screen, sent
+
+    def test_video_screen_follows_the_song(self):
+        screen, sent = self._video_screen("sync", offset=2.0)
+        screen.mpv.position.return_value = None
+        screen.update(10.0, False)
+        self.assertIn(("seek", 12.0, "absolute+exact"), sent)
+        self.assertIn(("set_property", "pause", False), sent)
+        self.assertTrue(any(c.get("name") == "osd-overlay" and "Now singing" in c["data"]
+                            for c in sent if isinstance(c, dict)))
+        self.assertGreater(screen._due, time.monotonic() + 0.5)   # waits for the seek to land
+
+        sent.clear()
+        screen._due, screen.mpv.state["pause"] = 0.0, False
+        screen.mpv.position.return_value = 30.1
+        screen.update(28.0, False, speed=1.1)
+        self.assertEqual(sent, [("set_property", "speed", 1.1),           # mirrored, no re-seek
+                                {"name": "osd-overlay", "id": 1, "format": "none", "data": "",
+                                 "res_x": 1280, "res_y": 720}])
+
+    def test_video_screen_doesnt_chase_past_the_videos_end_or_seek_loose_videos(self):
+        screen, sent = self._video_screen("sync", offset=0.0, end=150.0)
+        screen.mpv.position.return_value = 150.0
+        screen.update(170.0, False)
+        self.assertFalse(any(c[0] == "seek" for c in sent if isinstance(c, tuple)))
+
+        screen, sent = self._video_screen("loose")
+        screen.mpv.position.return_value = 3.0
+        screen.update(90.0, True)
+        self.assertFalse(any(c[0] == "seek" for c in sent if isinstance(c, tuple)))
+        self.assertNotIn(("set_property", "pause", False), sent)   # paused song: paused video
+
     def test_find_mpv_falls_back_to_wingets_install_folder(self):
         d = self.deck
         with tempfile.TemporaryDirectory() as tmp:
