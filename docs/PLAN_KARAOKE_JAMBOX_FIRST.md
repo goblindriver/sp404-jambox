@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: plan only. Nothing in the karaoke path changes until a later session implements a phase below._
+_Status: phase 1 implemented on this branch. Phases 2–8 not started._
 
 ## The rule
 
@@ -102,7 +102,7 @@ Karaoke/
 
 Each phase is a reviewable chunk. Don't land them as one commit the size of the review. Do land them on this branch.
 
-### Phase 1 — Probe and honest defaults
+### Phase 1 — Probe and honest defaults (implemented)
 
 Files: `scripts/karaoke_capabilities.py` (new), `scripts/karaoke_prep.py` (`main()` default when `--backend` is omitted stays the config value, but the config default in `jambox_config.py` changes — see below), `web/api/karaoke.py` `status()` and `prep()`, `web/static/js/karaoke.js` `openKaraoke` / `startKaraokePrep`, `web/templates/index.html` model `<select>`.
 

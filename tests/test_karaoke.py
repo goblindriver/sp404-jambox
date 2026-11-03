@@ -17,6 +17,7 @@ if SCRIPTS_DIR not in sys.path:
 
 import karaoke_drops  # noqa: E402
 import karaoke_lyrics  # noqa: E402
+import karaoke_capabilities  # noqa: E402
 from karaoke_lyrics import LyricLine  # noqa: E402
 
 
@@ -1223,8 +1224,69 @@ class TypeCodeAliasTests(unittest.TestCase):
                 self.assertIn(tc, TYPE_CODES, f"{os.path.relpath(path, REPO_ROOT)} pad {pad}: {desc!r}")
 
 
+class CapabilityTests(unittest.TestCase):
+    def test_neither_separator_means_no_default(self):
+        cap = karaoke_capabilities.capabilities(found={
+            "demucs": False, "karaoke_gen": False, "remote_lane": None})
+        self.assertIsNone(cap["separate"]["default"])
+        self.assertIn("Demucs", cap["separate"]["reason"])
+        self.assertTrue(cap["sources"]["file"])
+        self.assertTrue(cap["stage"]["browser"])
+
+    def test_demucs_only_defaults_to_the_fast_model(self):
+        cap = karaoke_capabilities.capabilities(found={
+            "demucs": True, "karaoke_gen": False, "remote_lane": None})
+        self.assertEqual(cap["separate"]["default"], "htdemucs")
+        self.assertIsNone(cap["separate"]["reason"])
+        self.assertNotEqual(cap["separate"]["default"], "htdemucs_ft")
+
+    def test_karaoke_gen_on_path_or_a_lane_wins(self):
+        on_path = karaoke_capabilities.capabilities(found={
+            "demucs": True, "karaoke_gen": True, "remote_lane": None})
+        self.assertEqual(on_path["separate"]["default"], "karaoke-gen")
+        lane = karaoke_capabilities.capabilities(found={
+            "demucs": False, "karaoke_gen": False, "remote_lane": "goblin"})
+        self.assertEqual(lane["separate"]["default"], "karaoke-gen")
+        self.assertEqual(lane["separate"]["remote_lane"], "goblin")
+
+    def test_detect_sees_karaoke_gen_on_path(self):
+        def which(command):
+            return "/usr/local/bin/karaoke-gen" if "karaoke-gen" in str(command) else None
+
+        with mock.patch("karaoke_capabilities.resolve_command", side_effect=which), \
+                mock.patch("karaoke_capabilities.importlib.util.find_spec", return_value=None), \
+                mock.patch.dict(os.environ, {"SP404_KARAOKE_REMOTE": ""}, clear=False):
+            cap = karaoke_capabilities.capabilities()
+        self.assertTrue(cap["separate"]["karaoke_gen"])
+        self.assertFalse(cap["separate"]["demucs"])
+        self.assertEqual(cap["separate"]["default"], "karaoke-gen")
+
+    def test_detect_sees_a_remote_lane_without_a_local_binary(self):
+        with mock.patch("karaoke_capabilities.resolve_command", return_value=None), \
+                mock.patch("karaoke_capabilities.importlib.util.find_spec", return_value=None), \
+                mock.patch.dict(os.environ, {"SP404_KARAOKE_REMOTE": "goblin"}, clear=False):
+            cap = karaoke_capabilities.capabilities()
+        self.assertEqual(cap["separate"]["remote_lane"], "goblin")
+        self.assertFalse(cap["separate"]["karaoke_gen"])
+        self.assertEqual(cap["separate"]["default"], "karaoke-gen")
+
+    def test_cli_floor_is_demucs_when_the_env_is_unset(self):
+        from jambox_config import load_settings
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SP404_KARAOKE_BACKEND", None)
+            settings = load_settings(REPO_ROOT)
+        self.assertEqual(settings["KARAOKE_BACKEND"], "demucs")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+def _available_cap(**overrides):
+    """A probe result with Demucs present and the shed extras absent, unless overridden."""
+    found = {"demucs": True, "karaoke_gen": False, "remote_lane": None, "ytdlp": False, "plex": False}
+    found.update(overrides)
+    return karaoke_capabilities.capabilities(found=found)
 
 
 class KaraokeApiTests(unittest.TestCase):
@@ -1267,10 +1329,16 @@ class KaraokeApiTests(unittest.TestCase):
     def test_status_reports_karaoke_gen_and_the_lane(self):
         import api.karaoke as karaoke_api
         with mock.patch.object(karaoke_api, "_get_plex", return_value=None):
-            tools = self.client.get("/api/karaoke/status").get_json()["tools"]
+            payload = self.client.get("/api/karaoke/status").get_json()
+        tools = payload["tools"]
         self.assertIsInstance(tools["karaoke_gen"], bool)
         self.assertIn(tools["backend"], ("karaoke-gen", "demucs"))
         self.assertIn("remote_lane", tools)
+        cap = payload["capabilities"]
+        self.assertIn(cap["separate"]["default"], ("htdemucs", "karaoke-gen", None))
+        self.assertTrue(cap["sources"]["file"])
+        self.assertFalse(cap["sources"]["plex"])
+        self.assertTrue(cap["stage"]["browser"])
 
     def test_rejects_traversal_and_unknown(self):
         for bad in ("..", "_index.json", "nope"):
@@ -1324,12 +1392,34 @@ class KaraokeApiTests(unittest.TestCase):
         self.assertEqual(m.call_args_list[0].args, ("utility/karaoke-drops", "a"))
 
     def test_prep_requires_source(self):
-        resp = self.client.post("/api/karaoke/prep", json={"dir": "nope"})
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()):
+            resp = self.client.post("/api/karaoke/prep", json={"dir": "nope"})
+            self.assertEqual(resp.status_code, 404)
+            resp = self.client.post("/api/karaoke/prep", json={"model": "bogus"})
+            self.assertEqual(resp.status_code, 400)
+            # The name is a real model, but this probe can't run it.
+            resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": self.dir})
+            self.assertEqual(resp.status_code, 400)
+            self.assertIn("karaoke-gen", resp.get_json()["error"])
+
+    def test_prep_accepts_karaoke_gen_when_the_probe_can_see_it(self):
+        cap = _available_cap(karaoke_gen=True)
+        with mock.patch("karaoke_capabilities.capabilities", return_value=cap):
+            resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": "nope"})
         self.assertEqual(resp.status_code, 404)
-        resp = self.client.post("/api/karaoke/prep", json={"model": "bogus"})
+
+    def test_prep_refuses_when_no_separator_is_installed(self):
+        cap = _available_cap(demucs=False, karaoke_gen=False, remote_lane=None)
+        with mock.patch("karaoke_capabilities.capabilities", return_value=cap):
+            resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir})
         self.assertEqual(resp.status_code, 400)
-        resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": "nope"})
-        self.assertEqual(resp.status_code, 404)  # karaoke-gen passes validation
+        self.assertIn("Demucs", resp.get_json()["error"])
+
+    def test_prep_refuses_videos_without_ytdlp(self):
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap(ytdlp=False)):
+            resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir, "videos": True})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("yt-dlp", resp.get_json()["error"])
 
     def test_video_shows_in_the_list_and_detail(self):
         song_dir = os.path.join(self.root, self.dir)
@@ -1345,7 +1435,8 @@ class KaraokeApiTests(unittest.TestCase):
 
     def test_revideo_on_a_song_only_fetches_its_video(self):
         import api.karaoke as karaoke_api
-        with mock.patch.object(karaoke_api, "_run_prep") as run_prep:
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap(ytdlp=True)), \
+                mock.patch.object(karaoke_api, "_run_prep") as run_prep:
             resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir, "revideo": True})
             self.assertTrue(resp.get_json()["ok"])
             for _ in range(100):

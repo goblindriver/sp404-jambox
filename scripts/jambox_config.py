@@ -396,8 +396,13 @@ def load_settings(repo_dir):
         "KARAOKE_DIR": _read_required_path(
             "SP404_KARAOKE_DIR", os.path.join(os.path.dirname(sample_library), "Karaoke")
         ),
-        # karaoke-gen (RoFormer separation + word-timed Whisper lyrics) or the old Demucs split.
-        "KARAOKE_BACKEND": _read_choice("SP404_KARAOKE_BACKEND", "karaoke-gen", {"karaoke-gen", "demucs"}),
+        # CLI floor when SP404_KARAOKE_BACKEND is unset. demucs ships in
+        # requirements.txt; karaoke-gen does not. The web UI does not use this
+        # as its control default — scripts/karaoke_capabilities.py picks the
+        # best separator that is actually installed (karaoke-gen if the binary
+        # or SP404_KARAOKE_REMOTE is present, else Demucs, else refuse).
+        # Do not default this back to karaoke-gen.
+        "KARAOKE_BACKEND": _read_choice("SP404_KARAOKE_BACKEND", "demucs", {"karaoke-gen", "demucs"}),
         "KARAOKE_GEN_BIN": _read_command("SP404_KARAOKE_GEN", "karaoke-gen"),
         "KARAOKE_GEN_MODELS": _read_optional_path("SP404_KARAOKE_GEN_MODELS", ""),
         # karaoke-gen on another machine's GPU (GOBLINDRIVER's lane.cmd), by ssh host alias; empty = local only.

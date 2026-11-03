@@ -61,11 +61,39 @@ async function openKaraoke() {
             chip(t.plex, 'Plex') + chip(t.karaoke_gen, 'karaoke-gen') +
             (t.remote_lane ? chip(true, `lane: ${escapeHtml(t.remote_lane)}`) : '') + chip(t.ytdlp, 'yt-dlp') +
             chip(t.demucs, 'Demucs') + chip(t.librosa, 'librosa');
+        applyKaraokeCapabilities();
     } catch (e) {
         toast(`Karaoke status failed: ${e.message}`, 'error');
     }
     await loadKaraokeSongs();
     loadKaraokePlaylists();
+}
+
+function applyKaraokeCapabilities() {
+    const cap = kara.status && kara.status.capabilities;
+    if (!cap || !cap.separate) return;
+    const sep = cap.separate;
+    const extras = cap.extras || {};
+    const model = document.getElementById('karaoke-model');
+    const canGen = !!(sep.karaoke_gen || sep.remote_lane);
+    const canDemucs = !!sep.demucs;
+    for (const opt of model.options) {
+        opt.disabled = opt.value === 'karaoke-gen' ? !canGen : !canDemucs;
+    }
+    if (sep.default) {
+        const chosen = model.querySelector(`option[value="${sep.default}"]`);
+        if (chosen && !chosen.disabled) model.value = sep.default;
+    }
+    const videos = document.getElementById('karaoke-videos');
+    videos.disabled = !extras.ytdlp;
+    if (!extras.ytdlp) videos.checked = false;
+    const prep = document.getElementById('karaoke-prep-btn');
+    prep.disabled = !sep.default;
+    if (!sep.default && !kara.jobTimer) {
+        const job = document.getElementById('karaoke-job');
+        job.classList.remove('hidden');
+        job.textContent = sep.reason || 'No vocal separator installed.';
+    }
 }
 
 function closeKaraoke() {
@@ -512,7 +540,10 @@ function prepKaraokePlaylist() {
 
 function reprepKaraoke(force) {
     if (!kara.current) return;
-    if (force && !confirm('Re-run Demucs on this song? Takes a few minutes.')) return;
+    const model = document.getElementById('karaoke-model').value;
+    const label = model === 'karaoke-gen' ? 'karaoke-gen'
+        : (model === 'htdemucs_ft' ? 'Demucs (clean)' : 'Demucs (fast)');
+    if (force && !confirm(`Re-run ${label} on this song? Takes a few minutes.`)) return;
     startKaraokePrep({ dir: kara.current.dir, force: !!force, refresh: !force });
 }
 
@@ -540,7 +571,13 @@ function searchKaraokeTrack(q) {
 }
 
 async function startKaraokePrep(body) {
-    body.model = document.getElementById('karaoke-model').value;
+    const modelSel = document.getElementById('karaoke-model');
+    const opt = modelSel.selectedOptions[0];
+    if (!modelSel.value || (opt && opt.disabled)) {
+        toast('No vocal separator available for that model', 'error');
+        return;
+    }
+    body.model = modelSel.value;
     if (body.videos === undefined) body.videos = document.getElementById('karaoke-videos').checked;
     try {
         const data = await karaApi('/api/karaoke/prep', {

@@ -18,6 +18,7 @@ if _scripts_dir not in sys.path:
 
 import karaoke_drops  # noqa: E402
 import karaoke_lyrics  # noqa: E402
+import karaoke_capabilities  # noqa: E402
 
 karaoke_bp = Blueprint('karaoke', __name__)
 
@@ -67,21 +68,18 @@ def _get_plex():
     return music_plex()
 
 
-def _tool_status():
-    import importlib.util
-    import shutil
+def _tool_status(cap):
     kp = _prep_module()
     return {
-        'demucs': importlib.util.find_spec('demucs') is not None,
-        'librosa': importlib.util.find_spec('librosa') is not None,
-        'plex': _get_plex() is not None,
-        # Without SP404_KARAOKE_GEN in this process's environment every karaoke-gen prep fails.
-        'karaoke_gen': shutil.which(kp.KARAOKE_GEN) is not None,
+        'demucs': cap['separate']['demucs'],
+        'librosa': cap['extras']['librosa'],
+        'plex': cap['sources']['plex'],
+        # Config floor (SP404_KARAOKE_BACKEND), not the probe's UI default.
+        'karaoke_gen': cap['separate']['karaoke_gen'],
         'backend': kp.KARAOKE_BACKEND,
         # Configured, not checked: lane.free() goes over ssh, too slow for a status poll.
-        'remote_lane': kp.KARAOKE_REMOTE_HOST or None,
-        # Music videos (prep option); SP404_YTDLP must be in this process's environment too.
-        'ytdlp': shutil.which(kp.karaoke_video.YTDLP) is not None,
+        'remote_lane': cap['separate']['remote_lane'],
+        'ytdlp': cap['extras']['ytdlp'],
     }
 
 
@@ -89,12 +87,14 @@ def _tool_status():
 
 @karaoke_bp.route('/karaoke/status')
 def status():
+    cap = karaoke_capabilities.capabilities(plex=_get_plex() is not None)
     songs = _prep_module().rebuild_index(_root()) if os.path.isdir(_root()) else []
     return jsonify({
         'ok': True,
         'karaoke_dir': _root(),
         'songs': len(songs),
-        'tools': _tool_status(),
+        'tools': _tool_status(cap),
+        'capabilities': cap,
         'drop_pads': karaoke_drops.DROP_PADS,
         'drop_bank': karaoke_drops.DROP_BANK,
     })
@@ -275,14 +275,16 @@ def prep():
         return jsonify({'ok': False, 'error': str(exc)}), 400
     if _prep_lock.locked():
         return jsonify({'ok': False, 'error': 'A karaoke prep job is already running'}), 409
-    default = 'karaoke-gen' if _prep_module().KARAOKE_BACKEND == 'karaoke-gen' else 'htdemucs'
-    model = body.get('model') or default
-    if model not in ('karaoke-gen', 'htdemucs', 'htdemucs_ft'):
-        return jsonify({'ok': False, 'error': 'model must be karaoke-gen, htdemucs or htdemucs_ft'}), 400
+    cap = karaoke_capabilities.capabilities()
+    model = body.get('model') or cap['separate']['default']
+    videos = bool(body.get('videos') or body.get('revideo'))
+    refusal = karaoke_capabilities.reject_prep(cap, model, videos)
+    if refusal:
+        return jsonify({'ok': False, 'error': refusal}), 400
     opts = {'backend': 'karaoke-gen' if model == 'karaoke-gen' else 'demucs',
             'model': 'htdemucs' if model == 'karaoke-gen' else model,
             'refresh': bool(body.get('refresh')), 'force': bool(body.get('force')),
-            'videos': bool(body.get('videos') or body.get('revideo')), 'revideo': bool(body.get('revideo')),
+            'videos': videos, 'revideo': bool(body.get('revideo')),
             'video_only': False}
 
     tracks = []

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Karaoke prep ("the kitchen"): turn songs into ready-to-sing packages.
 
-Per song: the vocal comes out (karaoke-gen by default: BS-RoFormer separation
-plus word-timed Whisper lyrics corrected against LRCLIB/Genius; or the older
-Demucs split), librosa finds tempo + first downbeat, choruses are located from
+Per song: the vocal comes out (Demucs by default — it ships with this repo;
+karaoke-gen when ``SP404_KARAOKE_BACKEND=karaoke-gen``, or when the web probe
+sees that binary or a remote lane), librosa finds tempo + first downbeat, choruses are located from
 the repeated lyric blocks, and a drop sheet is drafted for the SP-404A. Output
 lives OUTSIDE the sample library (see ``KARAOKE_DIR`` / ``SP404_KARAOKE_DIR``)::
 
