@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: phases 1–4 implemented on this branch. Phases 5–8 not started._
+_Status: phases 1–5 implemented on this branch. Phases 6–8 not started._
 
 ## The rule
 
@@ -168,7 +168,7 @@ Files: `web/api/karaoke.py` `AUDIO_FILES` and a new route, `scripts/karaoke_prep
 
 Tests: preferred path is `backing_bv.flac` when present and `mix` is missing; `backing.flac` when `mix == "dry"`; `backing.flac` when the bv file is absent. `build_mpv_args` argv contains that path and not the other.
 
-### Phase 5 — Drops you can hear without a fetched card
+### Phase 5 — Drops you can hear without a fetched card (implemented)
 
 Files: `web/api/audio.py` or a small helper used by `preview_pad`, `web/static/js/karaoke.js` `karaFirePad`. Do not copy samples into the repo.
 

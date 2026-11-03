@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from unittest import mock
 
@@ -1665,3 +1666,99 @@ class ChorusGapTests(unittest.TestCase):
         lines = karaoke_lyrics.parse_lrc(
             "[00:10.00]hook one\n[00:14.00]hook two\n[00:40.00]hook one\n[00:44.00]hook two\n[00:48.00]end\n")
         self.assertEqual([c[0] for c in karaoke_lyrics.find_choruses(lines)], [10.0, 40.0])
+
+
+class PadPreviewTests(unittest.TestCase):
+    def setUp(self):
+        web_dir = os.path.join(REPO_ROOT, "web")
+        if web_dir not in sys.path:
+            sys.path.insert(0, web_dir)
+        from flask import Flask
+        from api import audio as audio_api
+        self.audio = audio_api
+        audio_api.clear_pad_hits()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.repo = os.path.join(self.tmp.name, "repo")
+        self.library = os.path.join(self.tmp.name, "library")
+        os.makedirs(os.path.join(self.repo, "sd-card-template", "ROLAND", "SP-404SX", "SMPL"))
+        os.makedirs(os.path.join(self.repo, "_CARD_STAGING"))
+        os.makedirs(self.library)
+        self.tags = os.path.join(self.tmp.name, "_tags.json")
+        with open(self.tags, "w", encoding="utf-8") as fh:
+            fh.write("{}")
+        self.config = os.path.join(self.tmp.name, "bank_config.yaml")
+        with open(self.config, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: Drops\n  pads:\n    1: airhorn one-shot\n")
+        self.hit = os.path.join(self.library, "airhorn.wav")
+        with open(self.hit, "wb") as fh:
+            fh.write(b"LIBHIT")
+        app = Flask(__name__)
+        app.config.update(
+            REPO_DIR=self.repo, SAMPLE_LIBRARY=self.library, TAGS_FILE=self.tags,
+            CONFIG_PATH=self.config, FFMPEG_BIN="ffmpeg", TESTING=True,
+        )
+        app.register_blueprint(audio_api.audio_bp, url_prefix="/api")
+        self.client = app.test_client()
+
+    def _card(self, folder, name, payload):
+        path = os.path.join(self.repo, folder, name)
+        with open(path, "wb") as fh:
+            fh.write(payload)
+        return path
+
+    def test_card_wav_beats_a_library_hit(self):
+        self._card(os.path.join("sd-card-template", "ROLAND", "SP-404SX", "SMPL"), "A0000001.WAV", b"CARDWAV")
+        with mock.patch.object(self.audio, "rank_pad_hit", side_effect=AssertionError("library ranked")):
+            resp = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, b"CARDWAV")
+
+    def test_library_hit_plays_when_the_card_is_empty(self):
+        def rank(query, bank_config, tag_db):
+            self.assertIn("airhorn", query)
+            return self.hit
+        with mock.patch.object(self.audio, "rank_pad_hit", side_effect=rank):
+            resp = self.client.get("/api/audio/preview/A/1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, b"LIBHIT")
+
+    def test_neither_card_nor_library_is_no_sample(self):
+        with mock.patch.object(self.audio, "rank_pad_hit", return_value=None):
+            resp = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json(), {"ok": False, "error": "no sample", "bank": "a", "pad": 1})
+
+    def test_a_hit_outside_the_library_is_a_miss(self):
+        with mock.patch.object(self.audio, "rank_pad_hit", return_value="/etc/passwd"):
+            resp = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["error"], "no sample")
+        self.assertNotIn(b"root:", resp.data)
+
+    def test_a_tag_store_change_may_find_a_file(self):
+        calls = {"n": 0}
+
+        def rank(query, bank_config, tag_db):
+            calls["n"] += 1
+            return None if calls["n"] == 1 else self.hit
+
+        with mock.patch.object(self.audio, "rank_pad_hit", side_effect=rank):
+            first = self.client.get("/api/audio/preview/a/1")
+            second = self.client.get("/api/audio/preview/a/1")
+            self.assertEqual(calls["n"], 1)
+            os.utime(self.tags, (time.time() + 5, time.time() + 5))
+            third = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(first.status_code, 404)
+        self.assertEqual(second.status_code, 404)
+        self.assertEqual(third.status_code, 200)
+        self.assertEqual(third.data, b"LIBHIT")
+        self.assertEqual(calls["n"], 2)
+
+    def test_a_missing_scorer_is_a_miss_not_a_500(self):
+        with mock.patch.dict(sys.modules, {"fetch_samples": None}):
+            self.assertIsNone(self.audio.rank_pad_hit("airhorn one-shot", {}, {}))
+        fake = types.ModuleType("fetch_samples")
+        fake.rank_library_matches = mock.Mock(side_effect=RuntimeError("no library"))
+        with mock.patch.dict(sys.modules, {"fetch_samples": fake}):
+            self.assertIsNone(self.audio.rank_pad_hit("airhorn one-shot", {}, {}))

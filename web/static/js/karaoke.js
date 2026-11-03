@@ -23,7 +23,6 @@ const kara = {
     raf: null,
     jobTimer: null,
     searchTimer: null,
-    padAudio: {},
 };
 
 // app.js api() returns {error} instead of throwing; karaoke code wants exceptions.
@@ -529,13 +528,30 @@ function karaFireDrop(d) {
     if (kara.hearDrops) karaFirePad(d.bank, d.pad, d.vel);
 }
 
+function karaNoSample(bank, pad) {
+    const flash = document.getElementById('kara-flash');
+    if (!flash) return;
+    flash.textContent = `${karaPadName(bank, pad)}: no sample`;
+    flash.classList.remove('go');
+    void flash.offsetWidth;
+    flash.classList.add('go');
+}
+
 function karaFirePad(bank, pad, vel = 110) {
-    // Plays whatever is currently loaded on that pad (Load Karaoke Set + Fetch first).
-    const url = `/api/audio/preview/${bank.toLowerCase()}/${pad}`;
-    if (kara.padAudio[url] === false) return;
-    const snd = new Audio(url);
-    snd.volume = Math.max(0.1, Math.min(1, vel / 127)) * 0.8;
-    snd.play().catch(() => { kara.padAudio[url] = false; });
+    // Card WAV if Fetch + Export has built it, otherwise the library hit.
+    // A miss is not remembered: the next drop asks again.
+    const url = `/api/audio/preview/${String(bank).toLowerCase()}/${pad}`;
+    fetch(url).then(resp => {
+        if (!resp.ok) { karaNoSample(bank, pad); return null; }
+        return resp.blob();
+    }).then(blob => {
+        if (!blob) return;
+        const snd = new Audio(URL.createObjectURL(blob));
+        snd.volume = Math.max(0.1, Math.min(1, vel / 127)) * 0.8;
+        const drop = () => URL.revokeObjectURL(snd.src);
+        snd.addEventListener('ended', drop);
+        snd.play().catch(drop);
+    }).catch(() => karaNoSample(bank, pad));
 }
 
 function karaFullscreen() {
