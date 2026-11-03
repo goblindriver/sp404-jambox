@@ -1531,6 +1531,40 @@ class KaraokeApiTests(unittest.TestCase):
         self.assertEqual(from_extra.status_code, 200)
         self.assertEqual(run_prep.call_args_list[1].args[2][0]["file_path"], os.path.realpath(extra_song))
 
+    def test_prep_job_status_follows_the_counts(self):
+        import api.karaoke as karaoke_api
+        self.assertEqual(karaoke_api.prep_job_status(2, 0), "done")
+        self.assertEqual(karaoke_api.prep_job_status(1, 1), "partial")
+        self.assertEqual(karaoke_api.prep_job_status(0, 2), "error")
+        self.assertEqual(karaoke_api.prep_job_status(0, 0), "done")
+
+    def test_one_failed_track_finishes_partial(self):
+        import api.karaoke as karaoke_api
+        kp = karaoke_api._prep_module()
+        seen = []
+
+        def prep_song(meta, **_kwargs):
+            seen.append(meta.get("title"))
+            if len(seen) == 2:
+                raise RuntimeError("separator blew up")
+            return {}
+
+        tracks = [
+            {"file_path": os.path.join(self.root, "a.flac"), "artist": "A", "title": "One"},
+            {"file_path": os.path.join(self.root, "b.flac"), "artist": "B", "title": "Two"},
+        ]
+        opts = {"backend": "demucs", "model": "htdemucs", "refresh": False, "force": False,
+                "videos": False, "revideo": False, "video_only": False}
+        job_id = karaoke_api._prep_tracker.create(status="queued", total=2, done=0, failed=0, log=[])
+        with mock.patch.object(kp, "prep_song", side_effect=prep_song):
+            karaoke_api._run_prep(self.client.application, job_id, tracks, opts)
+        job = karaoke_api._prep_tracker.get(job_id)
+        self.assertEqual(seen, ["One", "Two"])
+        self.assertEqual(job["status"], "partial")
+        self.assertEqual((job["done"], job["failed"]), (1, 1))
+        self.assertIn("1 song failed", job["error"])
+        self.assertTrue(job.get("finished_at"))
+
     def test_video_shows_in_the_list_and_detail(self):
         song_dir = os.path.join(self.root, self.dir)
         with open(os.path.join(song_dir, "song.json"), encoding="utf-8") as fh:

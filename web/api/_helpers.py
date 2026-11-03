@@ -93,7 +93,7 @@ class JobTracker:
         max_count: Keep at most this many finished jobs (None to disable).
     """
 
-    _TERMINAL = frozenset(("done", "complete", "error"))
+    _TERMINAL = frozenset(("done", "complete", "error", "partial"))
 
     def __init__(self, *, use_rlock=False, max_age=600, max_count=None):
         self._jobs = {}

@@ -271,7 +271,7 @@ async function api(url, opts) {
 }
 
 // ── Job polling ──
-const JOB_TERMINAL_STATUSES = new Set(['done', 'complete', 'error']);
+const JOB_TERMINAL_STATUSES = new Set(['done', 'complete', 'error', 'partial']);
 
 function jobError(message, code) {
     const err = new Error(message);

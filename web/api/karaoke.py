@@ -293,6 +293,17 @@ def redraft(name):
 
 # ── Prep jobs ────────────────────────────────────────────────────────
 
+def prep_job_status(done, failed):
+    """What a finished batch is. An empty batch is ``done``; the route already
+    refuses that before the thread starts. A raised exception from ``prep_batch``
+    itself stays ``error`` and does not come through here."""
+    if failed and done:
+        return "partial"
+    if failed:
+        return "error"
+    return "done"
+
+
 def _run_prep(app, job_id, tracks, opts):
     with app.app_context():
         kp = _prep_module()
@@ -328,13 +339,18 @@ def _run_prep(app, job_id, tracks, opts):
 
             # Songs run on the remote GPU lane and this machine at once; a song the
             # lane yields to a game is re-queued (see karaoke_prep.prep_batch).
-            kp.prep_batch(tracks, lane=lane, on_start=on_start, on_done=on_done, log=log.append,
-                          videos=opts['videos'], revideo=opts['revideo'], video_only=opts['video_only'],
-                          on_video=on_video,
-                          out_root=root, model=opts['model'], refresh=opts['refresh'],
-                          force=opts['force'], online=True, backend=opts['backend'])
+            done, failed = kp.prep_batch(
+                tracks, lane=lane, on_start=on_start, on_done=on_done, log=log.append,
+                videos=opts['videos'], revideo=opts['revideo'], video_only=opts['video_only'],
+                on_video=on_video,
+                out_root=root, model=opts['model'], refresh=opts['refresh'],
+                force=opts['force'], online=True, backend=opts['backend'])
             kp.rebuild_index(root)
-            _prep_tracker.update(job_id, status='done', current=None)
+            status = prep_job_status(done, failed)
+            fields = {'status': status, 'current': None, 'done': done, 'failed': failed}
+            if failed:
+                fields['error'] = '%d %s failed' % (failed, 'song' if failed == 1 else 'songs')
+            _prep_tracker.update(job_id, **fields)
         except Exception as exc:
             _prep_tracker.update(job_id, status='error', error=str(exc))
         finally:

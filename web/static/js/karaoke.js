@@ -629,17 +629,23 @@ function pollKaraokeJob(jobId) {
         let job;
         try { job = await karaApi(`/api/karaoke/prep-status/${jobId}`); } catch (e) { clearInterval(kara.jobTimer); return; }
         const pct = job.total ? Math.round(((job.done || 0) + (job.failed || 0)) / job.total * 100) : 0;
+        const label = job.status === 'done' ? 'Done'
+            : job.status === 'partial' ? 'Partial'
+            : job.status === 'error' ? 'Error' : 'Prepping';
         box.innerHTML = `
-            <div class="kara-job-line">${job.status === 'done' ? 'Done' : job.status === 'error' ? 'Error' : 'Prepping'} ${(job.done || 0) + (job.failed || 0)}/${job.total}${job.failed ? ` · ${job.failed} failed` : ''}${job.videos ? ` · ${job.videos} video${job.videos === 1 ? '' : 's'}` : ''}</div>
+            <div class="kara-job-line">${label} ${(job.done || 0) + (job.failed || 0)}/${job.total}${job.failed ? ` · ${job.failed} failed` : ''}${job.videos ? ` · ${job.videos} video${job.videos === 1 ? '' : 's'}` : ''}</div>
             ${job.current ? `<div class="kara-job-current">${escapeHtml(job.current)}</div>` : ''}
             <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
             ${job.error ? `<div class="kara-job-err">${escapeHtml(job.error)}</div>` : ''}
             <pre class="kara-job-log">${escapeHtml((job.log || []).slice(-6).join('\n'))}</pre>`;
-        if (job.status === 'done' || job.status === 'error') {
+        if (job.status === 'done' || job.status === 'partial' || job.status === 'error') {
             clearInterval(kara.jobTimer);
+            kara.jobTimer = null;
             await loadKaraokeSongs();
             if (kara.current && !kara.dirty) selectKaraokeSong(kara.current.dir);
-            toast(job.status === 'done' ? 'Karaoke prep finished' : `Prep error: ${job.error}`, job.status === 'done' ? 'success' : 'error');
+            if (job.status === 'done') toast('Karaoke prep finished', 'success');
+            else if (job.status === 'partial') toast(`${job.failed} of ${job.total} songs failed`, 'error');
+            else toast(job.error ? `Prep error: ${job.error}` : 'Prep failed', 'error');
         } else if ((job.done || 0) > 0) {
             loadKaraokeSongs();
         }

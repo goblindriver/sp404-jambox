@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: phases 1–2 implemented on this branch. Phases 3–8 not started._
+_Status: phases 1–3 implemented on this branch. Phases 4–8 not started._
 
 ## The rule
 
@@ -140,7 +140,7 @@ Tests:
 - `file_path` with `..` that realpaths back inside a root → allowed. Outside after realpath → 403.
 - Index rebuild does not list `_sources`.
 
-### Phase 3 — Job status
+### Phase 3 — Job status (implemented)
 
 Files: `web/api/karaoke.py` `_run_prep`, `web/static/js/karaoke.js` `pollKaraokeJob`.
 
