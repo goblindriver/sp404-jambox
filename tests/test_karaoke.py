@@ -319,11 +319,13 @@ class PrepTests(unittest.TestCase):
                 data = json.load(fh)
             data["drops"] = [{"t": 3.0, "bank": "B", "pad": 1, "vel": 90, "label": "mine"}]
             data["drops_locked"] = True
+            data["mix"] = "dry"
             with open(path, "w") as fh:
                 json.dump(data, fh)
             song = self.prep.prep_song(meta, refresh=True, **kwargs)
         self.assertEqual(song["drops"][0]["label"], "mine")
         self.assertTrue(song["drops_locked"])
+        self.assertEqual(song["mix"], "dry")
 
     def test_a_prepped_song_doesnt_need_its_source(self):
         out = os.path.join(self.tmp.name, "out")
@@ -1031,6 +1033,32 @@ class DeckTests(unittest.TestCase):
         self.assertIn("[vid1]null[vo]", self.deck.guide_graph(-9, True))
         self.assertAlmostEqual(self.deck.pitch_scale(12), 2.0)
 
+    def test_mpv_plays_the_mix_you_sing_to(self):
+        import karaoke_prep
+        with tempfile.TemporaryDirectory() as tmp:
+            dry = os.path.join(tmp, "backing.flac")
+            bv = os.path.join(tmp, "backing_bv.flac")
+            guide = os.path.join(tmp, "guide.flac")
+            for path in (dry, bv, guide):
+                open(path, "wb").close()
+
+            def played(song):
+                args = self.deck.build_mpv_args(tmp, song, fullscreen=False)
+                want = karaoke_prep.preferred_backing(tmp, song)
+                self.assertEqual(args[1], want)
+                self.assertEqual(self.deck.preferred_backing(tmp, song), want)
+                other = bv if os.path.basename(want) == "backing.flac" else dry
+                self.assertNotIn(other, args)
+                self.assertIn(f"--audio-files={guide}", args)
+                return os.path.basename(want)
+
+            self.assertEqual(karaoke_prep.preferred_backing(tmp, {}), bv)
+            self.assertEqual(played({}), "backing_bv.flac")
+            self.assertEqual(played({"mix": "dry"}), "backing.flac")
+            os.remove(bv)
+            self.assertEqual(played({}), "backing.flac")
+            self.assertEqual(played({"mix": "bv"}), "backing.flac")
+
     def test_song_video_needs_the_file_and_an_offset_to_sync(self):
         d = self.deck
         with tempfile.TemporaryDirectory() as tmp:
@@ -1356,6 +1384,40 @@ class KaraokeApiTests(unittest.TestCase):
         self.assertEqual(detail["song"]["artist"], "Home Front")
         self.assertEqual(detail["lyrics"][0], {"t": 10.0, "text": "Verse line one"})
         self.assertTrue(detail["has_guide"])
+        self.assertFalse(detail["has_backing_bv"])
+
+    def test_backing_bv_is_served_only_when_it_exists(self):
+        missing = self.client.get(f"/api/karaoke/audio/{self.dir}/backing_bv")
+        self.assertEqual(missing.status_code, 404)
+        dry = self.client.get(f"/api/karaoke/audio/{self.dir}/backing")
+        self.assertEqual(dry.status_code, 200)
+        bv = os.path.join(self.root, self.dir, "backing_bv.flac")
+        with open(bv, "wb") as fh:
+            fh.write(b"fLaC-bv")
+        found = self.client.get(f"/api/karaoke/audio/{self.dir}/backing_bv")
+        self.assertEqual(found.status_code, 200)
+        self.assertEqual(found.data, b"fLaC-bv")
+
+    def test_mix_is_bv_or_dry_and_leaves_the_drop_sheet(self):
+        song_path = os.path.join(self.root, self.dir, "song.json")
+        with open(song_path) as fh:
+            before = json.load(fh)
+        bad = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "wet"})
+        self.assertEqual(bad.status_code, 400)
+        no_file = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "bv"})
+        self.assertEqual(no_file.status_code, 400)
+        with open(os.path.join(self.root, self.dir, "backing_bv.flac"), "wb") as fh:
+            fh.write(b"fLaC-bv")
+        ok = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "dry"})
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        self.assertEqual(ok.get_json()["drops_locked"], False)
+        with open(song_path) as fh:
+            after = json.load(fh)
+        self.assertEqual(after["mix"], "dry")
+        self.assertEqual(after["drops"], before["drops"])
+        self.assertEqual(after["drops_locked"], before["drops_locked"])
+        bv = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "bv"})
+        self.assertEqual(bv.get_json()["mix"], "bv")
 
     def test_status_reports_karaoke_gen_and_the_lane(self):
         import api.karaoke as karaoke_api

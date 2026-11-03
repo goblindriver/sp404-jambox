@@ -105,9 +105,23 @@ def pitch_scale(semitones):
     return round(2 ** (semitones / 12.0), 6)
 
 
+def preferred_backing(song_dir, song=None):
+    """Same rule as ``karaoke_prep.preferred_backing``.
+
+    Inlined so the deck does not import the kitchen (that loads jambox config).
+    ``backing_bv.flac`` when it exists and ``mix`` is not ``"dry"``; otherwise
+    the dry instrumental.
+    """
+    dry = os.path.join(song_dir, "backing.flac")
+    bv = os.path.join(song_dir, "backing_bv.flac")
+    if (song or {}).get("mix") == "dry" or not os.path.isfile(bv):
+        return dry
+    return bv
+
+
 def build_mpv_args(song_dir, song, *, ipc=PIPE_NAME, audio_device=None, fullscreen=True,
                    screen=None, sub_delay=0.0, mpv="mpv"):
-    args = [mpv, os.path.join(song_dir, "backing.flac"),
+    args = [mpv, preferred_backing(song_dir, song),
             f"--input-ipc-server={ipc}",
             "--force-window=yes", "--keep-open=no", "--idle=no",
             "--af=@rb:rubberband=pitch-scale=1.0",

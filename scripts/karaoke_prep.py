@@ -215,6 +215,20 @@ def _source_kind(meta):
     return "plex" if meta.get("id") else "file"
 
 
+def preferred_backing(song_dir, song=None):
+    """The mix to sing to.
+
+    ``backing_bv.flac`` when karaoke-gen made one and ``mix`` is not ``"dry"``.
+    Missing ``mix`` means that file. Demucs never writes it, so this is
+    ``backing.flac``. ``"dry"`` is the instrumental even when the other file exists.
+    """
+    dry = os.path.join(song_dir, "backing.flac")
+    bv = os.path.join(song_dir, "backing_bv.flac")
+    if (song or {}).get("mix") == "dry" or not os.path.isfile(bv):
+        return dry
+    return bv
+
+
 def load_song_json(song_dir):
     path = os.path.join(song_dir, "song.json")
     if os.path.isfile(path):
@@ -745,6 +759,8 @@ def prep_song(meta, *, out_root=None, model="htdemucs", refresh=False, force=Fal
         "video": existing.get("video"),  # kept: fetched once by prep_video, same song timeline
         "prepped_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
+    if existing.get("mix") in ("bv", "dry"):
+        song["mix"] = existing["mix"]  # the singer's choice; a refresh must not flip it
     write_json(os.path.join(song_dir, "song.json"), song)
     log(f"    bpm={song['bpm']} key={song['key']} lyrics={lyrics_source} "
         f"choruses={len(choruses)} drops={len(drops)} preset={song['preset']}")

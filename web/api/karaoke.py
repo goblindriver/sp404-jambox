@@ -36,7 +36,7 @@ KARAOKE_SET_FIXED = [
 KARAOKE_SET_FILL = ['genre/synth-punk-pogo', 'genre/riot-mode', 'genre/disco-inferno',
                     'genre/funk-muscle', 'genre/electro-sweat', 'genre/neon-rave', 'genre/peak-hour']
 
-AUDIO_FILES = {'backing': 'backing.flac', 'guide': 'guide.flac'}
+AUDIO_FILES = {'backing': 'backing.flac', 'backing_bv': 'backing_bv.flac', 'guide': 'guide.flac'}
 UPLOAD_EXTS = {'.flac', '.wav', '.aiff', '.aif', '.mp3', '.m4a', '.ogg'}
 
 
@@ -206,6 +206,7 @@ def song(name):
         'lyrics': lines,
         'plain_lyrics': plain,
         'has_guide': os.path.isfile(os.path.join(path, 'guide.flac')),
+        'has_backing_bv': os.path.isfile(os.path.join(path, 'backing_bv.flac')),
         'has_cover': os.path.isfile(os.path.join(path, 'cover.jpg')),
         'has_video': bool(data.get('video')) and os.path.isfile(os.path.join(path, data['video'].get('file') or '')),
     })
@@ -265,6 +266,27 @@ def save_drops(name):
         data['preset'] = body.get('preset') or None
     _prep_module().write_json(os.path.join(path, 'song.json'), data)
     return jsonify({'ok': True, 'drops': drops, 'drops_locked': data['drops_locked']})
+
+
+@karaoke_bp.route('/karaoke/song/<name>/mix', methods=['PUT'])
+def save_mix(name):
+    """Remember which mix to sing to. Does not touch the drop sheet."""
+    try:
+        path, data = _read_song(name)
+    except (ValueError, FileNotFoundError):
+        return jsonify({'ok': False, 'error': 'Song not found'}), 404
+    try:
+        body = json_object_body()
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    mix = body.get('mix')
+    if mix not in ('bv', 'dry'):
+        return jsonify({'ok': False, 'error': 'mix must be bv or dry'}), 400
+    if mix == 'bv' and not os.path.isfile(os.path.join(path, 'backing_bv.flac')):
+        return jsonify({'ok': False, 'error': 'No backing-vocal mix for this song'}), 400
+    data['mix'] = mix
+    _prep_module().write_json(os.path.join(path, 'song.json'), data)
+    return jsonify({'ok': True, 'mix': mix, 'drops_locked': data.get('drops_locked', False)})
 
 
 @karaoke_bp.route('/karaoke/song/<name>/redraft', methods=['POST'])

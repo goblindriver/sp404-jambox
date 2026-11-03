@@ -213,6 +213,7 @@ function renderKaraokeDetail() {
             <span id="kara-time" class="kara-time">0:00 / ${karaFmt(s.duration_s)}</span>
             <label class="kara-toggle" title="Play bank ${escapeHtml(kara.status ? kara.status.drop_bank : 'A')} pad previews at drop times"><input type="checkbox" id="kara-hear" ${kara.hearDrops ? 'checked' : ''} onchange="kara.hearDrops=this.checked"> hear drops</label>
             ${c.has_guide ? `<label class="kara-toggle" title="Guide vocal level">guide <input type="range" id="kara-guide-vol" min="0" max="100" value="0" oninput="karaGuideVol(this.value)"></label>` : ''}
+            ${c.has_backing_bv ? `<label class="kara-toggle" title="Instrumental with the backing vocals kept. Off is the dry mix."><input type="checkbox" id="kara-bv" ${s.mix === 'dry' ? '' : 'checked'} onchange="karaSetMix(this.checked)"> backing vocals</label>` : ''}
             <button class="btn btn-sm" onclick="karaFullscreen()" title="Full-screen lyrics (double-click the stage too)">⛶ Stage</button>
         </div>
 
@@ -234,7 +235,7 @@ function renderKaraokeDetail() {
         </div>
         <div id="kara-drop-table" class="kara-drop-table"></div>
 
-        <audio id="kara-backing" preload="auto" src="/api/karaoke/audio/${enc}/backing"></audio>
+        <audio id="kara-backing" preload="auto" src="/api/karaoke/audio/${enc}/${c.has_backing_bv && s.mix !== 'dry' ? 'backing_bv' : 'backing'}"></audio>
         ${c.has_guide ? `<audio id="kara-guide" preload="auto" src="/api/karaoke/audio/${enc}/guide"></audio>` : ''}
     `;
     const backing = document.getElementById('kara-backing');
@@ -427,6 +428,32 @@ function karaSyncGuide(force) {
     const a = document.getElementById('kara-backing');
     const g = document.getElementById('kara-guide');
     if (a && g && (force || Math.abs(g.currentTime - a.currentTime) > 0.08)) g.currentTime = a.currentTime;
+}
+
+function karaSetMix(on) {
+    if (!kara.current) return;
+    const mix = on ? 'bv' : 'dry';
+    const enc = encodeURIComponent(kara.current.dir);
+    const audio = document.getElementById('kara-backing');
+    const wasPlaying = !!(audio && !audio.paused);
+    const t = audio ? audio.currentTime : 0;
+    const box = document.getElementById('kara-bv');
+    karaApi(`/api/karaoke/song/${enc}/mix`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mix }),
+    }).then(() => {
+        kara.current.song.mix = mix;
+        if (!audio) return;
+        const resume = () => {
+            audio.removeEventListener('loadedmetadata', resume);
+            try { audio.currentTime = t; } catch (e) { /* not seekable yet */ }
+            if (wasPlaying) audio.play();
+        };
+        audio.addEventListener('loadedmetadata', resume);
+        audio.src = `/api/karaoke/audio/${enc}/${on ? 'backing_bv' : 'backing'}`;
+    }).catch(e => {
+        if (box) box.checked = !on;
+        toast(`Mix failed: ${e.message}`, 'error');
+    });
 }
 
 function karaGuideVol(v) {

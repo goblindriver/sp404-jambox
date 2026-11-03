@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: phases 1–3 implemented on this branch. Phases 4–8 not started._
+_Status: phases 1–4 implemented on this branch. Phases 5–8 not started._
 
 ## The rule
 
@@ -157,7 +157,7 @@ The toast for `partial` names the failed count. `error` does not say finished. A
 
 Test: a two-track batch whose separator raises on the second track finishes `partial` with `failed == 1`.
 
-### Phase 4 — The mix you actually sing to
+### Phase 4 — The mix you actually sing to (implemented)
 
 Files: `web/api/karaoke.py` `AUDIO_FILES` and a new route, `scripts/karaoke_prep.py` or `karaoke_capabilities.py` for `preferred_backing`, `deck/karaoke_deck.py` `build_mpv_args`, `web/static/js/karaoke.js` transport.
 
