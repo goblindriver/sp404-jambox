@@ -396,6 +396,9 @@ def load_settings(repo_dir):
         "KARAOKE_DIR": _read_required_path(
             "SP404_KARAOKE_DIR", os.path.join(os.path.dirname(sample_library), "Karaoke")
         ),
+        # Extra directories a web file_path may name, os.pathsep-separated.
+        # KARAOKE_DIR, SAMPLE_LIBRARY and DOWNLOADS_PATH are always allowed.
+        "KARAOKE_SOURCES": os.environ.get("SP404_KARAOKE_SOURCES", "").strip(),
         # CLI floor when SP404_KARAOKE_BACKEND is unset. demucs ships in
         # requirements.txt; karaoke-gen does not. The web UI does not use this
         # as its control default — scripts/karaoke_capabilities.py picks the

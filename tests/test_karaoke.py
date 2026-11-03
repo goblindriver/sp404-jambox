@@ -285,6 +285,7 @@ class PrepTests(unittest.TestCase):
         for name in ("song.json", "lyrics.lrc", "lyrics.ass", "backing.flac"):
             self.assertTrue(os.path.isfile(os.path.join(song_dir, name)), name)
         self.assertEqual(song["lyrics_source"], "sidecar")
+        self.assertEqual(song["source_kind"], "file")
         self.assertEqual(song["energy"], "high")
         self.assertEqual(song["preset"], "genre/synth-punk-pogo")
         self.assertEqual(len(song["choruses"]), 2)
@@ -293,6 +294,18 @@ class PrepTests(unittest.TestCase):
         songs = self.prep.rebuild_index(out)
         self.assertEqual(len(songs), 1)
         self.assertTrue(songs[0]["has_guide"])
+
+    def test_index_does_not_list_sources(self):
+        out = os.path.join(self.tmp.name, "idx")
+        song = os.path.join(out, "Band - Song")
+        os.makedirs(song)
+        open(os.path.join(song, "backing.flac"), "wb").close()
+        with open(os.path.join(song, "song.json"), "w", encoding="utf-8") as fh:
+            json.dump({"artist": "Band", "title": "Song"}, fh)
+        os.makedirs(os.path.join(out, "_sources"))
+        open(os.path.join(out, "_sources", "deadbeef.wav"), "wb").close()
+        songs = self.prep.rebuild_index(out)
+        self.assertEqual([s["dir"] for s in songs], ["Band - Song"])
 
     def test_locked_drops_survive_refresh(self):
         out = os.path.join(self.tmp.name, "out")
@@ -1282,6 +1295,24 @@ if __name__ == "__main__":
     unittest.main()
 
 
+def _tiny_wav():
+    import struct
+    payload = b"\x00\x00" * 8
+    return struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", 36 + len(payload), b"WAVE", b"fmt ", 16,
+        1, 1, 22050, 44100, 2, 16, b"data", len(payload),
+    ) + payload
+
+
+def _wait_until(predicate, tries=100):
+    for _ in range(tries):
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return False
+
+
 def _available_cap(**overrides):
     """A probe result with Demucs present and the shed extras absent, unless overridden."""
     found = {"demucs": True, "karaoke_gen": False, "remote_lane": None, "ytdlp": False, "plex": False}
@@ -1420,6 +1451,85 @@ class KaraokeApiTests(unittest.TestCase):
             resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir, "videos": True})
         self.assertEqual(resp.status_code, 400)
         self.assertIn("yt-dlp", resp.get_json()["error"])
+
+    def test_upload_stores_the_file_and_queues_that_path(self):
+        import hashlib
+        import io
+        import api.karaoke as karaoke_api
+        wav = _tiny_wav()
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()), \
+                mock.patch.object(karaoke_api, "_run_prep") as run_prep:
+            resp = self.client.post("/api/karaoke/upload", data={
+                "file": (io.BytesIO(wav), "band.wav"),
+                "artist": "Home Front",
+                "title": "Test",
+                "model": "htdemucs",
+            })
+            self.assertEqual(resp.status_code, 200, resp.get_json())
+            self.assertTrue(_wait_until(lambda: run_prep.called))
+        track = run_prep.call_args.args[2][0]
+        digest = hashlib.sha256(wav).hexdigest()[:16]
+        self.assertEqual(os.path.basename(track["file_path"]), digest + ".wav")
+        self.assertEqual(track["source_kind"], "upload")
+        self.assertEqual(track["artist"], "Home Front")
+        self.assertTrue(track["file_path"].startswith(os.path.realpath(os.path.join(self.root, "_sources"))))
+        with open(track["file_path"], "rb") as fh:
+            self.assertEqual(fh.read(), wav)
+
+    def test_upload_rejects_a_non_audio_extension(self):
+        import io
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()):
+            resp = self.client.post("/api/karaoke/upload", data={
+                "file": (io.BytesIO(b"not audio"), "notes.txt"),
+                "model": "htdemucs",
+            })
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("flac", resp.get_json()["error"])
+        sources = os.path.join(self.root, "_sources")
+        self.assertFalse(os.path.isdir(sources) and os.listdir(sources))
+
+    def test_file_path_respects_roots_and_dotdot(self):
+        import api.karaoke as karaoke_api
+        library = os.path.join(self.tmp.name, "lib")
+        sub = os.path.join(library, "sub")
+        extra = os.path.join(self.tmp.name, "extra")
+        os.makedirs(sub)
+        os.makedirs(extra)
+        wav = _tiny_wav()
+        song = os.path.join(sub, "song.wav")
+        extra_song = os.path.join(extra, "extra.wav")
+        outside = os.path.join(self.tmp.name, "outside.wav")
+        for path in (song, extra_song, outside):
+            with open(path, "wb") as fh:
+                fh.write(wav)
+        self.client.application.config.update(
+            SAMPLE_LIBRARY=library,
+            DOWNLOADS_PATH=os.path.join(self.tmp.name, "downloads"),
+            KARAOKE_SOURCES=extra,
+        )
+        inside = os.path.join(sub, "..", "sub", "song.wav")
+        escaped = os.path.join(library, "..", "outside.wav")
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()), \
+                mock.patch.object(karaoke_api, "_run_prep") as run_prep:
+            ok = self.client.post("/api/karaoke/prep", json={
+                "file_path": inside, "artist": "A", "title": "B", "model": "htdemucs"})
+            self.assertEqual(ok.status_code, 200, ok.get_json())
+            self.assertTrue(_wait_until(lambda: run_prep.called))
+            missing = self.client.post("/api/karaoke/prep", json={
+                "file_path": os.path.join(library, "missing.wav"), "model": "htdemucs"})
+            forbidden = self.client.post("/api/karaoke/prep", json={
+                "file_path": escaped, "model": "htdemucs"})
+            from_extra = self.client.post("/api/karaoke/prep", json={
+                "file_path": extra_song, "model": "htdemucs"})
+            self.assertTrue(_wait_until(lambda: run_prep.call_count >= 2))
+        track = run_prep.call_args_list[0].args[2][0]
+        self.assertEqual(track["file_path"], os.path.realpath(song))
+        self.assertEqual(track["source_kind"], "file")
+        self.assertEqual(track["artist"], "A")
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(from_extra.status_code, 200)
+        self.assertEqual(run_prep.call_args_list[1].args[2][0]["file_path"], os.path.realpath(extra_song))
 
     def test_video_shows_in_the_list_and_detail(self):
         song_dir = os.path.join(self.root, self.dir)

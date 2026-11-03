@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: phase 1 implemented on this branch. Phases 2–8 not started._
+_Status: phases 1–2 implemented on this branch. Phases 3–8 not started._
 
 ## The rule
 
@@ -120,7 +120,7 @@ Tests in `tests/test_karaoke.py`:
 - `POST /api/karaoke/prep` with `model=karaoke-gen` while the probe's default is `null` for that tool → 400.
 - Same for `videos: true` without yt-dlp.
 
-### Phase 2 — A song from a file
+### Phase 2 — A song from a file (implemented)
 
 Files: `web/api/karaoke.py` `prep()`, `web/templates/index.html`, `web/static/js/karaoke.js`. CLI `--file` already works. Don't reinvent it.
 

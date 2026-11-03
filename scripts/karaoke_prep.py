@@ -207,6 +207,14 @@ def analyze(path):
 
 # ── Core ─────────────────────────────────────────────────────────────
 
+def _source_kind(meta):
+    """``upload``, ``plex``, or ``file``. A missing value follows plex_id."""
+    kind = meta.get("source_kind")
+    if kind in ("file", "upload", "plex"):
+        return kind
+    return "plex" if meta.get("id") else "file"
+
+
 def load_song_json(song_dir):
     path = os.path.join(song_dir, "song.json")
     if os.path.isfile(path):
@@ -713,6 +721,7 @@ def prep_song(meta, *, out_root=None, model="htdemucs", refresh=False, force=Fal
         "album": meta.get("album"),
         "plex_id": meta.get("id"),
         "source_path": audio_path,
+        "source_kind": _source_kind(meta),
         "duration_s": duration_s,
         "bpm": info["bpm"],
         "key": info["key"],

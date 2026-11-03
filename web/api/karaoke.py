@@ -4,11 +4,13 @@ Song packages live in ``KARAOKE_DIR`` (see scripts/karaoke_prep.py). The
 Windows deck (deck/karaoke_deck.py) plays the same files at party time; this
 blueprint is the kitchen: prep, review, tweak.
 """
+import hashlib
 import os
 import sys
+import tempfile
 import threading
 
-from flask import Blueprint, current_app, jsonify, send_file
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from api._helpers import JobTracker, json_object_body
 
@@ -35,6 +37,7 @@ KARAOKE_SET_FILL = ['genre/synth-punk-pogo', 'genre/riot-mode', 'genre/disco-inf
                     'genre/funk-muscle', 'genre/electro-sweat', 'genre/neon-rave', 'genre/peak-hour']
 
 AUDIO_FILES = {'backing': 'backing.flac', 'guide': 'guide.flac'}
+UPLOAD_EXTS = {'.flac', '.wav', '.aiff', '.aif', '.mp3', '.m4a', '.ogg'}
 
 
 def _prep_module():
@@ -44,6 +47,81 @@ def _prep_module():
 
 def _root():
     return current_app.config['KARAOKE_DIR']
+
+
+def _source_roots():
+    """Directories a ``file_path`` prep is allowed to read."""
+    cfg = current_app.config
+    roots = []
+    for key in ('KARAOKE_DIR', 'SAMPLE_LIBRARY', 'DOWNLOADS_PATH'):
+        value = cfg.get(key)
+        if value:
+            roots.append(os.path.expanduser(str(value)))
+    extra = cfg.get('KARAOKE_SOURCES')
+    if extra is None:
+        extra = os.environ.get('SP404_KARAOKE_SOURCES', '')
+    for part in str(extra).split(os.pathsep):
+        part = part.strip()
+        if part:
+            roots.append(os.path.expanduser(part))
+    return roots
+
+
+def _under_root(path, root):
+    real_root = os.path.realpath(root)
+    real_path = os.path.realpath(path)
+    if real_path == real_root:
+        return True
+    prefix = real_root if real_root.endswith(os.sep) else real_root + os.sep
+    return real_path.startswith(prefix)
+
+
+def resolve_source_file(file_path):
+    """Real path of an audio file under a configured root.
+
+    Raises ValueError, PermissionError (outside every root), or FileNotFoundError.
+    A path that realpaths back inside a root is allowed. A symlink that
+    realpaths out is not.
+    """
+    if not isinstance(file_path, str) or not file_path.strip():
+        raise ValueError('file_path required')
+    expanded = os.path.expanduser(file_path.strip())
+    if not any(_under_root(expanded, root) for root in _source_roots()):
+        raise PermissionError('file_path is outside the karaoke source roots')
+    real = os.path.realpath(expanded)
+    if not os.path.isfile(real):
+        raise FileNotFoundError(file_path)
+    return real
+
+
+def _store_upload(stream, ext):
+    """Stream an upload to ``KARAOKE_DIR/_sources/<sha256[:16]><ext>``.
+
+    The hash is computed while writing, so the bytes are not held twice.
+    """
+    sources = os.path.join(_root(), '_sources')
+    os.makedirs(sources, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.', suffix='.partial', dir=sources)
+    hasher = hashlib.sha256()
+    replaced = False
+    try:
+        with os.fdopen(fd, 'wb') as out:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+                out.write(chunk)
+        dest = os.path.join(sources, hasher.hexdigest()[:16] + ext)
+        os.replace(tmp, dest)
+        replaced = True
+        return dest
+    finally:
+        if not replaced:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 def _song_dir(name):
@@ -263,29 +341,92 @@ def _run_prep(app, job_id, tracks, opts):
             _prep_lock.release()
 
 
+def _checked_opts(model, videos, revideo, refresh, force):
+    """``(opts, error_response)``. ``error_response`` is ``(body, status)`` or None."""
+    cap = karaoke_capabilities.capabilities()
+    chosen = model or cap['separate']['default']
+    refusal = karaoke_capabilities.reject_prep(cap, chosen, videos)
+    if refusal:
+        return None, (jsonify({'ok': False, 'error': refusal}), 400)
+    return {
+        'backend': 'karaoke-gen' if chosen == 'karaoke-gen' else 'demucs',
+        'model': 'htdemucs' if chosen == 'karaoke-gen' else chosen,
+        'refresh': bool(refresh),
+        'force': bool(force),
+        'videos': bool(videos),
+        'revideo': bool(revideo),
+        'video_only': False,
+    }, None
+
+
+def _queue_prep(tracks, opts):
+    if not tracks:
+        return jsonify({'ok': False, 'error': 'No tracks to prep'}), 400
+    job_id = _prep_tracker.create(status='queued', total=len(tracks), done=0, failed=0, log=[])
+    app = current_app._get_current_object()
+    threading.Thread(target=_run_prep, args=(app, job_id, tracks, opts), daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id, 'total': len(tracks)})
+
+
+def _form_flag(name):
+    return request.form.get(name, '').strip().lower() in ('1', 'true', 'on', 'yes')
+
+
+def _clean(value):
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
+
+
+@karaoke_bp.route('/karaoke/upload', methods=['POST'])
+def upload():
+    """Multipart ``file`` plus optional artist, title, album, model, videos.
+
+    The file is stored under ``KARAOKE_DIR/_sources`` and prepped like a local file.
+    """
+    if _prep_lock.locked():
+        return jsonify({'ok': False, 'error': 'A karaoke prep job is already running'}), 409
+    opts, err = _checked_opts(
+        (request.form.get('model') or '').strip() or None,
+        _form_flag('videos') or _form_flag('revideo'),
+        _form_flag('revideo'),
+        _form_flag('refresh'),
+        _form_flag('force'),
+    )
+    if err:
+        return err
+    upload_file = request.files.get('file')
+    if upload_file is None or not upload_file.filename:
+        return jsonify({'ok': False, 'error': 'file required'}), 400
+    ext = os.path.splitext(upload_file.filename)[1].lower()
+    if ext not in UPLOAD_EXTS:
+        return jsonify({'ok': False, 'error': 'file must be flac, wav, aiff, mp3, m4a, or ogg'}), 400
+    path = _store_upload(upload_file.stream, ext)
+    artist = _clean(request.form.get('artist'))
+    title = _clean(request.form.get('title'))
+    album = _clean(request.form.get('album'))
+    track = {'file_path': path, 'artist': artist, 'title': title, 'album': album, 'source_kind': 'upload'}
+    return _queue_prep([track], opts)
+
+
 @karaoke_bp.route('/karaoke/prep', methods=['POST'])
 def prep():
-    """Start a prep job. Body: one of {playlist}, {track_id}, {track_ids: []}, {dir} (re-prep)
-    plus optional model ('karaoke-gen'|'htdemucs'|'htdemucs_ft'; the Demucs ones pick
-    the Demucs backend), refresh, force, videos (fetch a music video per song) and
-    revideo (re-fetch it; with {dir} alone that's all it does)."""
+    """Start a prep job. Body: one of {playlist}, {track_id}, {track_ids: []},
+    {file_path} (under KARAOKE_DIR, the sample library, downloads, or
+    SP404_KARAOKE_SOURCES), or {dir} (re-prep). Optional model
+    ('karaoke-gen'|'htdemucs'|'htdemucs_ft'), refresh, force, videos, revideo,
+    and artist/title/album for a file_path."""
     try:
         body = json_object_body()
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
     if _prep_lock.locked():
         return jsonify({'ok': False, 'error': 'A karaoke prep job is already running'}), 409
-    cap = karaoke_capabilities.capabilities()
-    model = body.get('model') or cap['separate']['default']
     videos = bool(body.get('videos') or body.get('revideo'))
-    refusal = karaoke_capabilities.reject_prep(cap, model, videos)
-    if refusal:
-        return jsonify({'ok': False, 'error': refusal}), 400
-    opts = {'backend': 'karaoke-gen' if model == 'karaoke-gen' else 'demucs',
-            'model': 'htdemucs' if model == 'karaoke-gen' else model,
-            'refresh': bool(body.get('refresh')), 'force': bool(body.get('force')),
-            'videos': videos, 'revideo': bool(body.get('revideo')),
-            'video_only': False}
+    opts, err = _checked_opts(body.get('model') or None, videos, bool(body.get('revideo')),
+                              bool(body.get('refresh')), bool(body.get('force')))
+    if err:
+        return err
 
     tracks = []
     if body.get('dir'):
@@ -293,14 +434,31 @@ def prep():
             _, data = _read_song(str(body['dir']))
         except (ValueError, FileNotFoundError):
             return jsonify({'ok': False, 'error': 'Song not found'}), 404
+        kind = data.get('source_kind')
+        if kind not in ('file', 'upload', 'plex'):
+            kind = 'plex' if data.get('plex_id') else 'file'
         tracks = [{'file_path': data.get('source_path'), 'artist': data.get('artist'),
                    'title': data.get('title'), 'album': data.get('album'), 'id': data.get('plex_id'),
                    'moods': data.get('moods'), 'styles': data.get('styles'),
-                   'duration_s': data.get('duration_s')}]
+                   'duration_s': data.get('duration_s'), 'source_kind': kind}]
         # Video button: the song is prepped, so skip prep and the lanes (its source may be offline).
         opts['video_only'] = opts['revideo'] and not opts['force'] and not opts['refresh']
         if not opts['force'] and not opts['revideo']:
             opts['refresh'] = True
+    elif body.get('file_path'):
+        try:
+            path = resolve_source_file(body.get('file_path'))
+        except PermissionError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 403
+        except FileNotFoundError:
+            return jsonify({'ok': False, 'error': 'Audio not found'}), 404
+        except ValueError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 400
+        tracks = [{'file_path': path,
+                   'artist': _clean(body.get('artist')),
+                   'title': _clean(body.get('title')),
+                   'album': _clean(body.get('album')),
+                   'source_kind': 'file'}]
     else:
         plex = _get_plex()
         if plex is None:
@@ -318,14 +476,8 @@ def prep():
             except (TypeError, ValueError):
                 t = None
             if t:
-                tracks.append(t)
-    if not tracks:
-        return jsonify({'ok': False, 'error': 'No tracks to prep'}), 400
-
-    job_id = _prep_tracker.create(status='queued', total=len(tracks), done=0, failed=0, log=[])
-    app = current_app._get_current_object()
-    threading.Thread(target=_run_prep, args=(app, job_id, tracks, opts), daemon=True).start()
-    return jsonify({'ok': True, 'job_id': job_id, 'total': len(tracks)})
+                tracks.append(dict(t, source_kind='plex'))
+    return _queue_prep(tracks, opts)
 
 
 @karaoke_bp.route('/karaoke/prep-status/<job_id>')

@@ -66,7 +66,9 @@ async function openKaraoke() {
         toast(`Karaoke status failed: ${e.message}`, 'error');
     }
     await loadKaraokeSongs();
-    loadKaraokePlaylists();
+    const plexOn = kara.status && kara.status.capabilities && kara.status.capabilities.sources
+        && kara.status.capabilities.sources.plex;
+    if (plexOn || !kara.status || !kara.status.capabilities) loadKaraokePlaylists();
 }
 
 function applyKaraokeCapabilities() {
@@ -89,6 +91,10 @@ function applyKaraokeCapabilities() {
     if (!extras.ytdlp) videos.checked = false;
     const prep = document.getElementById('karaoke-prep-btn');
     prep.disabled = !sep.default;
+    const filePrep = document.getElementById('karaoke-file-prep');
+    if (filePrep) filePrep.disabled = !sep.default;
+    const plex = document.getElementById('karaoke-plex-source');
+    if (plex) plex.classList.toggle('hidden', !(cap.sources && cap.sources.plex));
     if (!sep.default && !kara.jobTimer) {
         const job = document.getElementById('karaoke-job');
         job.classList.remove('hidden');
@@ -536,6 +542,31 @@ function prepKaraokePlaylist() {
     const playlist = document.getElementById('karaoke-playlist').value;
     if (!playlist) { toast('Pick a Plex playlist first', 'error'); return; }
     startKaraokePrep({ playlist });
+}
+
+function prepKaraokeFile() {
+    const input = document.getElementById('karaoke-file');
+    const file = input.files && input.files[0];
+    if (!file) { toast('Choose an audio file first', 'error'); return; }
+    const modelSel = document.getElementById('karaoke-model');
+    const opt = modelSel.selectedOptions[0];
+    if (!modelSel.value || (opt && opt.disabled)) {
+        toast('No vocal separator available for that model', 'error');
+        return;
+    }
+    const body = new FormData();
+    body.append('file', file);
+    const artist = document.getElementById('karaoke-artist').value;
+    const title = document.getElementById('karaoke-title').value;
+    if (artist) body.append('artist', artist);
+    if (title) body.append('title', title);
+    body.append('model', modelSel.value);
+    if (document.getElementById('karaoke-videos').checked) body.append('videos', '1');
+    karaApi('/api/karaoke/upload', { method: 'POST', body }).then(data => {
+        input.value = '';
+        toast(`Prepping ${data.total} song${data.total === 1 ? '' : 's'}…`);
+        pollKaraokeJob(data.job_id);
+    }).catch(e => toast(`Prep failed: ${e.message}`, 'error'));
 }
 
 function reprepKaraoke(force) {
