@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: phases 1–7 implemented on this branch. Phase 8 not started._
+_Status: phases 1–8 implemented on this branch._
 
 ## The rule
 
@@ -203,7 +203,7 @@ One copy per click, not per bank.
 
 Test: load-set against a tmp config writes the bak, then the banks, and the bak still parses as the old YAML.
 
-### Phase 8 — Docs the next session will actually read
+### Phase 8 — Docs the next session will actually read (implemented)
 
 Two edits. Not a rewrite of the architecture doc.
 
