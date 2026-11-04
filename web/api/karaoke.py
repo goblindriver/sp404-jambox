@@ -6,9 +6,11 @@ blueprint is the kitchen: prep, review, tweak.
 """
 import hashlib
 import os
+import shutil
 import sys
 import tempfile
 import threading
+import time
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
@@ -552,10 +554,31 @@ def set_plan():
                                          for b, r in plan_karaoke_set([s.get('preset') for s in songs])]})
 
 
+def backup_bank_config(path):
+    """One copy of bank_config.yaml beside itself, before any bank is written.
+
+    ``path.bak-karaoke-YYYYMMDD-HHMMSS``. Raises OSError if the copy fails;
+    the caller must not write the banks in that case.
+    """
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = f"{path}.bak-karaoke-{stamp}"
+    shutil.copy2(path, dest)
+    return dest
+
+
 @karaoke_bp.route('/karaoke/load-set', methods=['POST'])
 def load_set():
-    """Load the karaoke-night banks into bank_config.yaml (then Fetch All + Export)."""
+    """Load the karaoke-night banks into bank_config.yaml (then Fetch All + Export).
+
+    The current file is copied once, beside itself, before the first bank is
+    written. A failed copy writes nothing.
+    """
     import preset_utils as pu
+    try:
+        backup = backup_bank_config(pu.CONFIG_PATH)
+    except OSError as exc:
+        return jsonify({'ok': False, 'error': f'Could not back up bank config: {exc}',
+                        'backup': None}), 500
     songs = _prep_module().rebuild_index(_root())
     loaded, errors = [], []
     for bank, ref in plan_karaoke_set([s.get('preset') for s in songs]):
@@ -564,4 +587,4 @@ def load_set():
             loaded.append({'bank': bank, 'preset': ref, 'name': result.get('name')})
         except Exception as exc:
             errors.append({'bank': bank, 'preset': ref, 'error': str(exc)})
-    return jsonify({'ok': not errors, 'loaded': loaded, 'errors': errors})
+    return jsonify({'ok': not errors, 'loaded': loaded, 'errors': errors, 'backup': backup})

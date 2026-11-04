@@ -1527,11 +1527,48 @@ class KaraokeApiTests(unittest.TestCase):
 
     def test_load_set_uses_preset_utils(self):
         import preset_utils
-        with mock.patch.object(preset_utils, "load_preset_to_bank", return_value={"name": "x"}) as m:
+        cfg = os.path.join(self.tmp.name, "bank_config.yaml")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: keep me\n")
+        with mock.patch.object(preset_utils, "CONFIG_PATH", cfg), \
+                mock.patch.object(preset_utils, "load_preset_to_bank", return_value={"name": "x"}) as m:
             data = self.client.post("/api/karaoke/load-set").get_json()
         self.assertTrue(data["ok"])
         self.assertEqual(m.call_count, 10)
         self.assertEqual(m.call_args_list[0].args, ("utility/karaoke-drops", "a"))
+        self.assertTrue(os.path.basename(data["backup"]).startswith("bank_config.yaml.bak-karaoke-"))
+        self.assertEqual(os.path.dirname(os.path.abspath(data["backup"])), os.path.abspath(self.tmp.name))
+
+    def test_load_set_backs_up_before_it_writes_and_stops_if_the_copy_fails(self):
+        import api.karaoke as karaoke_api
+        import preset_utils
+        from jambox_config import load_bank_config
+        cfg = os.path.join(self.tmp.name, "bank_config.yaml")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: Tiger Dust\n  pads:\n    1: old horn\nkept: yes\n")
+        with mock.patch.object(preset_utils, "CONFIG_PATH", cfg):
+            resp = self.client.post("/api/karaoke/load-set")
+        data = resp.get_json()
+        self.assertEqual(resp.status_code, 200, data)
+        self.assertTrue(data["ok"])
+        bak = data["backup"]
+        self.assertTrue(os.path.isfile(bak))
+        old = load_bank_config(bak, strict=True)
+        self.assertEqual(old["bank_a"]["name"], "Tiger Dust")
+        self.assertTrue(old["kept"])
+        live = load_bank_config(cfg, strict=True)
+        self.assertEqual(live["bank_a"]["preset"], "utility/karaoke-drops")
+        self.assertEqual(len([n for n in os.listdir(self.tmp.name) if ".bak-karaoke-" in n]), 1)
+
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: Tiger Dust\n")
+        with mock.patch.object(preset_utils, "CONFIG_PATH", cfg), \
+                mock.patch.object(karaoke_api.shutil, "copy2", side_effect=OSError("disk full")), \
+                mock.patch.object(preset_utils, "load_preset_to_bank") as write:
+            failed = self.client.post("/api/karaoke/load-set")
+        self.assertEqual(failed.status_code, 500)
+        write.assert_not_called()
+        self.assertEqual(load_bank_config(cfg, strict=True)["bank_a"]["name"], "Tiger Dust")
 
     def test_prep_requires_source(self):
         with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()):

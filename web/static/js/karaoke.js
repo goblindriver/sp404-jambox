@@ -714,7 +714,8 @@ async function loadKaraokeSet() {
     document.getElementById('karaoke-set-modal').classList.add('hidden');
     try {
         const data = await karaApi('/api/karaoke/load-set', { method: 'POST' });
-        toast(`Loaded ${data.loaded.length} karaoke banks. Fetch All, then Export.`, 'success');
+        const where = data.backup ? ` Backup: ${data.backup}.` : '';
+        toast(`Loaded ${data.loaded.length} karaoke banks.${where} Fetch All, then Export.`, 'success');
         if (data.errors && data.errors.length) toast(`Some banks failed: ${data.errors.map(e => e.bank.toUpperCase()).join(', ')}`, 'error');
         if (typeof refreshBanks === 'function') refreshBanks();
     } catch (e) {

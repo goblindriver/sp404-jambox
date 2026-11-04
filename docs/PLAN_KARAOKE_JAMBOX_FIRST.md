@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: phases 1–6 implemented on this branch. Phases 7–8 not started._
+_Status: phases 1–7 implemented on this branch. Phase 8 not started._
 
 ## The rule
 
@@ -193,7 +193,7 @@ Files: `deck/karaoke_deck.py` only, plus its tests if the pure helpers live in `
 - `--video-screen` behavior stays opt-in. No video file still means the spectrum visual, as today. Don't probe displays.
 - Non-Windows default root stays `~/Music/Karaoke`. Don't hardcode `D:\Karaoke\Songs` anywhere new.
 
-### Phase 7 — Don't destroy the current banks quietly
+### Phase 7 — Don't destroy the current banks quietly (implemented)
 
 Files: `web/api/karaoke.py` `load_set`, `web/static/js/karaoke.js` `loadKaraokeSet`, the confirm copy in `index.html`.
 
