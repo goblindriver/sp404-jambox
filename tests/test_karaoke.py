@@ -996,6 +996,8 @@ class DeckTests(unittest.TestCase):
         # D:\Karaoke holds the GPU lane (venv, models, work); a /MIR mirror into it would delete them.
         if os.name == "nt":
             self.assertEqual(self.deck.DEFAULT_ROOT, r"D:\Karaoke\Songs")
+        else:
+            self.assertEqual(self.deck.DEFAULT_ROOT, os.path.expanduser("~/Music/Karaoke"))
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(SystemExit) as ctx:
                 self.deck.load_index(root)
@@ -1169,13 +1171,59 @@ class DeckTests(unittest.TestCase):
             exe = os.path.join(tmp, "MPV Player", "mpv.exe")
             os.makedirs(os.path.dirname(exe))
             open(exe, "wb").close()
+            custom = os.path.join(tmp, "custom-mpv.exe")
+            open(custom, "wb").close()
             with mock.patch.object(d.shutil, "which", return_value=None), \
                  mock.patch.object(d.os, "name", "nt"), \
                  mock.patch.dict(d.os.environ, {"ProgramFiles": tmp, "LOCALAPPDATA": ""}):
                 self.assertEqual(d.find_mpv(), exe)
-                self.assertEqual(d.find_mpv(r"C:\custom\mpv.exe"), r"C:\custom\mpv.exe")
+                self.assertEqual(d.find_mpv(custom), custom)
+                self.assertIsNone(d.find_mpv(os.path.join(tmp, "missing.exe")))
+            with mock.patch.object(d.shutil, "which", return_value=None), \
+                 mock.patch.object(d.os, "name", "nt"), \
+                 mock.patch.dict(d.os.environ, {"ProgramFiles": "", "LOCALAPPDATA": ""}):
+                self.assertIsNone(d.find_mpv())
             with mock.patch.object(d.shutil, "which", return_value="/usr/bin/mpv"):
                 self.assertEqual(d.find_mpv(), "/usr/bin/mpv")
+
+    def test_missing_mpv_exits_before_a_window_and_list_ports_still_runs(self):
+        d = self.deck
+        with mock.patch.object(d, "find_mpv", return_value=None), \
+                mock.patch.object(d.subprocess, "Popen") as popen, \
+                mock.patch("builtins.print") as printed:
+            code = d.main([])
+        self.assertEqual(code, 2)
+        popen.assert_not_called()
+        text = "\n".join(str(c.args[0]) for c in printed.call_args_list if c.args)
+        self.assertIn("web UI", text)
+        self.assertIn("karaoke_prep", text)
+        self.assertIn("--mpv", text)
+        with mock.patch.object(d, "find_mpv", return_value=None), \
+                mock.patch.object(d, "list_ports") as listed:
+            self.assertEqual(d.main(["--list-ports"]), 0)
+        listed.assert_called_once_with("mpv")
+
+    def test_missing_midi_port_warns_once_and_the_song_can_still_play(self):
+        fake = mock.Mock()
+        fake.get_output_names.return_value = ["Some Other Port"]
+        with mock.patch.object(self.deck, "load_mido", return_value=fake), \
+                mock.patch("builtins.print") as printed:
+            midi = self.deck.MidiOut("USB Midi")
+            midi.clock()
+            midi.start()
+            midi.pad("A", 1, 110, 1)
+        self.assertIsNone(midi.port)
+        fake.open_output.assert_not_called()
+        warnings = [c.args[0] for c in printed.call_args_list if c.args and "MIDI unavailable" in str(c.args[0])]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("not found", warnings[0])
+        dry = self.deck.MidiOut("USB Midi", dry_run=True)
+        self.assertIsNone(dry.port)
+        with mock.patch.object(self.deck.threading, "Timer", return_value=mock.Mock()) as timer, \
+                mock.patch("builtins.print") as printed:
+            dry.pad("A", 1, 100, 1)
+        timer.assert_called_once()
+        self.assertTrue(any("[midi]" in str(c.args[0]) for c in printed.call_args_list if c.args))
 
     def test_mido_uses_pygame_without_rtmidi_unless_a_backend_is_set(self):
         fake_mido = mock.MagicMock()

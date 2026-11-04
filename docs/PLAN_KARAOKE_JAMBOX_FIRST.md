@@ -2,7 +2,7 @@
 
 _Plan, 2026-11-03. Branch `plan/karaoke-jambox-first`, off `main` at `1939437` (PR #25)._
 
-_Status: phases 1–5 implemented on this branch. Phases 6–8 not started._
+_Status: phases 1–6 implemented on this branch. Phases 7–8 not started._
 
 ## The rule
 
@@ -184,7 +184,7 @@ If the scorer isn't importable without a library (tests, fresh clone), step 2 is
 
 Tests: with a fake library hit and no card WAV, preview returns that file. With a card WAV, the card wins even if the library has a hit. With neither, 404 and the JSON error. A second call after the tag-store mtime changes is allowed to find a file.
 
-### Phase 6 — The deck is an upgrade
+### Phase 6 — The deck is an upgrade (implemented)
 
 Files: `deck/karaoke_deck.py` only, plus its tests if the pure helpers live in `tests/test_karaoke.py` (they do — add cases there or next to the deck tests that already import it).
 
