@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Karaoke prep ("the kitchen"): turn songs into ready-to-sing packages.
 
-Per song: the vocal comes out (karaoke-gen by default: BS-RoFormer separation
-plus word-timed Whisper lyrics corrected against LRCLIB/Genius; or the older
-Demucs split), librosa finds tempo + first downbeat, choruses are located from
+Per song: the vocal comes out (Demucs by default — it ships with this repo;
+karaoke-gen when ``SP404_KARAOKE_BACKEND=karaoke-gen``, or when the web probe
+sees that binary or a remote lane), librosa finds tempo + first downbeat, choruses are located from
 the repeated lyric blocks, and a drop sheet is drafted for the SP-404A. Output
 lives OUTSIDE the sample library (see ``KARAOKE_DIR`` / ``SP404_KARAOKE_DIR``)::
 
@@ -206,6 +206,28 @@ def analyze(path):
 
 
 # ── Core ─────────────────────────────────────────────────────────────
+
+def _source_kind(meta):
+    """``upload``, ``plex``, or ``file``. A missing value follows plex_id."""
+    kind = meta.get("source_kind")
+    if kind in ("file", "upload", "plex"):
+        return kind
+    return "plex" if meta.get("id") else "file"
+
+
+def preferred_backing(song_dir, song=None):
+    """The mix to sing to.
+
+    ``backing_bv.flac`` when karaoke-gen made one and ``mix`` is not ``"dry"``.
+    Missing ``mix`` means that file. Demucs never writes it, so this is
+    ``backing.flac``. ``"dry"`` is the instrumental even when the other file exists.
+    """
+    dry = os.path.join(song_dir, "backing.flac")
+    bv = os.path.join(song_dir, "backing_bv.flac")
+    if (song or {}).get("mix") == "dry" or not os.path.isfile(bv):
+        return dry
+    return bv
+
 
 def load_song_json(song_dir):
     path = os.path.join(song_dir, "song.json")
@@ -713,6 +735,7 @@ def prep_song(meta, *, out_root=None, model="htdemucs", refresh=False, force=Fal
         "album": meta.get("album"),
         "plex_id": meta.get("id"),
         "source_path": audio_path,
+        "source_kind": _source_kind(meta),
         "duration_s": duration_s,
         "bpm": info["bpm"],
         "key": info["key"],
@@ -736,6 +759,8 @@ def prep_song(meta, *, out_root=None, model="htdemucs", refresh=False, force=Fal
         "video": existing.get("video"),  # kept: fetched once by prep_video, same song timeline
         "prepped_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
+    if existing.get("mix") in ("bv", "dry"):
+        song["mix"] = existing["mix"]  # the singer's choice; a refresh must not flip it
     write_json(os.path.join(song_dir, "song.json"), song)
     log(f"    bpm={song['bpm']} key={song['key']} lyrics={lyrics_source} "
         f"choruses={len(choruses)} drops={len(drops)} preset={song['preset']}")

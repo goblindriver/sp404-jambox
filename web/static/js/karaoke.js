@@ -23,7 +23,6 @@ const kara = {
     raf: null,
     jobTimer: null,
     searchTimer: null,
-    padAudio: {},
 };
 
 // app.js api() returns {error} instead of throwing; karaoke code wants exceptions.
@@ -61,11 +60,45 @@ async function openKaraoke() {
             chip(t.plex, 'Plex') + chip(t.karaoke_gen, 'karaoke-gen') +
             (t.remote_lane ? chip(true, `lane: ${escapeHtml(t.remote_lane)}`) : '') + chip(t.ytdlp, 'yt-dlp') +
             chip(t.demucs, 'Demucs') + chip(t.librosa, 'librosa');
+        applyKaraokeCapabilities();
     } catch (e) {
         toast(`Karaoke status failed: ${e.message}`, 'error');
     }
     await loadKaraokeSongs();
-    loadKaraokePlaylists();
+    const plexOn = kara.status && kara.status.capabilities && kara.status.capabilities.sources
+        && kara.status.capabilities.sources.plex;
+    if (plexOn || !kara.status || !kara.status.capabilities) loadKaraokePlaylists();
+}
+
+function applyKaraokeCapabilities() {
+    const cap = kara.status && kara.status.capabilities;
+    if (!cap || !cap.separate) return;
+    const sep = cap.separate;
+    const extras = cap.extras || {};
+    const model = document.getElementById('karaoke-model');
+    const canGen = !!(sep.karaoke_gen || sep.remote_lane);
+    const canDemucs = !!sep.demucs;
+    for (const opt of model.options) {
+        opt.disabled = opt.value === 'karaoke-gen' ? !canGen : !canDemucs;
+    }
+    if (sep.default) {
+        const chosen = model.querySelector(`option[value="${sep.default}"]`);
+        if (chosen && !chosen.disabled) model.value = sep.default;
+    }
+    const videos = document.getElementById('karaoke-videos');
+    videos.disabled = !extras.ytdlp;
+    if (!extras.ytdlp) videos.checked = false;
+    const prep = document.getElementById('karaoke-prep-btn');
+    prep.disabled = !sep.default;
+    const filePrep = document.getElementById('karaoke-file-prep');
+    if (filePrep) filePrep.disabled = !sep.default;
+    const plex = document.getElementById('karaoke-plex-source');
+    if (plex) plex.classList.toggle('hidden', !(cap.sources && cap.sources.plex));
+    if (!sep.default && !kara.jobTimer) {
+        const job = document.getElementById('karaoke-job');
+        job.classList.remove('hidden');
+        job.textContent = sep.reason || 'No vocal separator installed.';
+    }
 }
 
 function closeKaraoke() {
@@ -179,6 +212,7 @@ function renderKaraokeDetail() {
             <span id="kara-time" class="kara-time">0:00 / ${karaFmt(s.duration_s)}</span>
             <label class="kara-toggle" title="Play bank ${escapeHtml(kara.status ? kara.status.drop_bank : 'A')} pad previews at drop times"><input type="checkbox" id="kara-hear" ${kara.hearDrops ? 'checked' : ''} onchange="kara.hearDrops=this.checked"> hear drops</label>
             ${c.has_guide ? `<label class="kara-toggle" title="Guide vocal level">guide <input type="range" id="kara-guide-vol" min="0" max="100" value="0" oninput="karaGuideVol(this.value)"></label>` : ''}
+            ${c.has_backing_bv ? `<label class="kara-toggle" title="Instrumental with the backing vocals kept. Off is the dry mix."><input type="checkbox" id="kara-bv" ${s.mix === 'dry' ? '' : 'checked'} onchange="karaSetMix(this.checked)"> backing vocals</label>` : ''}
             <button class="btn btn-sm" onclick="karaFullscreen()" title="Full-screen lyrics (double-click the stage too)">⛶ Stage</button>
         </div>
 
@@ -200,7 +234,7 @@ function renderKaraokeDetail() {
         </div>
         <div id="kara-drop-table" class="kara-drop-table"></div>
 
-        <audio id="kara-backing" preload="auto" src="/api/karaoke/audio/${enc}/backing"></audio>
+        <audio id="kara-backing" preload="auto" src="/api/karaoke/audio/${enc}/${c.has_backing_bv && s.mix !== 'dry' ? 'backing_bv' : 'backing'}"></audio>
         ${c.has_guide ? `<audio id="kara-guide" preload="auto" src="/api/karaoke/audio/${enc}/guide"></audio>` : ''}
     `;
     const backing = document.getElementById('kara-backing');
@@ -395,6 +429,32 @@ function karaSyncGuide(force) {
     if (a && g && (force || Math.abs(g.currentTime - a.currentTime) > 0.08)) g.currentTime = a.currentTime;
 }
 
+function karaSetMix(on) {
+    if (!kara.current) return;
+    const mix = on ? 'bv' : 'dry';
+    const enc = encodeURIComponent(kara.current.dir);
+    const audio = document.getElementById('kara-backing');
+    const wasPlaying = !!(audio && !audio.paused);
+    const t = audio ? audio.currentTime : 0;
+    const box = document.getElementById('kara-bv');
+    karaApi(`/api/karaoke/song/${enc}/mix`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mix }),
+    }).then(() => {
+        kara.current.song.mix = mix;
+        if (!audio) return;
+        const resume = () => {
+            audio.removeEventListener('loadedmetadata', resume);
+            try { audio.currentTime = t; } catch (e) { /* not seekable yet */ }
+            if (wasPlaying) audio.play();
+        };
+        audio.addEventListener('loadedmetadata', resume);
+        audio.src = `/api/karaoke/audio/${enc}/${on ? 'backing_bv' : 'backing'}`;
+    }).catch(e => {
+        if (box) box.checked = !on;
+        toast(`Mix failed: ${e.message}`, 'error');
+    });
+}
+
 function karaGuideVol(v) {
     const g = document.getElementById('kara-guide');
     if (g) g.volume = Math.pow(v / 100, 2);
@@ -468,13 +528,30 @@ function karaFireDrop(d) {
     if (kara.hearDrops) karaFirePad(d.bank, d.pad, d.vel);
 }
 
+function karaNoSample(bank, pad) {
+    const flash = document.getElementById('kara-flash');
+    if (!flash) return;
+    flash.textContent = `${karaPadName(bank, pad)}: no sample`;
+    flash.classList.remove('go');
+    void flash.offsetWidth;
+    flash.classList.add('go');
+}
+
 function karaFirePad(bank, pad, vel = 110) {
-    // Plays whatever is currently loaded on that pad (Load Karaoke Set + Fetch first).
-    const url = `/api/audio/preview/${bank.toLowerCase()}/${pad}`;
-    if (kara.padAudio[url] === false) return;
-    const snd = new Audio(url);
-    snd.volume = Math.max(0.1, Math.min(1, vel / 127)) * 0.8;
-    snd.play().catch(() => { kara.padAudio[url] = false; });
+    // Card WAV if Fetch + Export has built it, otherwise the library hit.
+    // A miss is not remembered: the next drop asks again.
+    const url = `/api/audio/preview/${String(bank).toLowerCase()}/${pad}`;
+    fetch(url).then(resp => {
+        if (!resp.ok) { karaNoSample(bank, pad); return null; }
+        return resp.blob();
+    }).then(blob => {
+        if (!blob) return;
+        const snd = new Audio(URL.createObjectURL(blob));
+        snd.volume = Math.max(0.1, Math.min(1, vel / 127)) * 0.8;
+        const drop = () => URL.revokeObjectURL(snd.src);
+        snd.addEventListener('ended', drop);
+        snd.play().catch(drop);
+    }).catch(() => karaNoSample(bank, pad));
 }
 
 function karaFullscreen() {
@@ -510,9 +587,37 @@ function prepKaraokePlaylist() {
     startKaraokePrep({ playlist });
 }
 
+function prepKaraokeFile() {
+    const input = document.getElementById('karaoke-file');
+    const file = input.files && input.files[0];
+    if (!file) { toast('Choose an audio file first', 'error'); return; }
+    const modelSel = document.getElementById('karaoke-model');
+    const opt = modelSel.selectedOptions[0];
+    if (!modelSel.value || (opt && opt.disabled)) {
+        toast('No vocal separator available for that model', 'error');
+        return;
+    }
+    const body = new FormData();
+    body.append('file', file);
+    const artist = document.getElementById('karaoke-artist').value;
+    const title = document.getElementById('karaoke-title').value;
+    if (artist) body.append('artist', artist);
+    if (title) body.append('title', title);
+    body.append('model', modelSel.value);
+    if (document.getElementById('karaoke-videos').checked) body.append('videos', '1');
+    karaApi('/api/karaoke/upload', { method: 'POST', body }).then(data => {
+        input.value = '';
+        toast(`Prepping ${data.total} song${data.total === 1 ? '' : 's'}…`);
+        pollKaraokeJob(data.job_id);
+    }).catch(e => toast(`Prep failed: ${e.message}`, 'error'));
+}
+
 function reprepKaraoke(force) {
     if (!kara.current) return;
-    if (force && !confirm('Re-run Demucs on this song? Takes a few minutes.')) return;
+    const model = document.getElementById('karaoke-model').value;
+    const label = model === 'karaoke-gen' ? 'karaoke-gen'
+        : (model === 'htdemucs_ft' ? 'Demucs (clean)' : 'Demucs (fast)');
+    if (force && !confirm(`Re-run ${label} on this song? Takes a few minutes.`)) return;
     startKaraokePrep({ dir: kara.current.dir, force: !!force, refresh: !force });
 }
 
@@ -540,7 +645,13 @@ function searchKaraokeTrack(q) {
 }
 
 async function startKaraokePrep(body) {
-    body.model = document.getElementById('karaoke-model').value;
+    const modelSel = document.getElementById('karaoke-model');
+    const opt = modelSel.selectedOptions[0];
+    if (!modelSel.value || (opt && opt.disabled)) {
+        toast('No vocal separator available for that model', 'error');
+        return;
+    }
+    body.model = modelSel.value;
     if (body.videos === undefined) body.videos = document.getElementById('karaoke-videos').checked;
     try {
         const data = await karaApi('/api/karaoke/prep', {
@@ -561,17 +672,23 @@ function pollKaraokeJob(jobId) {
         let job;
         try { job = await karaApi(`/api/karaoke/prep-status/${jobId}`); } catch (e) { clearInterval(kara.jobTimer); return; }
         const pct = job.total ? Math.round(((job.done || 0) + (job.failed || 0)) / job.total * 100) : 0;
+        const label = job.status === 'done' ? 'Done'
+            : job.status === 'partial' ? 'Partial'
+            : job.status === 'error' ? 'Error' : 'Prepping';
         box.innerHTML = `
-            <div class="kara-job-line">${job.status === 'done' ? 'Done' : job.status === 'error' ? 'Error' : 'Prepping'} ${(job.done || 0) + (job.failed || 0)}/${job.total}${job.failed ? ` · ${job.failed} failed` : ''}${job.videos ? ` · ${job.videos} video${job.videos === 1 ? '' : 's'}` : ''}</div>
+            <div class="kara-job-line">${label} ${(job.done || 0) + (job.failed || 0)}/${job.total}${job.failed ? ` · ${job.failed} failed` : ''}${job.videos ? ` · ${job.videos} video${job.videos === 1 ? '' : 's'}` : ''}</div>
             ${job.current ? `<div class="kara-job-current">${escapeHtml(job.current)}</div>` : ''}
             <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
             ${job.error ? `<div class="kara-job-err">${escapeHtml(job.error)}</div>` : ''}
             <pre class="kara-job-log">${escapeHtml((job.log || []).slice(-6).join('\n'))}</pre>`;
-        if (job.status === 'done' || job.status === 'error') {
+        if (job.status === 'done' || job.status === 'partial' || job.status === 'error') {
             clearInterval(kara.jobTimer);
+            kara.jobTimer = null;
             await loadKaraokeSongs();
             if (kara.current && !kara.dirty) selectKaraokeSong(kara.current.dir);
-            toast(job.status === 'done' ? 'Karaoke prep finished' : `Prep error: ${job.error}`, job.status === 'done' ? 'success' : 'error');
+            if (job.status === 'done') toast('Karaoke prep finished', 'success');
+            else if (job.status === 'partial') toast(`${job.failed} of ${job.total} songs failed`, 'error');
+            else toast(job.error ? `Prep error: ${job.error}` : 'Prep failed', 'error');
         } else if ((job.done || 0) > 0) {
             loadKaraokeSongs();
         }
@@ -597,7 +714,8 @@ async function loadKaraokeSet() {
     document.getElementById('karaoke-set-modal').classList.add('hidden');
     try {
         const data = await karaApi('/api/karaoke/load-set', { method: 'POST' });
-        toast(`Loaded ${data.loaded.length} karaoke banks. Fetch All, then Export.`, 'success');
+        const where = data.backup ? ` Backup: ${data.backup}.` : '';
+        toast(`Loaded ${data.loaded.length} karaoke banks.${where} Fetch All, then Export.`, 'success');
         if (data.errors && data.errors.length) toast(`Some banks failed: ${data.errors.map(e => e.bank.toUpperCase()).join(', ')}`, 'error');
         if (typeof refreshBanks === 'function') refreshBanks();
     } catch (e) {

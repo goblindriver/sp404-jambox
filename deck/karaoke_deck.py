@@ -105,9 +105,23 @@ def pitch_scale(semitones):
     return round(2 ** (semitones / 12.0), 6)
 
 
+def preferred_backing(song_dir, song=None):
+    """Same rule as ``karaoke_prep.preferred_backing``.
+
+    Inlined so the deck does not import the kitchen (that loads jambox config).
+    ``backing_bv.flac`` when it exists and ``mix`` is not ``"dry"``; otherwise
+    the dry instrumental.
+    """
+    dry = os.path.join(song_dir, "backing.flac")
+    bv = os.path.join(song_dir, "backing_bv.flac")
+    if (song or {}).get("mix") == "dry" or not os.path.isfile(bv):
+        return dry
+    return bv
+
+
 def build_mpv_args(song_dir, song, *, ipc=PIPE_NAME, audio_device=None, fullscreen=True,
                    screen=None, sub_delay=0.0, mpv="mpv"):
-    args = [mpv, os.path.join(song_dir, "backing.flac"),
+    args = [mpv, preferred_backing(song_dir, song),
             f"--input-ipc-server={ipc}",
             "--force-window=yes", "--keep-open=no", "--idle=no",
             "--af=@rb:rubberband=pitch-scale=1.0",
@@ -335,37 +349,71 @@ def load_mido():
 
 
 def find_mpv(name="mpv"):
-    """mpv on PATH, else winget's install folder (shinchiro.mpv doesn't add itself to PATH)."""
+    """mpv on PATH, else winget's install folder (shinchiro.mpv doesn't add itself to PATH).
+
+    None when it isn't there. ``main`` exits before opening a window; the web
+    UI already plays these songs.
+    """
     found = shutil.which(name)
-    if found or os.name != "nt" or name != "mpv":
-        return found or name
+    if found:
+        return found
+    # An explicit --mpv path is used as given when that file exists. It is not
+    # swapped for the winget install.
+    if name != "mpv":
+        return name if os.path.isfile(name) else None
+    if os.name != "nt":
+        return None
     for base in (os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
         for sub in (("MPV Player", "mpv.exe"), ("Programs", "mpv", "mpv.exe"), ("mpv", "mpv.exe")):
             path = os.path.join(base or "", *sub)
             if base and os.path.isfile(path):
                 return path
-    return name
+    return None
 
 
 class MidiOut:
     def __init__(self, port_hint=None, dry_run=False):
         self.dry = dry_run
         self.port = None
+        self.mido = None
         if dry_run:
             return
-        mido = load_mido()
+        try:
+            mido = load_mido()
+        except ImportError:
+            self._unavailable("mido is not installed")
+            return
         self.mido = mido
-        names = mido.get_output_names()
-        match = [n for n in names if port_hint and port_hint.lower() in n.lower()] or names
+        try:
+            names = mido.get_output_names()
+        except Exception as exc:
+            self._unavailable(str(exc))
+            return
+        if port_hint:
+            match = [n for n in names if port_hint.lower() in n.lower()]
+        else:
+            match = list(names)
         if not match:
-            raise RuntimeError("No MIDI outputs. Is the USB MIDI cable plugged in?")
-        self.port = mido.open_output(match[0])
+            self._unavailable(f"port {port_hint!r} not found" if port_hint else "no MIDI ports")
+            return
+        try:
+            self.port = mido.open_output(match[0])
+        except Exception as exc:
+            self._unavailable(f"{match[0]} could not be opened ({exc})")
+            return
         print(f"MIDI → {match[0]}")
+
+    def _unavailable(self, why):
+        """One warning. Later notes are dropped so the song still plays."""
+        self.port = None
+        print(f"  MIDI unavailable ({why}); the song will play with no clock and no pad notes.")
 
     def _send(self, kind, **kw):
         if self.dry:
             if kind not in ("clock",):
                 print(f"  [midi] {kind} {kw}")
+            return
+        if self.port is None:
             return
         self.port.send(self.mido.Message(kind, **kw))
 
@@ -385,11 +433,15 @@ class MidiOut:
         self._send("songpos", pos=min(pos16, 16383))
 
     def pad(self, bank, pad, vel, base_ch):
+        if not self.dry and self.port is None:
+            return
         ch, note = karaoke_drops.pad_to_midi(bank, pad, base_ch)
         self._send("note_on", channel=ch - 1, note=note, velocity=vel)
         threading.Timer(0.08, lambda: self._send("note_off", channel=ch - 1, note=note, velocity=0)).start()
 
     def ext_source(self, base_ch):
+        if not self.dry and self.port is None:
+            return
         self._send("note_on", channel=base_ch - 1, note=karaoke_drops.EXT_SOURCE_NOTE, velocity=100)
         threading.Timer(0.08, lambda: self._send(
             "note_off", channel=base_ch - 1, note=karaoke_drops.EXT_SOURCE_NOTE, velocity=0)).start()
@@ -671,11 +723,18 @@ def main(argv=None):
     ap.add_argument("--list-ports", action="store_true")
     ap.add_argument("songs", nargs="*", help="song folder names (skip the picker)")
     args = ap.parse_args(argv)
-    args.mpv = find_mpv(args.mpv)
+    requested = args.mpv
+    args.mpv = find_mpv(requested)
 
     if args.list_ports:
-        list_ports(args.mpv)
+        list_ports(args.mpv or requested)
         return 0
+    if not args.mpv:
+        print("mpv was not found, so the deck can't open a window.\n"
+              "The songs are already playable in the jambox web UI: "
+              "scripts/karaoke_prep output is already what the browser plays.\n"
+              "Install mpv, or pass --mpv with its path.")
+        return 2
     songs = load_index(args.root)
     if args.songs:
         wanted = {s.lower() for s in args.songs}

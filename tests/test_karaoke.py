@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from unittest import mock
 
@@ -17,6 +18,7 @@ if SCRIPTS_DIR not in sys.path:
 
 import karaoke_drops  # noqa: E402
 import karaoke_lyrics  # noqa: E402
+import karaoke_capabilities  # noqa: E402
 from karaoke_lyrics import LyricLine  # noqa: E402
 
 
@@ -284,6 +286,7 @@ class PrepTests(unittest.TestCase):
         for name in ("song.json", "lyrics.lrc", "lyrics.ass", "backing.flac"):
             self.assertTrue(os.path.isfile(os.path.join(song_dir, name)), name)
         self.assertEqual(song["lyrics_source"], "sidecar")
+        self.assertEqual(song["source_kind"], "file")
         self.assertEqual(song["energy"], "high")
         self.assertEqual(song["preset"], "genre/synth-punk-pogo")
         self.assertEqual(len(song["choruses"]), 2)
@@ -292,6 +295,18 @@ class PrepTests(unittest.TestCase):
         songs = self.prep.rebuild_index(out)
         self.assertEqual(len(songs), 1)
         self.assertTrue(songs[0]["has_guide"])
+
+    def test_index_does_not_list_sources(self):
+        out = os.path.join(self.tmp.name, "idx")
+        song = os.path.join(out, "Band - Song")
+        os.makedirs(song)
+        open(os.path.join(song, "backing.flac"), "wb").close()
+        with open(os.path.join(song, "song.json"), "w", encoding="utf-8") as fh:
+            json.dump({"artist": "Band", "title": "Song"}, fh)
+        os.makedirs(os.path.join(out, "_sources"))
+        open(os.path.join(out, "_sources", "deadbeef.wav"), "wb").close()
+        songs = self.prep.rebuild_index(out)
+        self.assertEqual([s["dir"] for s in songs], ["Band - Song"])
 
     def test_locked_drops_survive_refresh(self):
         out = os.path.join(self.tmp.name, "out")
@@ -305,11 +320,13 @@ class PrepTests(unittest.TestCase):
                 data = json.load(fh)
             data["drops"] = [{"t": 3.0, "bank": "B", "pad": 1, "vel": 90, "label": "mine"}]
             data["drops_locked"] = True
+            data["mix"] = "dry"
             with open(path, "w") as fh:
                 json.dump(data, fh)
             song = self.prep.prep_song(meta, refresh=True, **kwargs)
         self.assertEqual(song["drops"][0]["label"], "mine")
         self.assertTrue(song["drops_locked"])
+        self.assertEqual(song["mix"], "dry")
 
     def test_a_prepped_song_doesnt_need_its_source(self):
         out = os.path.join(self.tmp.name, "out")
@@ -979,6 +996,8 @@ class DeckTests(unittest.TestCase):
         # D:\Karaoke holds the GPU lane (venv, models, work); a /MIR mirror into it would delete them.
         if os.name == "nt":
             self.assertEqual(self.deck.DEFAULT_ROOT, r"D:\Karaoke\Songs")
+        else:
+            self.assertEqual(self.deck.DEFAULT_ROOT, os.path.expanduser("~/Music/Karaoke"))
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(SystemExit) as ctx:
                 self.deck.load_index(root)
@@ -1016,6 +1035,32 @@ class DeckTests(unittest.TestCase):
         self.assertIn("volume=-18dB", self.deck.guide_graph(-18, False))
         self.assertIn("[vid1]null[vo]", self.deck.guide_graph(-9, True))
         self.assertAlmostEqual(self.deck.pitch_scale(12), 2.0)
+
+    def test_mpv_plays_the_mix_you_sing_to(self):
+        import karaoke_prep
+        with tempfile.TemporaryDirectory() as tmp:
+            dry = os.path.join(tmp, "backing.flac")
+            bv = os.path.join(tmp, "backing_bv.flac")
+            guide = os.path.join(tmp, "guide.flac")
+            for path in (dry, bv, guide):
+                open(path, "wb").close()
+
+            def played(song):
+                args = self.deck.build_mpv_args(tmp, song, fullscreen=False)
+                want = karaoke_prep.preferred_backing(tmp, song)
+                self.assertEqual(args[1], want)
+                self.assertEqual(self.deck.preferred_backing(tmp, song), want)
+                other = bv if os.path.basename(want) == "backing.flac" else dry
+                self.assertNotIn(other, args)
+                self.assertIn(f"--audio-files={guide}", args)
+                return os.path.basename(want)
+
+            self.assertEqual(karaoke_prep.preferred_backing(tmp, {}), bv)
+            self.assertEqual(played({}), "backing_bv.flac")
+            self.assertEqual(played({"mix": "dry"}), "backing.flac")
+            os.remove(bv)
+            self.assertEqual(played({}), "backing.flac")
+            self.assertEqual(played({"mix": "bv"}), "backing.flac")
 
     def test_song_video_needs_the_file_and_an_offset_to_sync(self):
         d = self.deck
@@ -1126,13 +1171,59 @@ class DeckTests(unittest.TestCase):
             exe = os.path.join(tmp, "MPV Player", "mpv.exe")
             os.makedirs(os.path.dirname(exe))
             open(exe, "wb").close()
+            custom = os.path.join(tmp, "custom-mpv.exe")
+            open(custom, "wb").close()
             with mock.patch.object(d.shutil, "which", return_value=None), \
                  mock.patch.object(d.os, "name", "nt"), \
                  mock.patch.dict(d.os.environ, {"ProgramFiles": tmp, "LOCALAPPDATA": ""}):
                 self.assertEqual(d.find_mpv(), exe)
-                self.assertEqual(d.find_mpv(r"C:\custom\mpv.exe"), r"C:\custom\mpv.exe")
+                self.assertEqual(d.find_mpv(custom), custom)
+                self.assertIsNone(d.find_mpv(os.path.join(tmp, "missing.exe")))
+            with mock.patch.object(d.shutil, "which", return_value=None), \
+                 mock.patch.object(d.os, "name", "nt"), \
+                 mock.patch.dict(d.os.environ, {"ProgramFiles": "", "LOCALAPPDATA": ""}):
+                self.assertIsNone(d.find_mpv())
             with mock.patch.object(d.shutil, "which", return_value="/usr/bin/mpv"):
                 self.assertEqual(d.find_mpv(), "/usr/bin/mpv")
+
+    def test_missing_mpv_exits_before_a_window_and_list_ports_still_runs(self):
+        d = self.deck
+        with mock.patch.object(d, "find_mpv", return_value=None), \
+                mock.patch.object(d.subprocess, "Popen") as popen, \
+                mock.patch("builtins.print") as printed:
+            code = d.main([])
+        self.assertEqual(code, 2)
+        popen.assert_not_called()
+        text = "\n".join(str(c.args[0]) for c in printed.call_args_list if c.args)
+        self.assertIn("web UI", text)
+        self.assertIn("karaoke_prep", text)
+        self.assertIn("--mpv", text)
+        with mock.patch.object(d, "find_mpv", return_value=None), \
+                mock.patch.object(d, "list_ports") as listed:
+            self.assertEqual(d.main(["--list-ports"]), 0)
+        listed.assert_called_once_with("mpv")
+
+    def test_missing_midi_port_warns_once_and_the_song_can_still_play(self):
+        fake = mock.Mock()
+        fake.get_output_names.return_value = ["Some Other Port"]
+        with mock.patch.object(self.deck, "load_mido", return_value=fake), \
+                mock.patch("builtins.print") as printed:
+            midi = self.deck.MidiOut("USB Midi")
+            midi.clock()
+            midi.start()
+            midi.pad("A", 1, 110, 1)
+        self.assertIsNone(midi.port)
+        fake.open_output.assert_not_called()
+        warnings = [c.args[0] for c in printed.call_args_list if c.args and "MIDI unavailable" in str(c.args[0])]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("not found", warnings[0])
+        dry = self.deck.MidiOut("USB Midi", dry_run=True)
+        self.assertIsNone(dry.port)
+        with mock.patch.object(self.deck.threading, "Timer", return_value=mock.Mock()) as timer, \
+                mock.patch("builtins.print") as printed:
+            dry.pad("A", 1, 100, 1)
+        timer.assert_called_once()
+        self.assertTrue(any("[midi]" in str(c.args[0]) for c in printed.call_args_list if c.args))
 
     def test_mido_uses_pygame_without_rtmidi_unless_a_backend_is_set(self):
         fake_mido = mock.MagicMock()
@@ -1223,8 +1314,87 @@ class TypeCodeAliasTests(unittest.TestCase):
                 self.assertIn(tc, TYPE_CODES, f"{os.path.relpath(path, REPO_ROOT)} pad {pad}: {desc!r}")
 
 
+class CapabilityTests(unittest.TestCase):
+    def test_neither_separator_means_no_default(self):
+        cap = karaoke_capabilities.capabilities(found={
+            "demucs": False, "karaoke_gen": False, "remote_lane": None})
+        self.assertIsNone(cap["separate"]["default"])
+        self.assertIn("Demucs", cap["separate"]["reason"])
+        self.assertTrue(cap["sources"]["file"])
+        self.assertTrue(cap["stage"]["browser"])
+
+    def test_demucs_only_defaults_to_the_fast_model(self):
+        cap = karaoke_capabilities.capabilities(found={
+            "demucs": True, "karaoke_gen": False, "remote_lane": None})
+        self.assertEqual(cap["separate"]["default"], "htdemucs")
+        self.assertIsNone(cap["separate"]["reason"])
+        self.assertNotEqual(cap["separate"]["default"], "htdemucs_ft")
+
+    def test_karaoke_gen_on_path_or_a_lane_wins(self):
+        on_path = karaoke_capabilities.capabilities(found={
+            "demucs": True, "karaoke_gen": True, "remote_lane": None})
+        self.assertEqual(on_path["separate"]["default"], "karaoke-gen")
+        lane = karaoke_capabilities.capabilities(found={
+            "demucs": False, "karaoke_gen": False, "remote_lane": "goblin"})
+        self.assertEqual(lane["separate"]["default"], "karaoke-gen")
+        self.assertEqual(lane["separate"]["remote_lane"], "goblin")
+
+    def test_detect_sees_karaoke_gen_on_path(self):
+        def which(command):
+            return "/usr/local/bin/karaoke-gen" if "karaoke-gen" in str(command) else None
+
+        with mock.patch("karaoke_capabilities.resolve_command", side_effect=which), \
+                mock.patch("karaoke_capabilities.importlib.util.find_spec", return_value=None), \
+                mock.patch.dict(os.environ, {"SP404_KARAOKE_REMOTE": ""}, clear=False):
+            cap = karaoke_capabilities.capabilities()
+        self.assertTrue(cap["separate"]["karaoke_gen"])
+        self.assertFalse(cap["separate"]["demucs"])
+        self.assertEqual(cap["separate"]["default"], "karaoke-gen")
+
+    def test_detect_sees_a_remote_lane_without_a_local_binary(self):
+        with mock.patch("karaoke_capabilities.resolve_command", return_value=None), \
+                mock.patch("karaoke_capabilities.importlib.util.find_spec", return_value=None), \
+                mock.patch.dict(os.environ, {"SP404_KARAOKE_REMOTE": "goblin"}, clear=False):
+            cap = karaoke_capabilities.capabilities()
+        self.assertEqual(cap["separate"]["remote_lane"], "goblin")
+        self.assertFalse(cap["separate"]["karaoke_gen"])
+        self.assertEqual(cap["separate"]["default"], "karaoke-gen")
+
+    def test_cli_floor_is_demucs_when_the_env_is_unset(self):
+        from jambox_config import load_settings
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SP404_KARAOKE_BACKEND", None)
+            settings = load_settings(REPO_ROOT)
+        self.assertEqual(settings["KARAOKE_BACKEND"], "demucs")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+def _tiny_wav():
+    import struct
+    payload = b"\x00\x00" * 8
+    return struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", 36 + len(payload), b"WAVE", b"fmt ", 16,
+        1, 1, 22050, 44100, 2, 16, b"data", len(payload),
+    ) + payload
+
+
+def _wait_until(predicate, tries=100):
+    for _ in range(tries):
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def _available_cap(**overrides):
+    """A probe result with Demucs present and the shed extras absent, unless overridden."""
+    found = {"demucs": True, "karaoke_gen": False, "remote_lane": None, "ytdlp": False, "plex": False}
+    found.update(overrides)
+    return karaoke_capabilities.capabilities(found=found)
 
 
 class KaraokeApiTests(unittest.TestCase):
@@ -1263,14 +1433,54 @@ class KaraokeApiTests(unittest.TestCase):
         self.assertEqual(detail["song"]["artist"], "Home Front")
         self.assertEqual(detail["lyrics"][0], {"t": 10.0, "text": "Verse line one"})
         self.assertTrue(detail["has_guide"])
+        self.assertFalse(detail["has_backing_bv"])
+
+    def test_backing_bv_is_served_only_when_it_exists(self):
+        missing = self.client.get(f"/api/karaoke/audio/{self.dir}/backing_bv")
+        self.assertEqual(missing.status_code, 404)
+        dry = self.client.get(f"/api/karaoke/audio/{self.dir}/backing")
+        self.assertEqual(dry.status_code, 200)
+        bv = os.path.join(self.root, self.dir, "backing_bv.flac")
+        with open(bv, "wb") as fh:
+            fh.write(b"fLaC-bv")
+        found = self.client.get(f"/api/karaoke/audio/{self.dir}/backing_bv")
+        self.assertEqual(found.status_code, 200)
+        self.assertEqual(found.data, b"fLaC-bv")
+
+    def test_mix_is_bv_or_dry_and_leaves_the_drop_sheet(self):
+        song_path = os.path.join(self.root, self.dir, "song.json")
+        with open(song_path) as fh:
+            before = json.load(fh)
+        bad = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "wet"})
+        self.assertEqual(bad.status_code, 400)
+        no_file = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "bv"})
+        self.assertEqual(no_file.status_code, 400)
+        with open(os.path.join(self.root, self.dir, "backing_bv.flac"), "wb") as fh:
+            fh.write(b"fLaC-bv")
+        ok = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "dry"})
+        self.assertEqual(ok.status_code, 200, ok.get_json())
+        self.assertEqual(ok.get_json()["drops_locked"], False)
+        with open(song_path) as fh:
+            after = json.load(fh)
+        self.assertEqual(after["mix"], "dry")
+        self.assertEqual(after["drops"], before["drops"])
+        self.assertEqual(after["drops_locked"], before["drops_locked"])
+        bv = self.client.put(f"/api/karaoke/song/{self.dir}/mix", json={"mix": "bv"})
+        self.assertEqual(bv.get_json()["mix"], "bv")
 
     def test_status_reports_karaoke_gen_and_the_lane(self):
         import api.karaoke as karaoke_api
         with mock.patch.object(karaoke_api, "_get_plex", return_value=None):
-            tools = self.client.get("/api/karaoke/status").get_json()["tools"]
+            payload = self.client.get("/api/karaoke/status").get_json()
+        tools = payload["tools"]
         self.assertIsInstance(tools["karaoke_gen"], bool)
         self.assertIn(tools["backend"], ("karaoke-gen", "demucs"))
         self.assertIn("remote_lane", tools)
+        cap = payload["capabilities"]
+        self.assertIn(cap["separate"]["default"], ("htdemucs", "karaoke-gen", None))
+        self.assertTrue(cap["sources"]["file"])
+        self.assertFalse(cap["sources"]["plex"])
+        self.assertTrue(cap["stage"]["browser"])
 
     def test_rejects_traversal_and_unknown(self):
         for bad in ("..", "_index.json", "nope"):
@@ -1317,19 +1527,191 @@ class KaraokeApiTests(unittest.TestCase):
 
     def test_load_set_uses_preset_utils(self):
         import preset_utils
-        with mock.patch.object(preset_utils, "load_preset_to_bank", return_value={"name": "x"}) as m:
+        cfg = os.path.join(self.tmp.name, "bank_config.yaml")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: keep me\n")
+        with mock.patch.object(preset_utils, "CONFIG_PATH", cfg), \
+                mock.patch.object(preset_utils, "load_preset_to_bank", return_value={"name": "x"}) as m:
             data = self.client.post("/api/karaoke/load-set").get_json()
         self.assertTrue(data["ok"])
         self.assertEqual(m.call_count, 10)
         self.assertEqual(m.call_args_list[0].args, ("utility/karaoke-drops", "a"))
+        self.assertTrue(os.path.basename(data["backup"]).startswith("bank_config.yaml.bak-karaoke-"))
+        self.assertEqual(os.path.dirname(os.path.abspath(data["backup"])), os.path.abspath(self.tmp.name))
+
+    def test_load_set_backs_up_before_it_writes_and_stops_if_the_copy_fails(self):
+        import api.karaoke as karaoke_api
+        import preset_utils
+        from jambox_config import load_bank_config
+        cfg = os.path.join(self.tmp.name, "bank_config.yaml")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: Tiger Dust\n  pads:\n    1: old horn\nkept: yes\n")
+        with mock.patch.object(preset_utils, "CONFIG_PATH", cfg):
+            resp = self.client.post("/api/karaoke/load-set")
+        data = resp.get_json()
+        self.assertEqual(resp.status_code, 200, data)
+        self.assertTrue(data["ok"])
+        bak = data["backup"]
+        self.assertTrue(os.path.isfile(bak))
+        old = load_bank_config(bak, strict=True)
+        self.assertEqual(old["bank_a"]["name"], "Tiger Dust")
+        self.assertTrue(old["kept"])
+        live = load_bank_config(cfg, strict=True)
+        self.assertEqual(live["bank_a"]["preset"], "utility/karaoke-drops")
+        self.assertEqual(len([n for n in os.listdir(self.tmp.name) if ".bak-karaoke-" in n]), 1)
+
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: Tiger Dust\n")
+        with mock.patch.object(preset_utils, "CONFIG_PATH", cfg), \
+                mock.patch.object(karaoke_api.shutil, "copy2", side_effect=OSError("disk full")), \
+                mock.patch.object(preset_utils, "load_preset_to_bank") as write:
+            failed = self.client.post("/api/karaoke/load-set")
+        self.assertEqual(failed.status_code, 500)
+        write.assert_not_called()
+        self.assertEqual(load_bank_config(cfg, strict=True)["bank_a"]["name"], "Tiger Dust")
 
     def test_prep_requires_source(self):
-        resp = self.client.post("/api/karaoke/prep", json={"dir": "nope"})
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()):
+            resp = self.client.post("/api/karaoke/prep", json={"dir": "nope"})
+            self.assertEqual(resp.status_code, 404)
+            resp = self.client.post("/api/karaoke/prep", json={"model": "bogus"})
+            self.assertEqual(resp.status_code, 400)
+            # The name is a real model, but this probe can't run it.
+            resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": self.dir})
+            self.assertEqual(resp.status_code, 400)
+            self.assertIn("karaoke-gen", resp.get_json()["error"])
+
+    def test_prep_accepts_karaoke_gen_when_the_probe_can_see_it(self):
+        cap = _available_cap(karaoke_gen=True)
+        with mock.patch("karaoke_capabilities.capabilities", return_value=cap):
+            resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": "nope"})
         self.assertEqual(resp.status_code, 404)
-        resp = self.client.post("/api/karaoke/prep", json={"model": "bogus"})
+
+    def test_prep_refuses_when_no_separator_is_installed(self):
+        cap = _available_cap(demucs=False, karaoke_gen=False, remote_lane=None)
+        with mock.patch("karaoke_capabilities.capabilities", return_value=cap):
+            resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir})
         self.assertEqual(resp.status_code, 400)
-        resp = self.client.post("/api/karaoke/prep", json={"model": "karaoke-gen", "dir": "nope"})
-        self.assertEqual(resp.status_code, 404)  # karaoke-gen passes validation
+        self.assertIn("Demucs", resp.get_json()["error"])
+
+    def test_prep_refuses_videos_without_ytdlp(self):
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap(ytdlp=False)):
+            resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir, "videos": True})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("yt-dlp", resp.get_json()["error"])
+
+    def test_upload_stores_the_file_and_queues_that_path(self):
+        import hashlib
+        import io
+        import api.karaoke as karaoke_api
+        wav = _tiny_wav()
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()), \
+                mock.patch.object(karaoke_api, "_run_prep") as run_prep:
+            resp = self.client.post("/api/karaoke/upload", data={
+                "file": (io.BytesIO(wav), "band.wav"),
+                "artist": "Home Front",
+                "title": "Test",
+                "model": "htdemucs",
+            })
+            self.assertEqual(resp.status_code, 200, resp.get_json())
+            self.assertTrue(_wait_until(lambda: run_prep.called))
+        track = run_prep.call_args.args[2][0]
+        digest = hashlib.sha256(wav).hexdigest()[:16]
+        self.assertEqual(os.path.basename(track["file_path"]), digest + ".wav")
+        self.assertEqual(track["source_kind"], "upload")
+        self.assertEqual(track["artist"], "Home Front")
+        self.assertTrue(track["file_path"].startswith(os.path.realpath(os.path.join(self.root, "_sources"))))
+        with open(track["file_path"], "rb") as fh:
+            self.assertEqual(fh.read(), wav)
+
+    def test_upload_rejects_a_non_audio_extension(self):
+        import io
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()):
+            resp = self.client.post("/api/karaoke/upload", data={
+                "file": (io.BytesIO(b"not audio"), "notes.txt"),
+                "model": "htdemucs",
+            })
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("flac", resp.get_json()["error"])
+        sources = os.path.join(self.root, "_sources")
+        self.assertFalse(os.path.isdir(sources) and os.listdir(sources))
+
+    def test_file_path_respects_roots_and_dotdot(self):
+        import api.karaoke as karaoke_api
+        library = os.path.join(self.tmp.name, "lib")
+        sub = os.path.join(library, "sub")
+        extra = os.path.join(self.tmp.name, "extra")
+        os.makedirs(sub)
+        os.makedirs(extra)
+        wav = _tiny_wav()
+        song = os.path.join(sub, "song.wav")
+        extra_song = os.path.join(extra, "extra.wav")
+        outside = os.path.join(self.tmp.name, "outside.wav")
+        for path in (song, extra_song, outside):
+            with open(path, "wb") as fh:
+                fh.write(wav)
+        self.client.application.config.update(
+            SAMPLE_LIBRARY=library,
+            DOWNLOADS_PATH=os.path.join(self.tmp.name, "downloads"),
+            KARAOKE_SOURCES=extra,
+        )
+        inside = os.path.join(sub, "..", "sub", "song.wav")
+        escaped = os.path.join(library, "..", "outside.wav")
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap()), \
+                mock.patch.object(karaoke_api, "_run_prep") as run_prep:
+            ok = self.client.post("/api/karaoke/prep", json={
+                "file_path": inside, "artist": "A", "title": "B", "model": "htdemucs"})
+            self.assertEqual(ok.status_code, 200, ok.get_json())
+            self.assertTrue(_wait_until(lambda: run_prep.called))
+            missing = self.client.post("/api/karaoke/prep", json={
+                "file_path": os.path.join(library, "missing.wav"), "model": "htdemucs"})
+            forbidden = self.client.post("/api/karaoke/prep", json={
+                "file_path": escaped, "model": "htdemucs"})
+            from_extra = self.client.post("/api/karaoke/prep", json={
+                "file_path": extra_song, "model": "htdemucs"})
+            self.assertTrue(_wait_until(lambda: run_prep.call_count >= 2))
+        track = run_prep.call_args_list[0].args[2][0]
+        self.assertEqual(track["file_path"], os.path.realpath(song))
+        self.assertEqual(track["source_kind"], "file")
+        self.assertEqual(track["artist"], "A")
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(from_extra.status_code, 200)
+        self.assertEqual(run_prep.call_args_list[1].args[2][0]["file_path"], os.path.realpath(extra_song))
+
+    def test_prep_job_status_follows_the_counts(self):
+        import api.karaoke as karaoke_api
+        self.assertEqual(karaoke_api.prep_job_status(2, 0), "done")
+        self.assertEqual(karaoke_api.prep_job_status(1, 1), "partial")
+        self.assertEqual(karaoke_api.prep_job_status(0, 2), "error")
+        self.assertEqual(karaoke_api.prep_job_status(0, 0), "done")
+
+    def test_one_failed_track_finishes_partial(self):
+        import api.karaoke as karaoke_api
+        kp = karaoke_api._prep_module()
+        seen = []
+
+        def prep_song(meta, **_kwargs):
+            seen.append(meta.get("title"))
+            if len(seen) == 2:
+                raise RuntimeError("separator blew up")
+            return {}
+
+        tracks = [
+            {"file_path": os.path.join(self.root, "a.flac"), "artist": "A", "title": "One"},
+            {"file_path": os.path.join(self.root, "b.flac"), "artist": "B", "title": "Two"},
+        ]
+        opts = {"backend": "demucs", "model": "htdemucs", "refresh": False, "force": False,
+                "videos": False, "revideo": False, "video_only": False}
+        job_id = karaoke_api._prep_tracker.create(status="queued", total=2, done=0, failed=0, log=[])
+        with mock.patch.object(kp, "prep_song", side_effect=prep_song):
+            karaoke_api._run_prep(self.client.application, job_id, tracks, opts)
+        job = karaoke_api._prep_tracker.get(job_id)
+        self.assertEqual(seen, ["One", "Two"])
+        self.assertEqual(job["status"], "partial")
+        self.assertEqual((job["done"], job["failed"]), (1, 1))
+        self.assertIn("1 song failed", job["error"])
+        self.assertTrue(job.get("finished_at"))
 
     def test_video_shows_in_the_list_and_detail(self):
         song_dir = os.path.join(self.root, self.dir)
@@ -1345,7 +1727,8 @@ class KaraokeApiTests(unittest.TestCase):
 
     def test_revideo_on_a_song_only_fetches_its_video(self):
         import api.karaoke as karaoke_api
-        with mock.patch.object(karaoke_api, "_run_prep") as run_prep:
+        with mock.patch("karaoke_capabilities.capabilities", return_value=_available_cap(ytdlp=True)), \
+                mock.patch.object(karaoke_api, "_run_prep") as run_prep:
             resp = self.client.post("/api/karaoke/prep", json={"dir": self.dir, "revideo": True})
             self.assertTrue(resp.get_json()["ok"])
             for _ in range(100):
@@ -1368,3 +1751,99 @@ class ChorusGapTests(unittest.TestCase):
         lines = karaoke_lyrics.parse_lrc(
             "[00:10.00]hook one\n[00:14.00]hook two\n[00:40.00]hook one\n[00:44.00]hook two\n[00:48.00]end\n")
         self.assertEqual([c[0] for c in karaoke_lyrics.find_choruses(lines)], [10.0, 40.0])
+
+
+class PadPreviewTests(unittest.TestCase):
+    def setUp(self):
+        web_dir = os.path.join(REPO_ROOT, "web")
+        if web_dir not in sys.path:
+            sys.path.insert(0, web_dir)
+        from flask import Flask
+        from api import audio as audio_api
+        self.audio = audio_api
+        audio_api.clear_pad_hits()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.repo = os.path.join(self.tmp.name, "repo")
+        self.library = os.path.join(self.tmp.name, "library")
+        os.makedirs(os.path.join(self.repo, "sd-card-template", "ROLAND", "SP-404SX", "SMPL"))
+        os.makedirs(os.path.join(self.repo, "_CARD_STAGING"))
+        os.makedirs(self.library)
+        self.tags = os.path.join(self.tmp.name, "_tags.json")
+        with open(self.tags, "w", encoding="utf-8") as fh:
+            fh.write("{}")
+        self.config = os.path.join(self.tmp.name, "bank_config.yaml")
+        with open(self.config, "w", encoding="utf-8") as fh:
+            fh.write("bank_a:\n  name: Drops\n  pads:\n    1: airhorn one-shot\n")
+        self.hit = os.path.join(self.library, "airhorn.wav")
+        with open(self.hit, "wb") as fh:
+            fh.write(b"LIBHIT")
+        app = Flask(__name__)
+        app.config.update(
+            REPO_DIR=self.repo, SAMPLE_LIBRARY=self.library, TAGS_FILE=self.tags,
+            CONFIG_PATH=self.config, FFMPEG_BIN="ffmpeg", TESTING=True,
+        )
+        app.register_blueprint(audio_api.audio_bp, url_prefix="/api")
+        self.client = app.test_client()
+
+    def _card(self, folder, name, payload):
+        path = os.path.join(self.repo, folder, name)
+        with open(path, "wb") as fh:
+            fh.write(payload)
+        return path
+
+    def test_card_wav_beats_a_library_hit(self):
+        self._card(os.path.join("sd-card-template", "ROLAND", "SP-404SX", "SMPL"), "A0000001.WAV", b"CARDWAV")
+        with mock.patch.object(self.audio, "rank_pad_hit", side_effect=AssertionError("library ranked")):
+            resp = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, b"CARDWAV")
+
+    def test_library_hit_plays_when_the_card_is_empty(self):
+        def rank(query, bank_config, tag_db):
+            self.assertIn("airhorn", query)
+            return self.hit
+        with mock.patch.object(self.audio, "rank_pad_hit", side_effect=rank):
+            resp = self.client.get("/api/audio/preview/A/1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, b"LIBHIT")
+
+    def test_neither_card_nor_library_is_no_sample(self):
+        with mock.patch.object(self.audio, "rank_pad_hit", return_value=None):
+            resp = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json(), {"ok": False, "error": "no sample", "bank": "a", "pad": 1})
+
+    def test_a_hit_outside_the_library_is_a_miss(self):
+        with mock.patch.object(self.audio, "rank_pad_hit", return_value="/etc/passwd"):
+            resp = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["error"], "no sample")
+        self.assertNotIn(b"root:", resp.data)
+
+    def test_a_tag_store_change_may_find_a_file(self):
+        calls = {"n": 0}
+
+        def rank(query, bank_config, tag_db):
+            calls["n"] += 1
+            return None if calls["n"] == 1 else self.hit
+
+        with mock.patch.object(self.audio, "rank_pad_hit", side_effect=rank):
+            first = self.client.get("/api/audio/preview/a/1")
+            second = self.client.get("/api/audio/preview/a/1")
+            self.assertEqual(calls["n"], 1)
+            os.utime(self.tags, (time.time() + 5, time.time() + 5))
+            third = self.client.get("/api/audio/preview/a/1")
+        self.assertEqual(first.status_code, 404)
+        self.assertEqual(second.status_code, 404)
+        self.assertEqual(third.status_code, 200)
+        self.assertEqual(third.data, b"LIBHIT")
+        self.assertEqual(calls["n"], 2)
+
+    def test_a_missing_scorer_is_a_miss_not_a_500(self):
+        with mock.patch.dict(sys.modules, {"fetch_samples": None}):
+            self.assertIsNone(self.audio.rank_pad_hit("airhorn one-shot", {}, {}))
+        fake = types.ModuleType("fetch_samples")
+        fake.rank_library_matches = mock.Mock(side_effect=RuntimeError("no library"))
+        with mock.patch.dict(sys.modules, {"fetch_samples": fake}):
+            self.assertIsNone(self.audio.rank_pad_hit("airhorn one-shot", {}, {}))

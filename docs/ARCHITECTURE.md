@@ -49,6 +49,8 @@ MusicRadar / Curated Packs / Cowork downloads
   copy_to_sd.sh ──► /Volumes/SP-404SX/ROLAND/SP-404SX/SMPL/
 ```
 
+SQLite (`_tags.sqlite`) is the tag source of truth; `_tags.json` above is the legacy export. Deploy is `scripts/deploy_sd.py` (`copy_to_sd.sh` only execs it).
+
 ## Web UI Architecture
 
 Flask app at `web/`, runs on http://localhost:5404.
@@ -60,6 +62,10 @@ Flask app at `web/`, runs on http://localhost:5404.
 - **SD card status**: Auto-polling indicator
 - **Drag-and-drop**: From library sidebar or OS file explorer onto pads
 - **Tag Cloud API**: `GET /api/library/tags`, `GET /api/library/by-tag?type_code=KIK&vibe=dark`
+
+## Karaoke
+
+Song packages live in `KARAOKE_DIR`, outside the sample library, so a full-length instrumental never enters the tag store. The browser is the stage. `scripts/karaoke_capabilities.py` decides which extras run (karaoke-gen, a remote lane, Plex, yt-dlp, the deck); Demucs on this machine is enough. Contract: `docs/PLAN_KARAOKE_JAMBOX_FIRST.md`.
 
 ## Design Decisions
 

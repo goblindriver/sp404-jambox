@@ -2029,7 +2029,8 @@ main {
     display: flex; flex-direction: column; min-height: 0; background: var(--bg-raised);
 }
 .karaoke-prep { padding: 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
-.karaoke-prep-row { display: flex; gap: 6px; }
+.karaoke-plex-source.hidden { display: none; }
+.karaoke-prep-row { display: flex; gap: 6px; align-items: center; }
 .karaoke-prep-row select, .karaoke-prep-row input, .karaoke-filter, .kara-drop-row input, .kara-drop-row select, .kara-chip select {
     background: var(--bg-surface); color: var(--text); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 6px 8px; font-size: 12px; min-width: 0;
