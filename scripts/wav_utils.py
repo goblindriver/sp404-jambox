@@ -74,15 +74,15 @@ def _trim_silence(pcm_data, threshold_db=-50.0, chunk_ms=10):
     return pcm_data[trim_frames * 2:]  # 2 bytes per 16-bit sample
 
 
-def build_sp404_wav(pcm_data, bank_letter, pad_number):
-    """Build a complete SP-404 compatible WAV from raw 16-bit mono PCM.
+def build_sp404_wav(pcm_data, bank_letter, pad_number, channels=1):
+    """Build a complete SP-404 compatible WAV from raw 16-bit PCM (mono, or interleaved stereo).
 
     Structure: RIFF(12) + fmt(24) + RLND(468) + data(8+N) = 512 + N
     Sample data begins at exactly offset 512.
     """
     # fmt chunk: 24 bytes (8 header + 16 payload)
     fmt_chunk = b'fmt ' + struct.pack('<I', 16)
-    fmt_chunk += struct.pack('<HHIIHH', 1, 1, SR, SR * 2, 2, 16)
+    fmt_chunk += struct.pack('<HHIIHH', 1, channels, SR, SR * 2 * channels, 2 * channels, 16)
 
     # RLND chunk: 468 bytes
     rlnd_chunk = _make_rlnd_chunk(bank_letter, pad_number)
