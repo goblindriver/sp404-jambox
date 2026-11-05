@@ -421,27 +421,39 @@
         <div class="karaoke-body">
             <aside class="karaoke-songs">
                 <div class="karaoke-prep">
+                    <div id="karaoke-plex-source">
+                        <div class="karaoke-prep-row">
+                            <select id="karaoke-playlist"><option value="">Plex playlist…</option></select>
+                            <button class="btn btn-sm btn-accent" id="karaoke-prep-btn" onclick="prepKaraokePlaylist()">Prep</button>
+                        </div>
+                        <div class="karaoke-prep-row">
+                            <input type="text" id="karaoke-track-search" placeholder="…or search a song to add" oninput="searchKaraokeTrack(this.value)" />
+                        </div>
+                        <div id="karaoke-track-results" class="karaoke-track-results"></div>
+                    </div>
                     <div class="karaoke-prep-row">
-                        <select id="karaoke-playlist"><option value="">Plex playlist…</option></select>
-                        <select id="karaoke-model" title="karaoke-gen: best separation + word-timed lyrics (~3 min/song on the remote GPU lane, ~15 on this machine); Demucs fast/clean: the older split with LRCLIB line lyrics">
-                            <option value="karaoke-gen">karaoke-gen</option>
+                        <input type="file" id="karaoke-file" accept=".flac,.wav,.aiff,.aif,.mp3,.m4a,.ogg,audio/*" title="Any audio file. Plex is optional." />
+                    </div>
+                    <div class="karaoke-prep-row">
+                        <input type="text" id="karaoke-artist" placeholder="Artist" />
+                        <input type="text" id="karaoke-title" placeholder="Title" />
+                        <button class="btn btn-sm btn-accent" id="karaoke-file-prep" onclick="prepKaraokeFile()">Prep file</button>
+                    </div>
+                    <div class="karaoke-prep-row">
+                        <select id="karaoke-model" title="The default is whichever separator this machine actually has. karaoke-gen when it (or a remote lane) is installed; otherwise Demucs. Demucs clean is slower and never the default.">
                             <option value="htdemucs">demucs fast</option>
                             <option value="htdemucs_ft">demucs clean</option>
+                            <option value="karaoke-gen">karaoke-gen</option>
                         </select>
                         <label class="kara-toggle" title="Also fetch a music video per song (YouTube via yt-dlp) for the deck's second screen"><input type="checkbox" id="karaoke-videos"> videos</label>
-                        <button class="btn btn-sm btn-accent" onclick="prepKaraokePlaylist()">Prep</button>
                     </div>
-                    <div class="karaoke-prep-row">
-                        <input type="text" id="karaoke-track-search" placeholder="…or search a song to add" oninput="searchKaraokeTrack(this.value)" />
-                    </div>
-                    <div id="karaoke-track-results" class="karaoke-track-results"></div>
                     <div id="karaoke-job" class="karaoke-job hidden"></div>
                 </div>
                 <input type="text" id="karaoke-filter" class="karaoke-filter" placeholder="Filter prepped songs" oninput="renderKaraokeSongs()" />
                 <div id="karaoke-song-list" class="karaoke-song-list"></div>
             </aside>
             <section id="karaoke-detail" class="karaoke-detail">
-                <div class="karaoke-empty">Prep a playlist, then pick a song to rehearse it, hear the drops and tweak the drop sheet.</div>
+                <div class="karaoke-empty">Add a song from a file, or from Plex when it's connected. Then pick it to rehearse, hear the drops, and tweak the drop sheet.</div>
             </section>
         </div>
     </div>
@@ -450,7 +462,7 @@
         <div class="confirm-modal-inner karaoke-set-inner">
             <p>Load the karaoke-night banks?</p>
             <div id="karaoke-set-plan" class="karaoke-set-plan"></div>
-            <p class="confirm-modal-subtitle">Replaces those banks in bank_config.yaml. Fetch All + Export afterwards. Banks A–B are internal memory.</p>
+            <p class="confirm-modal-subtitle">Replaces those banks in bank_config.yaml. A backup is written beside it first (bank_config.yaml.bak-karaoke-…). Fetch All + Export afterwards. Banks A–B are internal memory.</p>
             <div class="confirm-modal-actions">
                 <button class="btn btn-accent" onclick="loadKaraokeSet()">Load</button>
                 <button class="btn" onclick="document.getElementById('karaoke-set-modal').classList.add('hidden')">Cancel</button>

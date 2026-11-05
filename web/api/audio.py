@@ -9,6 +9,15 @@ from api._helpers import normalize_bank as _normalize_bank, normalize_pad as _no
 
 audio_bp = Blueprint('audio', __name__)
 
+# (bank, pad, tag-store mtime, bank-config mtime) -> library path or None.
+# A miss stays cached only until one of those files changes, so Fetch filling
+# the tags (or a bank edit) is heard on the next drop.
+_pad_hits = {}
+
+
+def clear_pad_hits():
+    _pad_hits.clear()
+
 
 def _library_root():
     return current_app.config['SAMPLE_LIBRARY']
@@ -18,24 +27,157 @@ def _ffmpeg_bin():
     return current_app.config['FFMPEG_BIN']
 
 
+def _stamp(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return None
+
+
+def _library_file_path(full):
+    """Real path of ``full`` if it is a file inside the sample library."""
+    root = _library_root()
+    if not root or not full:
+        return None
+    real_root = os.path.realpath(root)
+    real = os.path.realpath(full)
+    if real != real_root and not real.startswith(real_root + os.sep):
+        return None
+    if not os.path.isfile(real):
+        return None
+    return real
+
+
+def _send_audio(path):
+    ext = os.path.splitext(path)[1].lower()
+    mime = {'.wav': 'audio/wav', '.aif': 'audio/aiff', '.aiff': 'audio/aiff',
+            '.mp3': 'audio/mpeg', '.flac': 'audio/flac'}.get(ext, 'audio/wav')
+    return send_file(path, mimetype=mime)
+
+
+def _card_wav(bank, pad):
+    """The WAV the SP-404A will fire: the card template, else the staging copy."""
+    fname = f"{bank.upper()}{pad:07d}.WAV"
+    smpl = os.path.join(current_app.config['REPO_DIR'], 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL', fname)
+    if os.path.exists(smpl):
+        return smpl
+    staging = os.path.join(current_app.config['REPO_DIR'], '_CARD_STAGING', fname)
+    if os.path.exists(staging):
+        return staging
+    return None
+
+
+def _pad_query(bank, pad):
+    cfg_path = current_app.config.get('CONFIG_PATH') or os.path.join(
+        current_app.config.get('REPO_DIR') or '', 'bank_config.yaml')
+    try:
+        from jambox_config import load_bank_config
+        config = load_bank_config(cfg_path, strict=False)
+    except Exception:
+        return None, {}
+    bank_config = config.get(f'bank_{bank}') or {}
+    if not isinstance(bank_config, dict):
+        return None, {}
+    pads = bank_config.get('pads') or {}
+    desc = pads.get(pad, pads.get(str(pad), ''))
+    if not isinstance(desc, str):
+        desc = '' if desc is None else str(desc)
+    desc = desc.strip()
+    return (desc or None), bank_config
+
+
+def rank_pad_hit(query, bank_config, tag_db):
+    """Top library file for one pad description. Does not write a WAV.
+
+    A scorer that isn't importable, or that raises, is a miss rather than a 500.
+    ``tag_db`` is passed in so this does not save the on-disk score cache.
+    """
+    try:
+        import fetch_samples
+    except Exception:
+        return None
+    try:
+        matches = fetch_samples.rank_library_matches(
+            query,
+            bank_config=bank_config,
+            tag_db=tag_db if isinstance(tag_db, dict) else {},
+            used_files=set(),
+            limit=1,
+            min_score=0,
+            cache_entries={},
+        )
+    except Exception:
+        return None
+    if not matches:
+        return None
+    return matches[0].get('path')
+
+
+def _load_tags(tags_path):
+    if not tags_path:
+        return {}
+    try:
+        from jambox_config import load_tag_db
+        db = load_tag_db(tags_path)
+    except Exception:
+        return {}
+    return db if isinstance(db, dict) else {}
+
+
+def _store_stamps(tags_path, cfg_path):
+    """Mtimes of the tag store (json and its sqlite) and the bank config.
+
+    Taken as a tuple so a write to either file forgets a cached miss.
+    """
+    sibling = os.path.splitext(tags_path)[0] + ".sqlite" if tags_path else ""
+    return (_stamp(tags_path), _stamp(sibling), _stamp(cfg_path))
+
+
+def library_hit_for_pad(bank, pad):
+    """Cached top library hit for this pad, or None.
+
+    The key includes the tag store and bank config mtimes, so a miss is
+    forgotten when either file changes. The stamp is taken again after the
+    tag load, because the first read can migrate a json store to sqlite.
+    """
+    tags_path = current_app.config.get('TAGS_FILE') or ''
+    cfg_path = current_app.config.get('CONFIG_PATH') or os.path.join(
+        current_app.config.get('REPO_DIR') or '', 'bank_config.yaml')
+    key = (bank, int(pad), _store_stamps(tags_path, cfg_path))
+    if key in _pad_hits:
+        return _pad_hits[key]
+    query, bank_config = _pad_query(bank, pad)
+    tags = _load_tags(tags_path) if query else {}
+    key = (bank, int(pad), _store_stamps(tags_path, cfg_path))
+    if key in _pad_hits:
+        return _pad_hits[key]
+    hit = rank_pad_hit(query, bank_config, tags) if query else None
+    for old in [k for k in _pad_hits if k[0] == bank and k[1] == int(pad) and k != key]:
+        _pad_hits.pop(old, None)
+    _pad_hits[key] = hit
+    return hit
+
+
 @audio_bp.route('/audio/preview/<bank>/<int:pad>')
 def preview_pad(bank, pad):
-    """Serve a pad's WAV file for browser playback."""
+    """Serve what this pad will play.
+
+    The card WAV first (template, then staging), so rehearsal matches the rig
+    once Fetch + Export has run. Otherwise the top library hit for the pad's
+    description. Otherwise 404 ``no sample``.
+    """
     try:
         bank = _normalize_bank(bank)
         pad = _normalize_pad(pad)
     except ValueError:
         return jsonify({'error': 'Invalid bank or pad'}), 404
-    fname = f"{bank.upper()}{pad:07d}.WAV"
-    smpl = os.path.join(current_app.config['REPO_DIR'], 'sd-card-template', 'ROLAND', 'SP-404SX', 'SMPL', fname)
-    if os.path.exists(smpl):
-        return send_file(smpl, mimetype='audio/wav')
-
-    staging = os.path.join(current_app.config['REPO_DIR'], '_CARD_STAGING', fname)
-    if os.path.exists(staging):
-        return send_file(staging, mimetype='audio/wav')
-
-    return jsonify({'error': 'Pad audio not found'}), 404
+    card = _card_wav(bank, pad)
+    if card:
+        return send_file(card, mimetype='audio/wav')
+    hit = _library_file_path(library_hit_for_pad(bank, pad))
+    if hit:
+        return _send_audio(hit)
+    return jsonify({'ok': False, 'error': 'no sample', 'bank': bank, 'pad': pad}), 404
 
 
 @audio_bp.route('/audio/library/<path:filepath>')
@@ -43,17 +185,14 @@ def preview_library(filepath):
     """Serve a library file for preview. Path is relative to library root."""
     library_root = _library_root()
     full = os.path.join(library_root, filepath)
-    # Security: ensure path stays within library
-    full = os.path.realpath(full)
-    real_root = os.path.realpath(library_root)
-    if not full.startswith(real_root + os.sep) and full != real_root:
+    real = os.path.realpath(full)
+    real_root = os.path.realpath(library_root) if library_root else ''
+    if not real_root or (real != real_root and not real.startswith(real_root + os.sep)):
         return jsonify({'error': 'Access denied'}), 403
-    if not os.path.isfile(full):
+    sent = _send_audio(real) if os.path.isfile(real) else None
+    if sent is None:
         return jsonify({'error': 'File not found'}), 404
-    ext = os.path.splitext(full)[1].lower()
-    mime = {'.wav': 'audio/wav', '.aif': 'audio/aiff', '.aiff': 'audio/aiff',
-            '.mp3': 'audio/mpeg', '.flac': 'audio/flac'}.get(ext, 'audio/wav')
-    return send_file(full, mimetype=mime)
+    return sent
 
 
 def _convert_to_pad(source, bank, pad):
