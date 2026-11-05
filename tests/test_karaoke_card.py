@@ -12,13 +12,13 @@ from gen_padinfo import encode_pad  # noqa: E402
 from wav_utils import build_sp404_wav  # noqa: E402
 
 
-def _song(root, name, bpm, *, bv=False, mix=None):
+def _song(root, name, bpm, *, bv=False, mix=None, guide=False, **extra):
     song_dir = os.path.join(root, name)
     os.makedirs(song_dir)
-    for f in ["backing.flac"] + (["backing_bv.flac"] if bv else []):
+    for f in ["backing.flac"] + (["backing_bv.flac"] if bv else []) + (["guide.flac"] if guide else []):
         open(os.path.join(song_dir, f), "wb").close()
     artist, title = name.split(" - ")
-    song = {"artist": artist, "title": title, "bpm": bpm, "key": "Am"}
+    song = {"artist": artist, "title": title, "bpm": bpm, "key": "Am", **extra}
     if mix:
         song["mix"] = mix
     with open(os.path.join(song_dir, "song.json"), "w", encoding="utf-8") as fh:
@@ -92,6 +92,68 @@ class KaraokeCardTests(unittest.TestCase):
             self.assertEqual((untouched["loop"], untouched["bpm"], untouched["end"]), (1, 128.0, 9000))
             self.assertEqual(_record(table, "B", 1)["bpm"], 128.0)
             self.assertFalse(os.path.exists(os.path.join(smpl, "C0000004.WAV")))
+
+    def test_strip_cuts_land_on_the_beat_grid(self):
+        song = {"bpm": 120, "beat_offset_s": 0.25, "choruses": [[10.4, 14.9], [60.1, 70.0]]}
+        cuts = karaoke_card.strip_cuts(song, 90.0)
+        self.assertEqual(cuts["hook vocal"], (10.25, 15.25))
+        self.assertEqual(cuts["loop"], (10.25, 18.25))           # 16 beats from the first chorus
+        self.assertEqual(cuts["last chorus"], (57.75, 90.0))     # a bar's run-in before 59.75
+
+    def test_strip_cuts_without_choruses_and_capped_hooks(self):
+        cuts = karaoke_card.strip_cuts({"bpm": 120}, 90.0)
+        self.assertEqual((cuts["hook vocal"], cuts["last chorus"]), ((30.0, 38.0), (60.0, 90.0)))
+        long_chorus = karaoke_card.strip_cuts({"bpm": 120, "choruses": [[10, 40]]}, 90.0)
+        self.assertEqual(long_chorus["hook vocal"], (10.0, 26.0))  # 8 bars at most
+        split_last = karaoke_card.strip_cuts({"bpm": 120, "choruses": [[20, 24], [60, 70], [72, 80]]}, 90.0)
+        self.assertEqual(split_last["last chorus"], (58.0, 90.0))  # 60-70 and 72-80 are one chorus
+
+    def test_build_strips_fills_rows_across_banks(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as smpl:
+            names = [_song(root, f"Band - Song{i}", 120, bv=True, guide=True, beat_offset_s=0.0,
+                           choruses=[[4.1, 6.0], [12.2, 15.0]])["dir"] for i in range(4)]
+            with open(os.path.join(smpl, "PAD_INFO.BIN"), "wb") as fh:
+                fh.write(b"".join(encode_pad(sample_end=9000, loop=True, gate=False, bpm=128) for _ in range(120)))
+            calls = []
+
+            def convert(src, ch):
+                calls.append((os.path.basename(src), ch))
+                return struct.pack("<h", 1000) * ch * 44100 * 20       # 20 s of a constant level
+
+            book = karaoke_card.build_strips(root, "C", names=names, smpl_dir=smpl, convert=convert,
+                                             log=lambda *_: None)
+
+            self.assertEqual(len(book), 20)                             # a header + 4 pads per song
+            self.assertTrue(book[15].startswith("D1-4  Band - Song3"))
+            self.assertIn(("guide.flac", 1), calls)                     # the hook is the lead vocal
+            self.assertIn(("backing.flac", 2), calls)                   # the loop is the dry instrumental
+            with open(os.path.join(smpl, "PAD_INFO.BIN"), "rb") as fh:
+                table = fh.read()
+
+            def size(name):
+                return os.path.getsize(os.path.join(smpl, name))
+
+            song, hook, loop = _record(table, "C", 1), _record(table, "C", 3), _record(table, "C", 4)
+            self.assertEqual((song["loop"], song["channels"], song["end"]), (0, 2, size("C0000001.WAV")))
+            self.assertEqual((hook["loop"], hook["channels"]), (0, 1))
+            self.assertEqual(size("C0000003.WAV"), 512 + 2 * 44100 * 2)    # 4.0-6.0 s, mono
+            self.assertEqual(size("C0000002.WAV"), 512 + 10 * 44100 * 4)   # 10.0 s to the end, stereo
+            self.assertEqual((loop["loop"], size("C0000004.WAV")), (1, 512 + 8 * 44100 * 4))
+            self.assertEqual(_record(table, "D", 4)["loop"], 1)
+            self.assertEqual(_record(table, "D", 5)["end"], 9000)         # the rest of bank D is untouched
+            self.assertFalse(os.path.exists(os.path.join(smpl, "D0000005.WAV")))
+            with open(os.path.join(smpl, "C0000003.WAV"), "rb") as fh:
+                data = fh.read()
+            self.assertEqual(struct.unpack("<h", data[512:514])[0], 0)     # cut edges fade in
+            with open(os.path.join(smpl, "C0000001.WAV"), "rb") as fh:
+                self.assertEqual(struct.unpack("<h", fh.read()[512:514])[0], 1000)  # the full song doesn't
+
+    def test_strips_that_run_past_bank_j_are_refused(self):
+        with tempfile.TemporaryDirectory() as root:
+            names = [_song(root, f"A - S{i}", 100)["dir"] for i in range(4)]
+            with self.assertRaises(ValueError):
+                karaoke_card.build_strips(root, "J", names=names, smpl_dir=root,
+                                          convert=lambda src, ch: b"\x00\x00" * ch, log=lambda *_: None)
 
     def test_too_many_songs_for_a_bank_is_refused(self):
         with tempfile.TemporaryDirectory() as root:
