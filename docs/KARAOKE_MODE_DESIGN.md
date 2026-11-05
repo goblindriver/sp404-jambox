@@ -1,6 +1,6 @@
-# Creative Karaoke Mode
+# Creative Karaoke Mode — Design (not built)
 
-_Drafted 2026-10-30 for GOBLINDRIVER (the shed "toy" PC). Status: **built** through PR #25. The party-rig sections below are the upgrade path. The contract is [PLAN_KARAOKE_JAMBOX_FIRST.md](PLAN_KARAOKE_JAMBOX_FIRST.md). Hardware facts come from COPS (`nodes/av-shed-rig`, `nodes/av-numark-m6`, `nodes/av-roland-sp404a`, `nodes/net-dev-crtchain`, `runbooks/shed-party-rig.md`) and the SP-404A Reference Manual p. 47–48 (`docs/hardware/`)._
+_Drafted 2026-10-30 for GOBLINDRIVER (the shed "toy" PC). Status: **design only** — nothing installed, no code written. Hardware facts come from COPS (`nodes/av-shed-rig`, `nodes/av-numark-m6`, `nodes/av-roland-sp404a`, `nodes/net-dev-crtchain`, `runbooks/shed-party-rig.md`) and the SP-404A Reference Manual p. 47–48 (`docs/hardware/`)._
 
 ## The idea
 
